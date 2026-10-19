@@ -3,6 +3,7 @@
 export default {
   test: {
     projects: [
+      'apps/desktop',
       'apps/server',
       'apps/web',
       'packages/contract',
