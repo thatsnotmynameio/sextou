@@ -8,9 +8,9 @@ export interface Database {
   // The drizzle handle features query through.
   db: NodeSQLiteDatabase;
   // Whether the database answers a query. Never throws.
-  ping(): boolean;
+  ping: () => boolean;
   // Closes the database; does nothing once closed.
-  close(): void;
+  close: () => void;
 }
 
 // Opens the SQLite database at an absolute file path, or in memory for
@@ -38,7 +38,7 @@ export function openDatabase(path: string): Database {
   const db = drizzle({ client });
   return {
     db,
-    ping() {
+    ping: () => {
       try {
         db.get(sql`select 1`);
         return true;
@@ -46,7 +46,7 @@ export function openDatabase(path: string): Database {
         return false;
       }
     },
-    close() {
+    close: () => {
       // A second DatabaseSync.close() throws.
       if (client.isOpen) client.close();
     },

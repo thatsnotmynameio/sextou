@@ -6,6 +6,8 @@ export interface AppOptions {
   startedAt: Date;
   // The current time; tests pass a fixed one.
   now: () => Date;
+  // Whether the database answers a query; never throws.
+  pingDatabase: () => boolean;
 }
 
 // The HTTP app, with each module's routes under its own path.

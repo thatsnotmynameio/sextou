@@ -90,6 +90,9 @@ importers:
       '@sextou/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@sextou/data':
+        specifier: workspace:*
+        version: link:../../packages/data
       hono:
         specifier: ^4.13.13
         version: 4.13.13
