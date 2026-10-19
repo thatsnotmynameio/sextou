@@ -11,7 +11,10 @@
     "build-storybook": "pnpm --filter @sextou/ui build-storybook",
     "lint": "oxlint && oxfmt --check",
     "lint:fix": "oxlint --fix && oxfmt --write",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "test:unit": "pnpm -r test:unit",
+    "test:integration": "pnpm -r test:integration"
   },
   "devDependencies": {
     "oxfmt": "^0.73.0",

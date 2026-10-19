@@ -13,6 +13,9 @@ pnpm install
 pnpm lint             # oxlint, then oxfmt --check
 pnpm lint:fix         # both, fixing what they can
 pnpm typecheck        # tsc --noEmit in each package
+pnpm test:unit        # unit tests in jsdom, fast, with coverage
+pnpm test:integration # every story in Chromium (Playwright), with coverage
+pnpm test             # both suites, with coverage
 pnpm build            # electron-forge package, then storybook build
 pnpm start            # the app in development
 pnpm storybook        # Storybook at http://localhost:6006
@@ -25,8 +28,15 @@ pnpm storybook        # Storybook at http://localhost:6006
 - `apps/desktop/src/main`: Electron's main process. Bundled by Vite into `.vite/build/main.cjs`.
 - `apps/desktop/src/preload`: the preload script, the only bridge between main and the renderer (`contextBridge`).
 - `apps/desktop/src/renderer`: the React app the window loads. It talks to Electron only through what the preload exposes.
-- `packages/ui` (`@sextou/ui`): shared React components, each in `src/<Name>/` with `<Name>.tsx` and `<Name>.stories.tsx`, exported from `src/index.ts`. It ships sources, not a build: each app's Vite compiles it. Components take data and callbacks as props and never touch Electron, so they render in Storybook and in any app.
+- `packages/ui` (`@sextou/ui`): shared React components, each in `src/<Name>/` with `<Name>.tsx`, `<Name>.test.tsx` and `<Name>.stories.tsx`, exported from `src/index.ts`. It ships sources, not a build: each app's Vite compiles it. Components take data and callbacks as props and never touch Electron, so they render in Storybook and in any app.
 - Forge's Vite plugin packages only `.vite/`: everything the app runs must be bundled.
+
+## Tests
+
+- Two suites, split by weight. Unit tests (`*.test.tsx`) run in jsdom and check behavior and structure. Integration tests are the stories: each one renders in Chromium and must pass its `play` function, which checks what needs a real browser (layout, focus, truncation).
+- Coverage must stay at 90% or more (lines, branches, functions, statements) in every suite: each run fails below it.
+- The integration suite needs Playwright's Chromium once per machine: `pnpm --filter @sextou/ui exec playwright install chromium`.
+- CI doesn't run the tests yet: run `pnpm test` before opening a pull request.
 
 ## CI
 
