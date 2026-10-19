@@ -1,0 +1,29 @@
+# Weekly pull requests for new versions of the actions, pinned by SHA, and of
+# the dependencies in pnpm-lock.yaml. A version is proposed only once it is 7
+# days old, so a compromised release has time to be pulled.
+version: 2
+updates:
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: 'ci'
+    groups:
+      actions:
+        patterns: ['*']
+
+  # pnpm's lockfile, under the npm ecosystem.
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: 'deps'
+    groups:
+      npm:
+        patterns: ['*']
