@@ -29,7 +29,7 @@ pnpm storybook        # Storybook at http://localhost:6006
 
 ## Architecture
 
-- `apps/web` (`@sextou/web`): the React app, built by its own Vite config into `apps/web/dist`. In the desktop window it talks to Electron only through what the preload exposes.
+- `apps/web` (`@sextou/web`): the React app, built by its own Vite config into `apps/web/dist`. It reaches native features (the app badge) only through `src/platform.ts`. That module uses web APIs, which Electron maps to native ones in the desktop window; anything Electron doesn't map goes through what the preload exposes. Lint fails on an `electron` import in `apps/web` or `packages/ui`.
 - `apps/desktop/src/main`: Electron's main process. Bundled by Vite into `.vite/build/main.cjs`.
 - `apps/desktop/src/preload`: the preload script, the only bridge between main and the web app (`contextBridge`).
 - `packages/ui` (`@sextou/ui`): shared React components, each in `src/<Name>/` with `<Name>.tsx`, `<Name>.test.tsx` and `<Name>.stories.tsx`, exported from `src/index.ts`. It ships sources, not a build: each app's Vite compiles it. Components take data and callbacks as props and never touch Electron, so they render in Storybook and in any app.
@@ -41,7 +41,7 @@ pnpm storybook        # Storybook at http://localhost:6006
 
 - Two suites, split by weight. Unit tests (`*.test.tsx`) run in jsdom and check behavior and structure. Integration tests are the stories: each one renders in Chromium and must pass its `play` function, which checks what needs a real browser (layout, focus, truncation).
 - Coverage must stay at 90% or more (lines, branches, functions, statements) in every source file, in each suite on its own: each run fails below it.
-- In `packages/ui`, `vitest.config.ts` is the unit suite and `vitest.integration.config.ts` the integration suite. The root `vitest.config.ts` points a root `vitest run` at the unit suites.
+- In `packages/ui`, `vitest.config.ts` is the unit suite and `vitest.integration.config.ts` the integration suite. `apps/web` has a unit suite only (`vitest.config.ts`, `*.test.ts(x)`). The root `vitest.config.ts` points a root `vitest run` at the unit suites of both.
 - CI's `tnmn.io: vitest` job runs `vitest run` at the root, so it runs the unit suite (with its own coverage settings, and no floor until `.github/typescript.yml` sets one). The integration suite needs Playwright's Chromium, which CI doesn't install: run `pnpm test` before opening a pull request. Install Chromium once per machine with `pnpm --filter @sextou/ui exec playwright install chromium`.
 
 ## Git hooks
