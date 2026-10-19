@@ -45,6 +45,17 @@ describe('loadConfig', () => {
     },
   );
 
+  // An empty host would bind every interface, not loopback.
+  it('rejects an empty host from SEXTOU_SERVER_HOST', () => {
+    expect(() => loadConfig({ SEXTOU_SERVER_HOST: '' }, [])).toThrow(
+      'Invalid SEXTOU_SERVER_HOST: ""',
+    );
+  });
+
+  it('rejects an empty host from --host', () => {
+    expect(() => loadConfig({}, ['--host='])).toThrow('Invalid --host: ""');
+  });
+
   it('rejects an unknown flag', () => {
     expect(() => loadConfig({}, ['--verbose'])).toThrow("'--verbose'");
   });

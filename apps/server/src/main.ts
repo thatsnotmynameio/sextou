@@ -12,4 +12,6 @@ const app = createApp({
   now: () => new Date(),
 });
 const { host, port } = await startServer(app, config);
-console.log(`listening on http://${host}:${port}`);
+// A URL needs an IPv6 address in brackets.
+const urlHost = host.includes(':') ? `[${host}]` : host;
+console.log(`listening on http://${urlHost}:${port}`);

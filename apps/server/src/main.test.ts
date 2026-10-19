@@ -44,3 +44,18 @@ it('starts the server from the arguments and prints where it listens', async () 
   });
   expect(log).toHaveBeenCalledWith('listening on http://127.0.0.1:54321');
 });
+
+it('brackets an IPv6 address in the listening URL', async () => {
+  vi.resetModules();
+  vi.mocked(startServer).mockResolvedValueOnce({
+    host: '::1',
+    port: 54321,
+    close: () => Promise.resolve(),
+  });
+  vi.spyOn(process, 'argv', 'get').mockReturnValue(['node', 'main.ts']);
+  const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+  await import('./main');
+
+  expect(log).toHaveBeenCalledWith('listening on http://[::1]:54321');
+});

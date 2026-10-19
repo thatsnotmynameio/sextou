@@ -27,6 +27,14 @@ describe('getHealth', () => {
     ).toBe(1);
   });
 
+  // The clock can step back after the start (an NTP correction).
+  it('reports 0 seconds when the current time is before the start time', () => {
+    expect(
+      getHealth({ version: '1.2.3', startedAt, now: after(-5000) })
+        .uptimeSeconds,
+    ).toBe(0);
+  });
+
   it('counts the seconds since the start time', () => {
     expect(
       getHealth({ version: '1.2.3', startedAt, now: after(90_000) })

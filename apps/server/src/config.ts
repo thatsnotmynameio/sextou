@@ -29,10 +29,23 @@ export function loadConfig(
         ? parsePort(env.SEXTOU_SERVER_PORT, 'SEXTOU_SERVER_PORT')
         : defaults.port;
 
-  return {
-    host: values.host ?? env.SEXTOU_SERVER_HOST ?? defaults.host,
-    port,
-  };
+  const host =
+    values.host !== undefined
+      ? parseHost(values.host, '--host')
+      : env.SEXTOU_SERVER_HOST !== undefined
+        ? parseHost(env.SEXTOU_SERVER_HOST, 'SEXTOU_SERVER_HOST')
+        : defaults.host;
+
+  return { host, port };
+}
+
+// Node binds an empty host to every interface: an empty value is an error,
+// not a way to reach the server from the network.
+function parseHost(value: string, source: string): string {
+  if (value === '') {
+    throw new Error(`Invalid ${source}: "" (expected a host name or address)`);
+  }
+  return value;
 }
 
 // Only digits, from 0 to 65535. 0 lets the system pick a free port.
