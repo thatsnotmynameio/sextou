@@ -4,6 +4,10 @@ Guidance for coding agents working in this repository. Claude Code reads it as `
 
 sextou is a desktop app: Electron, React and TypeScript, in a pnpm monorepo.
 
+Write every report, summary, or handoff to the user through the `ce-noslop` skill. This applies when you are the top-level agent writing to the user, not when you are a subagent reporting to its caller. Do not apply it to code, config, verbatim quotes, or text the user asked to post as written.
+
+After a solved, verified problem, automatically invoke the `ce-compound` skill with `mode:non-interactive` at the completion checkpoint only when the work produced durable project reasoning that is not readily recoverable from the final code, tests, types, comments, or existing documentation, and losing it would plausibly cause recurrence, material risk, or substantial rediscovery. Apply this counterfactual: if the learning document disappeared, would a future engineer reading the final implementation still be likely to repeat the mistake or redo substantial investigation? If not, do not invoke it. Completion, effort, and diff size alone are not enough. Capture at the checkpoint so a qualifying learning can ship in the PR that produced it, and only where the repository treats captured learnings as tracked, committed knowledge.
+
 ## Commands
 
 Run every command from the repository root. Use pnpm, never npm.
@@ -30,6 +34,7 @@ pnpm storybook        # Storybook at http://localhost:6006
 - `apps/desktop/src/renderer`: the React app the window loads. It talks to Electron only through what the preload exposes.
 - `packages/ui` (`@sextou/ui`): shared React components, each in `src/<Name>/` with `<Name>.tsx`, `<Name>.test.tsx` and `<Name>.stories.tsx`, exported from `src/index.ts`. It ships sources, not a build: each app's Vite compiles it. Components take data and callbacks as props and never touch Electron, so they render in Storybook and in any app.
 - Forge's Vite plugin packages only `.vite/`: everything the app runs must be bundled.
+- `.compound-engineering/artifacts/solutions/`: documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). `ce-compound` creates it with the first one.
 
 ## Tests
 
