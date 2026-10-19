@@ -30,6 +30,7 @@ pnpm storybook        # Storybook at http://localhost:6006
 
 ## CI
 
-- `.github/workflows/ci.yml` calls the organization's `typescript.yml` (thatsnotmynameio/github-actions), pinned by SHA with the version as a comment. It installs under the organization's pnpm policy (versions at least a day old, no trust downgrade), checks every tracked `tsconfig.json` with `strict` on, runs oxfmt, oxlint (type-aware, TypeScript 7) and knip, then `pnpm run build`.
+- On pull requests, the organization's ruleset runs `typescript.yml` (thatsnotmynameio/github-actions) as `tnmn.io: typescript`; `.github/workflows/ci.yml` runs it on `main`, pinned by SHA with the version as a comment. It installs under the organization's pnpm policy (versions at least a day old, no trust downgrade), checks every tracked `tsconfig.json` with `strict` on, runs oxfmt, oxlint (type-aware, TypeScript 7) and knip, then `pnpm run build`.
+- `.github/workflows/security.yml` runs CodeQL on pull requests (`codeql / javascript-typescript`, `codeql / actions`, required by thatsnotmynameio/admin's `.github/repos/sextou.yml`): keep the job named `codeql`. `security-main.yml` runs grype and zizmor on `main`.
 - Its settings come from the base commit: `.oxlintrc.json`, `.oxfmtrc.json`, `knip.json`, the root `tsconfig.json` and `pnpm-workspace.yaml`'s exceptions (`allowBuilds`, `trustPolicyExclude`, …) apply once they merge.
 - `main` takes changes only through pull requests, merged by squash. No force push.

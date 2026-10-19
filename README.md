@@ -25,4 +25,4 @@ pnpm make             # the installers
 
 ## CI
 
-`.github/workflows/ci.yml` runs the organization's TypeScript checks ([thatsnotmynameio/github-actions](https://github.com/thatsnotmynameio/github-actions)) on every pull request and push to `main`. The organization's rulesets add actionlint, zizmor, grype and dependency review. Pull requests merge by squash.
+The organization's rulesets ([thatsnotmynameio/github-actions](https://github.com/thatsnotmynameio/github-actions)) run the checks on every pull request: TypeScript (`tnmn.io: typescript`), actionlint, zizmor, grype and dependency review. `.github/workflows/security.yml` adds CodeQL, which the `checks` ruleset requires (`codeql / javascript-typescript`, `codeql / actions`). On `main`, `ci.yml` and `security-main.yml` run the same analyses for code scanning. Pull requests merge by squash.
