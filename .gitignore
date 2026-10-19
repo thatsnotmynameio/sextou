@@ -148,3 +148,7 @@ out/
 # Storybook
 storybook-static/
 *storybook.log
+
+# Agents' local state (the shared instructions in AGENTS.md are committed)
+.claude/settings.local.json
+.claude/worktrees/
