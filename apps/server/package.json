@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/main.ts",
+    "build": "vite build",
+    "start": "node dist/server.mjs",
     "typecheck": "tsc --noEmit",
     "test": "pnpm test:unit",
     "test:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit"
@@ -21,6 +23,7 @@
     "@vitest/coverage-v8": "^5.0.5",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
+    "vite": "^8.3.4",
     "vitest": "^5.0.5"
   }
 }

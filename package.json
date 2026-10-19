@@ -6,7 +6,7 @@
     "start": "pnpm --parallel --filter @sextou/web --filter @sextou/desktop run \"/^(dev|start)$/\"",
     "package": "pnpm --filter @sextou/desktop package",
     "make": "pnpm --filter @sextou/desktop make",
-    "build": "pnpm package && pnpm --filter @sextou/web build && pnpm build-storybook",
+    "build": "pnpm package && pnpm --filter @sextou/web build && pnpm build-storybook && pnpm --filter @sextou/server build",
     "storybook": "pnpm --filter @sextou/ui storybook",
     "build-storybook": "pnpm --filter @sextou/ui build-storybook",
     "lint": "oxlint && oxfmt --check",
