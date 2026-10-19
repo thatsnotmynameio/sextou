@@ -2,7 +2,7 @@
 
 A desktop app built with Electron, React and TypeScript.
 
-The desktop app loads the hosted web app by URL, the way Linear's does, so a web deploy reaches desktop users without a desktop release.
+The desktop app loads the hosted web app by URL, so a web deploy reaches desktop users without a desktop release.
 
 ## Layout
 
