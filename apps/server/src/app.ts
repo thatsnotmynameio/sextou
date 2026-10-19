@@ -9,6 +9,6 @@ export interface AppOptions {
 }
 
 // The HTTP app, with each module's routes under its own path.
-export function createApp({ version, startedAt, now }: AppOptions) {
-  return new Hono().route('/health', healthRoutes({ version, startedAt, now }));
+export function createApp(options: AppOptions) {
+  return new Hono().route('/health', healthRoutes(options));
 }
