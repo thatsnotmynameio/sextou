@@ -6,6 +6,7 @@
     "start": "pnpm --filter @sextou/desktop start",
     "package": "pnpm --filter @sextou/desktop package",
     "make": "pnpm --filter @sextou/desktop make",
+    "build": "pnpm package && pnpm build-storybook",
     "storybook": "pnpm --filter @sextou/ui storybook",
     "build-storybook": "pnpm --filter @sextou/ui build-storybook",
     "lint": "oxlint && oxfmt --check",
@@ -15,6 +16,6 @@
   "devDependencies": {
     "oxfmt": "^0.73.0",
     "oxlint": "^1.88.0",
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   }
 }

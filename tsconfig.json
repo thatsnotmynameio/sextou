@@ -6,9 +6,17 @@
     "allowJs": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
-    "noImplicitAny": true,
+    "strict": true,
+    "noEmit": true,
     "sourceMap": true,
     "resolveJsonModule": true,
     "jsx": "react-jsx"
-  }
+  },
+  "include": [
+    "apps/*/src/**/*",
+    "apps/*/*.mts",
+    "packages/*/src/**/*",
+    "packages/*/.storybook/**/*",
+    "packages/*/*.ts"
+  ]
 }
