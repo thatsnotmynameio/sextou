@@ -15,7 +15,7 @@ pnpm lint:fix         # both, fixing what they can
 pnpm typecheck        # tsc --noEmit in each package
 pnpm test:unit        # unit tests in jsdom, fast, with coverage
 pnpm test:integration # every story in Chromium (Playwright), with coverage
-pnpm test             # both suites, with coverage
+pnpm test             # both suites, one after the other
 pnpm build            # electron-forge package, then storybook build
 pnpm start            # the app in development
 pnpm storybook        # Storybook at http://localhost:6006
@@ -34,9 +34,9 @@ pnpm storybook        # Storybook at http://localhost:6006
 ## Tests
 
 - Two suites, split by weight. Unit tests (`*.test.tsx`) run in jsdom and check behavior and structure. Integration tests are the stories: each one renders in Chromium and must pass its `play` function, which checks what needs a real browser (layout, focus, truncation).
-- Coverage must stay at 90% or more (lines, branches, functions, statements) in every suite: each run fails below it.
-- The integration suite needs Playwright's Chromium once per machine: `pnpm --filter @sextou/ui exec playwright install chromium`.
-- CI doesn't run the tests yet: run `pnpm test` before opening a pull request.
+- Coverage must stay at 90% or more (lines, branches, functions, statements) in every source file, in each suite on its own: each run fails below it.
+- In `packages/ui`, `vitest.config.ts` is the unit suite and `vitest.integration.config.ts` the integration suite. The root `vitest.config.ts` points a root `vitest run` at the unit suites.
+- CI's `tnmn.io: vitest` job runs `vitest run` at the root, so it runs the unit suite (with its own coverage settings, and no floor until `.github/typescript.yml` sets one). The integration suite needs Playwright's Chromium, which CI doesn't install: run `pnpm test` before opening a pull request. Install Chromium once per machine with `pnpm --filter @sextou/ui exec playwright install chromium`.
 
 ## CI
 
