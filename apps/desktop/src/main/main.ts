@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
+import { errorPageURL } from './error-page';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -17,14 +18,19 @@ const createWindow = () => {
     },
   });
 
-  // and load the index.html of the app.
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    void mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-  } else {
-    void mainWindow.loadFile(
-      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
-    );
-  }
+  // Load the web app. When it can't load (offline, server down), show the
+  // bundled error page instead. -3 (ERR_ABORTED) is a navigation another one
+  // replaced, not a failure.
+  mainWindow.webContents.on(
+    'did-fail-load',
+    (_event, errorCode, _description, _url, isMainFrame) => {
+      if (isMainFrame && errorCode !== -3) {
+        void mainWindow.loadURL(errorPageURL(SEXTOU_WEB_URL));
+      }
+    },
+  );
+  // did-fail-load handles a failure; the rejected promise has nothing to add.
+  mainWindow.loadURL(SEXTOU_WEB_URL).catch(() => undefined);
 
   // Open the DevTools.
   mainWindow.webContents.openDevTools();

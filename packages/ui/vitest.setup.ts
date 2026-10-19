@@ -4,7 +4,7 @@ import { i18n } from '@lingui/core';
 import { compileMessage } from '@lingui/message-utils/compileMessage';
 import { afterEach } from 'vitest';
 
-// The same English setup as the Storybook preview and the desktop renderer.
+// The same English setup as the Storybook preview and the web app.
 i18n.setMessagesCompiler(compileMessage);
 i18n.loadAndActivate({ locale: 'en', messages: {} });
 
