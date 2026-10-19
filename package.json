@@ -14,9 +14,16 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "test:unit": "pnpm -r test:unit",
-    "test:integration": "pnpm -r test:integration"
+    "test:integration": "pnpm -r test:integration",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}": "oxlint --fix",
+    "*": "oxfmt --no-error-on-unmatched-pattern"
   },
   "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
     "oxfmt": "^0.73.0",
     "oxlint": "^1.88.0",
     "typescript": "^7.0.2"

@@ -14,7 +14,7 @@ The desktop app loads the hosted web app by URL, so a web deploy reaches desktop
 
 ## Develop
 
-Needs Node 24 (`.node-version`) and pnpm.
+Needs Node 24 (`.node-version`), pnpm and [gitleaks](https://github.com/gitleaks/gitleaks#installing), which the pre-commit hook runs.
 
 ```sh
 pnpm install

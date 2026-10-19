@@ -44,6 +44,15 @@ pnpm storybook        # Storybook at http://localhost:6006
 - In `packages/ui`, `vitest.config.ts` is the unit suite and `vitest.integration.config.ts` the integration suite. The root `vitest.config.ts` points a root `vitest run` at the unit suites.
 - CI's `tnmn.io: vitest` job runs `vitest run` at the root, so it runs the unit suite (with its own coverage settings, and no floor until `.github/typescript.yml` sets one). The integration suite needs Playwright's Chromium, which CI doesn't install: run `pnpm test` before opening a pull request. Install Chromium once per machine with `pnpm --filter @sextou/ui exec playwright install chromium`.
 
+## Git hooks
+
+`pnpm install` sets up husky's hooks, in `.husky/`. Never skip or disable them: no `--no-verify`, no `HUSKY=0`. When a hook fails, fix what it reports.
+
+- `pre-commit`: gitleaks scans the staged changes for secrets, then lint-staged runs `oxlint --fix` and `oxfmt` on the staged files and stages their fixes. Install gitleaks once per machine.
+- `commit-msg`: the subject must be a Conventional Commit, `type(scope): description`.
+- `pre-push`: every pushed branch must contain the remote's latest `main` (rebase onto it otherwise), then `pnpm typecheck` and `pnpm test:unit` run.
+- `post-merge`: runs `pnpm install` when a pull changes `pnpm-lock.yaml`.
+
 ## CI
 
 - On pull requests, the organization's ruleset runs `typescript.yml` (thatsnotmynameio/github-actions) as `tnmn.io: typescript`; `.github/workflows/ci.yml` runs it on `main`, pinned by SHA with the version as a comment. It installs under the organization's pnpm policy (versions at least a day old, no trust downgrade), checks every tracked `tsconfig.json` with `strict` on, runs oxfmt, oxlint (type-aware, TypeScript 7) and knip, then `pnpm run build`.

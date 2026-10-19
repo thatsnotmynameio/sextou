@@ -1,0 +1,8 @@
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks is required (https://github.com/gitleaks/gitleaks#installing); commit blocked." >&2
+  exit 1
+fi
+# --redact keeps a secret it finds out of the terminal scrollback.
+gitleaks git --pre-commit --staged --redact --verbose --no-banner
+
+pnpm exec lint-staged --concurrent false
