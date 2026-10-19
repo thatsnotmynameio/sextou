@@ -17,7 +17,9 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "release": "electron-forge release",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm test:unit",
+    "test:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit"
   },
   "devDependencies": {
     "@electron-forge/cli": "^8.0.1",
@@ -30,9 +32,11 @@
     "@electron-forge/plugin-vite": "^8.0.1",
     "@electron/fuses": "^2.1.3",
     "@types/electron-squirrel-startup": "^1.0.2",
+    "@vitest/coverage-v8": "^5.0.5",
     "electron": "44.9.0",
     "typescript": "^7.0.2",
-    "vite": "^8.3.4"
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
   },
   "dependencies": {
     "electron-squirrel-startup": "^1.0.1"
