@@ -2,7 +2,7 @@
 
 Guidance for coding agents working in this repository. Claude Code reads it as `CLAUDE.md`, a symlink to this file.
 
-sextou is a web app and the Electron desktop app that loads it: React and TypeScript, in a pnpm monorepo.
+sextou is a web app, the Electron desktop app that loads it, and the server they will talk to: React and TypeScript, in a pnpm monorepo.
 
 Write every report, summary, or handoff to the user through the `ce-noslop` skill. This applies when you are the top-level agent writing to the user, not when you are a subagent reporting to its caller. Do not apply it to code, config, verbatim quotes, or text the user asked to post as written.
 
@@ -17,15 +17,16 @@ pnpm install
 pnpm lint             # oxlint, then oxfmt --check
 pnpm lint:fix         # both, fixing what they can
 pnpm typecheck        # tsc --noEmit in each package
-pnpm test:unit        # unit tests in jsdom, fast, with coverage
+pnpm test:unit        # unit tests in jsdom (Node for the server's packages), fast, with coverage
 pnpm test:integration # every story in Chromium (Playwright), with coverage
 pnpm test             # both suites, one after the other
-pnpm build            # electron-forge package, the web app, then storybook build
+pnpm build            # electron-forge package, the web app, storybook build, then the server's bundle
 pnpm start            # the web dev server and the desktop app, in development
 pnpm storybook        # Storybook at http://localhost:6006
+pnpm --filter @sextou/server dev # the server from source, at http://127.0.0.1:4310
 ```
 
-`pnpm start` and `pnpm storybook` start long-running processes: leave them to the user.
+`pnpm start`, `pnpm storybook` and the server's `dev` start long-running processes: leave them to the user.
 
 ## Architecture
 
@@ -35,13 +36,18 @@ pnpm storybook        # Storybook at http://localhost:6006
 - `packages/ui` (`@sextou/ui`): shared React components, each in `src/<Name>/` with `<Name>.tsx`, `<Name>.test.tsx` and `<Name>.stories.tsx`, exported from `src/index.ts`. It ships sources, not a build: each app's Vite compiles it. Components take data and callbacks as props and never touch Electron, so they render in Storybook and in any app.
 - The desktop loads the hosted web app by URL instead of bundling its build: `apps/web`'s dev server (port 5173) in development, the deployed URL in production, which `vite.main.config.mts` reads from `SEXTOU_WEB_URL` at package time. When the URL can't load, the window shows the error page in `src/main/error-page.ts`, bundled into `main.cjs`. A web deploy reaches desktop users on their next reload; only shell changes (Electron, preload, native features) need a desktop release.
 - Forge's Vite plugin packages only `.vite/`: everything the shell runs (main, preload, the error page) must be bundled.
+- The backend is three packages. Dependencies point one way: `@sextou/server` imports `@sextou/core` and `@sextou/contract`, the web app may import `@sextou/contract`, and `@sextou/core` imports neither. CI's knip fails on an import a package doesn't declare, so `@sextou/core`, which declares no dependencies, can't reach an HTTP framework or another sextou package.
+  - `apps/server` (`@sextou/server`): the HTTP server (Hono on Node), its own process, the same on the user's machine and on a remote one. It holds no business rules: a route validates its input against the contract, calls the core and answers in the contract's shape. `src/main.ts`, `config.ts` (host and port from `SEXTOU_SERVER_HOST`/`SEXTOU_SERVER_PORT` or `--host`/`--port`, `127.0.0.1:4310` by default), `app.ts` and `server.ts` sit at the top of `src/`. Vite bundles it into `apps/server/dist/server.mjs`, which needs only Node.
+  - `packages/core` (`@sextou/core`): the domain, with no HTTP. It reads no clock or process state the server can pass in.
+  - `packages/contract` (`@sextou/contract`): the API's request and response schemas (zod) and their types. The web app's bundle may import it, so it uses no Node or DOM globals.
+  - All three group code by feature, under the same `src/modules/<feature>/` name: `health.schema.ts` in the contract, `health.service.ts` in the core, `health.routes.ts` in the server, each test beside its file. Code shared across features sits at the top of the package's `src/`.
 - `.compound-engineering/artifacts/solutions/`: documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). `ce-compound` creates it with the first one.
 
 ## Tests
 
-- Two suites, split by weight. Unit tests (`*.test.tsx`) run in jsdom and check behavior and structure. Integration tests are the stories: each one renders in Chromium and must pass its `play` function, which checks what needs a real browser (layout, focus, truncation).
+- Two suites, split by weight. Unit tests (`*.test.ts(x)`) run in jsdom, or in Node for the server's packages, and check behavior and structure. Integration tests are the stories: each one renders in Chromium and must pass its `play` function, which checks what needs a real browser (layout, focus, truncation).
 - Coverage must stay at 90% or more (lines, branches, functions, statements) in every source file, in each suite on its own: each run fails below it.
-- In `packages/ui`, `vitest.config.ts` is the unit suite and `vitest.integration.config.ts` the integration suite. `apps/web` has a unit suite only (`vitest.config.ts`, `*.test.ts(x)`). The root `vitest.config.ts` points a root `vitest run` at the unit suites of both.
+- In `packages/ui`, `vitest.config.ts` is the unit suite and `vitest.integration.config.ts` the integration suite. `apps/web`, `apps/server`, `packages/core` and `packages/contract` have a unit suite only, in their `vitest.config.ts` (`.mts` in `apps/server`), each with its own project name. The root `vitest.config.ts` points a root `vitest run` at every unit suite.
 - CI's `tnmn.io: vitest` job runs `vitest run` at the root, so it runs the unit suite (with its own coverage settings, and no floor until `.github/typescript.yml` sets one). The integration suite needs Playwright's Chromium, which CI doesn't install: run `pnpm test` before opening a pull request. Install Chromium once per machine with `pnpm --filter @sextou/ui exec playwright install chromium`.
 
 ## Git hooks
