@@ -63,7 +63,7 @@ flowchart TB
 
 **Styling**
 
-- R12. The components are styled with Tailwind and match the design's dark palette, spacing, radii and type (Instrument Sans).
+- R12. The components are styled with Tailwind and match the design's dark palette, spacing, radii and type, set in Inter instead of the design's Instrument Sans (user decision, 2026-10-19).
 - R13. Tailwind is set up for both Storybook and the desktop renderer, so the components render styled in either.
 - R14. The fonts render without network access, since the desktop app has to work offline.
 
@@ -117,7 +117,7 @@ The English copy the stories use, translated from the design:
 - KTD4. **The icons are inline SVG components copied from the design's paths**, in one `Icon` module inside `@sextou/ui`, with no icon library. Each one is 16×16, uses `currentColor` for its stroke and is `aria-hidden`. Governs R1, R3. (session-settled: user-approved — chosen over an icon library: no new dependency, and the shapes match the design exactly)
 - KTD5. **A navigation item is an anchor.** It takes `href` and passes the other anchor props through, so a caller with no router can intercept `onClick`. The active item gets `aria-current="page"`. Header buttons are `<button type="button">` with callback props. Governs R4, R6.
 - KTD6. **Behavior is checked with Storybook `play` functions using `storybook/test`, which ships in the core `storybook` package.** They run in the Storybook UI, not in CI, and no Vitest or addon is added. Governs R4, R6, R15. (session-settled: user-approved — chosen over adding a test runner: no runner exists in the repo, and the scope is the sidebar only)
-- KTD7. **Fonts come from `@fontsource-variable/instrument-sans`, imported from `theme.css`.** Vite emits the woff2 files as assets, so both builds work offline. The CSS family name is `Instrument Sans Variable`, and the license is OFL-1.1. Governs R14.
+- KTD7. **Fonts come from `@fontsource-variable/inter`, imported from `theme.css`.** Vite emits the woff2 files as assets, so both builds work offline. The CSS family name is `Inter Variable`, followed by the system UI fonts (SF Pro, Segoe UI, Roboto and others) as fallbacks, and the license is OFL-1.1. Governs R14. (session-settled: user-directed — chosen over the design's Instrument Sans: Inter, as Linear uses)
 - KTD8. **The sidebar draws its own background** (`#14110E`), text color and font, so it looks right on its own in Storybook and wherever the app places it. No body styles go into the shared CSS. Governs R12, R13.
 
 ### Design tokens
@@ -197,7 +197,7 @@ apps/desktop/
 
 ### U1. Tailwind, Lingui and fonts in Storybook and the desktop renderer
 
-**Goal:** Both consumers compile Tailwind classes from `packages/ui/src`, compile Lingui macros, load Instrument Sans offline, and provide an English `I18nProvider`.
+**Goal:** Both consumers compile Tailwind classes from `packages/ui/src`, compile Lingui macros, load Inter offline, and provide an English `I18nProvider`.
 
 **Requirements:** R10, R11, R12, R13, R14 (KTD1, KTD2, KTD3, KTD7, KTD8)
 
@@ -218,11 +218,11 @@ apps/desktop/
 **Approach:**
 
 1. Add the dependencies, using one version of each across both packages. Anything production code or its CSS imports goes in `dependencies` (see Risks).
-   - `packages/ui`: `@fontsource-variable/instrument-sans` in `dependencies`. `@lingui/core` and `@lingui/react` as peers and devDependencies. `tailwindcss`, `@tailwindcss/vite`, `@lingui/vite-plugin` and `@lingui/message-utils` in devDependencies.
+   - `packages/ui`: `@fontsource-variable/inter` in `dependencies`. `@lingui/core` and `@lingui/react` as peers and devDependencies. `tailwindcss`, `@tailwindcss/vite`, `@lingui/vite-plugin` and `@lingui/message-utils` in devDependencies.
    - `apps/desktop`: `@lingui/core`, `@lingui/react`, `@lingui/message-utils` and `tailwindcss` in `dependencies`, next to `react`. `@tailwindcss/vite` and `@lingui/vite-plugin` in devDependencies.
    - Each `package.json` gets the `lingui` config key from KTD2.
 2. Both Vite configs get `react()`, `lingui(...)` with the `macro` options from KTD2, and `tailwindcss()`.
-3. `theme.css` imports the font and declares the tokens from the Design tokens table, with `--font-sans` set to Instrument Sans Variable.
+3. `theme.css` imports the font and declares the tokens from the Design tokens table, with `--font-sans` set to Inter Variable, then the system UI fonts.
 4. Each entry stylesheet imports `tailwindcss` and the theme, then adds `@source` for the real `packages/ui/src` path (KTD1). The desktop `index.css` drops its current body rules for these.
 5. The Storybook preview imports `storybook.css` and wraps every story in an `I18nProvider`, with `en` activated on an empty catalog and the runtime compiler registered (KTD3). Rename it to `.tsx` for the JSX. The renderer's `main.tsx` wraps `App` the same way.
 6. Set Storybook's preview background to the sidebar background, so stories don't sit on white.
@@ -236,7 +236,7 @@ apps/desktop/
 **Verification:**
 
 - `pnpm typecheck`, `pnpm lint`, `pnpm build` and a local knip run all pass.
-- The packaged app shows the placeholder screen in Instrument Sans with the network off.
+- The packaged app shows the placeholder screen in Inter with the network off.
 
 ### U2. Icons
 
@@ -374,7 +374,7 @@ apps/desktop/
 | Production imports | `pnpm dlx knip@6.40.0 --strict --include unlisted`, which is CI's version and flags, run locally because knip isn't in the repo's dependencies | U1, then the final diff |
 | Builds             | `pnpm build`, which packages the app and builds Storybook                                                                                      | U1, then the final diff |
 | Interaction checks | the `play` functions, passing in `pnpm storybook` (the user runs it)                                                                           | U3, U4, U5              |
-| Offline fonts      | the packaged app and the static Storybook render Instrument Sans with the network off                                                          | U1                      |
+| Offline fonts      | the packaged app and the static Storybook render Inter with the network off                                                                    | U1                      |
 
 ## Definition of Done
 
