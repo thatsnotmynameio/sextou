@@ -1,0 +1,20 @@
+/* Design tokens for @sextou/ui. Import after `tailwindcss` in each app's entry stylesheet. */
+@import '@fontsource-variable/instrument-sans';
+
+@theme {
+  --font-sans: 'Instrument Sans Variable', ui-sans-serif, system-ui, sans-serif;
+
+  --color-sidebar: #14110e;
+  --color-text: #e4e1de;
+  --color-item: #c1bdb9;
+  --color-strong: #fbf9f7;
+  --color-muted: #847f7b;
+  --color-count: #a29d99;
+  --color-accent: #c498ff;
+  --color-active: #26221e;
+  --color-badge: #352645;
+  --color-badge-text: #dcbfff;
+  --color-workspace: #5f3c82;
+  --color-raised: #1d1915;
+  --color-border: #322d29;
+}
