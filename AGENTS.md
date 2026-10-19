@@ -33,6 +33,7 @@ pnpm storybook        # Storybook at http://localhost:6006
 - `apps/desktop/src/preload`: the preload script, the only bridge between main and the renderer (`contextBridge`).
 - `apps/desktop/src/renderer`: the React app the window loads. It talks to Electron only through what the preload exposes.
 - `packages/ui` (`@sextou/ui`): shared React components, each in `src/<Name>/` with `<Name>.tsx`, `<Name>.test.tsx` and `<Name>.stories.tsx`, exported from `src/index.ts`. It ships sources, not a build: each app's Vite compiles it. Components take data and callbacks as props and never touch Electron, so they render in Storybook and in any app.
+- The desktop loads the hosted web app by URL instead of bundling its build: the dev server in development, the deployed URL in production, with a bundled error page for when that URL can't load. A web deploy reaches desktop users on their next reload; only shell changes (Electron, preload, native features) need a desktop release.
 - Forge's Vite plugin packages only `.vite/`: everything the app runs must be bundled.
 - `.compound-engineering/artifacts/solutions/`: documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). `ce-compound` creates it with the first one.
 
