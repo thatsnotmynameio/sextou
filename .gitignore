@@ -152,3 +152,6 @@ storybook-static/
 # Agents' local state (the shared instructions in AGENTS.md are committed)
 .claude/settings.local.json
 .claude/worktrees/
+
+# Compound Engineering scratch space
+.context/compound-engineering/
