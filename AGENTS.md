@@ -13,6 +13,9 @@ pnpm install
 pnpm lint             # oxlint, then oxfmt --check
 pnpm lint:fix         # both, fixing what they can
 pnpm typecheck        # tsc --noEmit in each package
+pnpm test:unit        # unit tests in jsdom, fast, with coverage
+pnpm test:integration # every story in Chromium (Playwright), with coverage
+pnpm test             # both suites, one after the other
 pnpm build            # electron-forge package, then storybook build
 pnpm start            # the app in development
 pnpm storybook        # Storybook at http://localhost:6006
@@ -25,8 +28,15 @@ pnpm storybook        # Storybook at http://localhost:6006
 - `apps/desktop/src/main`: Electron's main process. Bundled by Vite into `.vite/build/main.cjs`.
 - `apps/desktop/src/preload`: the preload script, the only bridge between main and the renderer (`contextBridge`).
 - `apps/desktop/src/renderer`: the React app the window loads. It talks to Electron only through what the preload exposes.
-- `packages/ui` (`@sextou/ui`): shared React components, each in `src/<Name>/` with `<Name>.tsx` and `<Name>.stories.tsx`, exported from `src/index.ts`. It ships sources, not a build: each app's Vite compiles it. Components take data and callbacks as props and never touch Electron, so they render in Storybook and in any app.
+- `packages/ui` (`@sextou/ui`): shared React components, each in `src/<Name>/` with `<Name>.tsx`, `<Name>.test.tsx` and `<Name>.stories.tsx`, exported from `src/index.ts`. It ships sources, not a build: each app's Vite compiles it. Components take data and callbacks as props and never touch Electron, so they render in Storybook and in any app.
 - Forge's Vite plugin packages only `.vite/`: everything the app runs must be bundled.
+
+## Tests
+
+- Two suites, split by weight. Unit tests (`*.test.tsx`) run in jsdom and check behavior and structure. Integration tests are the stories: each one renders in Chromium and must pass its `play` function, which checks what needs a real browser (layout, focus, truncation).
+- Coverage must stay at 90% or more (lines, branches, functions, statements) in every source file, in each suite on its own: each run fails below it.
+- In `packages/ui`, `vitest.config.ts` is the unit suite and `vitest.integration.config.ts` the integration suite. The root `vitest.config.ts` points a root `vitest run` at the unit suites.
+- CI's `tnmn.io: vitest` job runs `vitest run` at the root, so it runs the unit suite (with its own coverage settings, and no floor until `.github/typescript.yml` sets one). The integration suite needs Playwright's Chromium, which CI doesn't install: run `pnpm test` before opening a pull request. Install Chromium once per machine with `pnpm --filter @sextou/ui exec playwright install chromium`.
 
 ## CI
 

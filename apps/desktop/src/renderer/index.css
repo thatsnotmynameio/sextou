@@ -1,8 +1,5 @@
-body {
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
-    sans-serif;
-  margin: auto;
-  max-width: 38rem;
-  padding: 2rem;
-}
+@import 'tailwindcss';
+@import '@sextou/ui/theme.css';
+
+/* @sextou/ui is a symlink under node_modules, which Tailwind doesn't scan. */
+@source '../../../../packages/ui/src';
