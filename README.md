@@ -23,6 +23,3 @@ pnpm build            # the packaged app (apps/desktop/out/) and the static Stor
 pnpm make             # the installers
 ```
 
-## CI
-
-The organization's rulesets ([thatsnotmynameio/github-actions](https://github.com/thatsnotmynameio/github-actions)) run the checks on every pull request: TypeScript (`tnmn.io: typescript`), actionlint, zizmor, grype and dependency review. `.github/workflows/security.yml` adds CodeQL, which the `checks` ruleset requires (`codeql / javascript-typescript`, `codeql / actions`). On `main`, `ci.yml` and `security-main.yml` run the same analyses for code scanning. Pull requests merge by squash.
