@@ -43,11 +43,29 @@ pnpm --filter @sextou/server dev # the server from source, at http://127.0.0.1:4
   - All three group code by feature, under the same `src/modules/<feature>/` name: `health.schema.ts` in the contract, `health.service.ts` in the core, `health.routes.ts` in the server, each test beside its file. Code shared across features sits at the top of the package's `src/`.
 - `.compound-engineering/artifacts/solutions/`: documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). `ce-compound` creates it with the first one.
 
+## Desktop security
+
+The window runs remote content, so a script injected into the web app, or a compromised deploy, must not get past it. Each item of [Electron's security checklist](https://www.electronjs.org/docs/latest/tutorial/security), and where it stands:
+
+- **Secure content only:** packaging fails when `SEXTOU_WEB_URL` is set and isn't https (`vite.main.config.mts`). Development loads `http://localhost:5173`.
+- **No Node integration, context isolation, sandbox:** stated in the window's `webPreferences` (`src/main/main.ts`), though they are Electron's defaults.
+- **Permission handler:** `setPermissionRequestHandler` and `setPermissionCheckHandler` deny every permission on the default session, without a prompt. A feature that needs one allows only that one.
+- **`webSecurity`, `allowRunningInsecureContent`, experimental features, `enableBlinkFeatures`:** left at Electron's safe defaults; never set them.
+- **Content Security Policy:** a meta tag that `apps/web/content-security-policy.ts` adds to the built page, so browsers get it too. Not in development, where the dev server needs inline scripts and styles. A meta tag can't set `frame-ancestors`; that waits for the hosting headers.
+- **Navigation and new windows:** `src/main/link-policy.ts` decides every URL, applied by `will-navigate`, `will-redirect` and `setWindowOpenHandler`. The window stays on the web app's origin, links to other sites open in the default browser, and the app never opens a second window.
+- **`shell.openExternal`:** it gets only `http`, `https` and `mailto` URLs, through the link policy. Other schemes, which would launch local files or other apps, open nothing.
+- **`<webview>` (`allowpopups`, verifying its options):** the tag is off by default and unused.
+- **Current Electron:** a standing practice. Upgrade Electron when a release lands.
+- **IPC sender validation:** there is no IPC yet. Validate the sender in the first handler that lands.
+- **`file://`:** unused; the window loads the web app by URL and the error page as a `data:` URL.
+- **Fuses:** set in `forge.config.mts`.
+- **Electron APIs exposed to web content:** the preload exposes nothing. Expose only narrow functions through `contextBridge`, never Electron modules.
+
 ## Tests
 
 - Two suites, split by weight. Unit tests (`*.test.ts(x)`) run in jsdom, or in Node for the server's packages, and check behavior and structure. Integration tests are the stories: each one renders in Chromium and must pass its `play` function, which checks what needs a real browser (layout, focus, truncation).
 - Coverage must stay at 90% or more (lines, branches, functions, statements) in every source file, in each suite on its own: each run fails below it.
-- In `packages/ui`, `vitest.config.ts` is the unit suite and `vitest.integration.config.ts` the integration suite. `apps/web`, `apps/server`, `packages/core` and `packages/contract` have a unit suite only, in their `vitest.config.ts` (`.mts` in `apps/server`), each with its own project name. The root `vitest.config.ts` points a root `vitest run` at every unit suite.
+- In `packages/ui`, `vitest.config.ts` is the unit suite and `vitest.integration.config.ts` the integration suite. `apps/web`, `apps/desktop`, `apps/server`, `packages/core` and `packages/contract` have a unit suite only, in their `vitest.config.ts` (`.mts` in `apps/desktop` and `apps/server`), each with its own project name. The desktop suite covers the main process's pure modules in Node; `main.ts` imports Electron and stays out of it. The root `vitest.config.ts` points a root `vitest run` at every unit suite.
 - CI's `tnmn.io: vitest` job runs `vitest run` at the root, so it runs the unit suite (with its own coverage settings, and no floor until `.github/typescript.yml` sets one). The integration suite needs Playwright's Chromium, which CI doesn't install: run `pnpm test` before opening a pull request. Install Chromium once per machine with `pnpm --filter @sextou/ui exec playwright install chromium`.
 
 ## Git hooks

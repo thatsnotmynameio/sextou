@@ -32,6 +32,6 @@ pnpm build            # the packaged app (apps/desktop/out/), the web app (apps/
 pnpm make             # the installers
 ```
 
-`pnpm package` and `pnpm make` read the deployed web app's URL from `SEXTOU_WEB_URL`. Without it, the packaged app opens on its error page.
+`pnpm package` and `pnpm make` read the deployed web app's URL from `SEXTOU_WEB_URL`, which must be https. Without it, the packaged app opens on its error page.
 
 The server reads its host and port from `SEXTOU_SERVER_HOST` and `SEXTOU_SERVER_PORT`, or from `--host` and `--port`, which win. It listens on `127.0.0.1:4310` by default; port `0` lets the system pick one. The bundle runs with `node apps/server/dist/server.mjs`.
