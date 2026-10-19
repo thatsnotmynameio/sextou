@@ -11,41 +11,46 @@ export function migrateDatabase(
   migrations: Migration[] = shipped,
 ): string[] {
   client.exec('BEGIN');
-  // Created inside the transaction, so a failed first start leaves no trace.
-  client.exec(
-    'CREATE TABLE IF NOT EXISTS migration (id TEXT PRIMARY KEY, time_completed INTEGER NOT NULL)',
-  );
-
-  const known = new Set(migrations.map((migration) => migration.id));
-  const applied = new Set(
-    client
-      .prepare('SELECT id FROM migration')
-      .all()
-      .map((row) => String(row.id)),
-  );
-  const unknown = [...applied].find((id) => !known.has(id));
-  if (unknown !== undefined) {
-    client.exec('ROLLBACK');
-    throw new Error(
-      `This database was written by a newer sextou (unknown migration ${unknown})`,
+  try {
+    // Created inside the transaction, so a failed first start leaves no trace.
+    client.exec(
+      'CREATE TABLE IF NOT EXISTS migration (id TEXT PRIMARY KEY, time_completed INTEGER NOT NULL)',
     );
-  }
 
-  const pending = migrations.filter((migration) => !applied.has(migration.id));
-  const record = client.prepare(
-    'INSERT INTO migration (id, time_completed) VALUES (?, ?)',
-  );
-  for (const { id, statements } of pending) {
-    try {
-      for (const statement of statements) client.exec(statement);
-      record.run(id, Date.now());
-    } catch (error) {
-      client.exec('ROLLBACK');
-      throw new Error(`Migration ${id} failed: ${(error as Error).message}`, {
-        cause: error,
-      });
+    const known = new Set(migrations.map((migration) => migration.id));
+    const applied = new Set(
+      client
+        .prepare('SELECT id FROM migration')
+        .all()
+        .map((row) => String(row.id)),
+    );
+    const unknown = [...applied].find((id) => !known.has(id));
+    if (unknown !== undefined) {
+      throw new Error(
+        `This database was written by a newer sextou (unknown migration ${unknown})`,
+      );
     }
+
+    const pending = migrations.filter(
+      (migration) => !applied.has(migration.id),
+    );
+    const record = client.prepare(
+      'INSERT INTO migration (id, time_completed) VALUES (?, ?)',
+    );
+    for (const { id, statements } of pending) {
+      try {
+        for (const statement of statements) client.exec(statement);
+        record.run(id, Date.now());
+      } catch (error) {
+        throw new Error(`Migration ${id} failed: ${(error as Error).message}`, {
+          cause: error,
+        });
+      }
+    }
+    client.exec('COMMIT');
+    return pending.map((migration) => migration.id);
+  } catch (error) {
+    client.exec('ROLLBACK');
+    throw error;
   }
-  client.exec('COMMIT');
-  return pending.map((migration) => migration.id);
 }
