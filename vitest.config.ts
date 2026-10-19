@@ -2,6 +2,12 @@
 // package's unit suite, with that package's own configuration.
 export default {
   test: {
-    projects: ['apps/web', 'packages/ui'],
+    projects: [
+      'apps/server',
+      'apps/web',
+      'packages/contract',
+      'packages/core',
+      'packages/ui',
+    ],
   },
 };
