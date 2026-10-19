@@ -27,6 +27,7 @@ pnpm install
 pnpm start            # the web dev server and the desktop app, with hot reload
 pnpm storybook        # the components, at http://localhost:6006
 pnpm --filter @sextou/server dev # the server, at http://127.0.0.1:4310/health
+pnpm --filter @sextou/data migration --name <change> # a migration from packages/data/src/schema.ts
 pnpm lint             # oxlint and oxfmt
 pnpm typecheck        # tsc in each package
 pnpm build            # the packaged app (apps/desktop/out/), the web app (apps/web/dist/), the static Storybook and the server (apps/server/dist/server.mjs)
@@ -35,4 +36,4 @@ pnpm make             # the installers
 
 `pnpm package` and `pnpm make` read the deployed web app's URL from `SEXTOU_WEB_URL`, which must be https. Without it, the packaged app opens on its error page.
 
-The server reads its host and port from `SEXTOU_SERVER_HOST` and `SEXTOU_SERVER_PORT`, or from `--host` and `--port`, which win. It listens on `127.0.0.1:4310` by default; port `0` lets the system pick one. It reads the database path from `SEXTOU_SERVER_DATABASE` or `--database`, which wins, and creates the file when it is missing. By default the file is `sextou/sextou.db` in the user's data directory: `$XDG_DATA_HOME` or `~/.local/share` on Linux, `~/Library/Application Support` on macOS, `%LOCALAPPDATA%` on Windows. `:memory:` opens a database that lasts until the server stops. When the database can't be opened, the server exits with 1 without listening. `/health` reports whether the database answers, with 503 when it doesn't. The bundle runs with `node apps/server/dist/server.mjs`.
+The server reads its host and port from `SEXTOU_SERVER_HOST` and `SEXTOU_SERVER_PORT`, or from `--host` and `--port`, which win. It listens on `127.0.0.1:4310` by default; port `0` lets the system pick one. It reads the database path from `SEXTOU_SERVER_DATABASE` or `--database`, which wins, and creates the file when it is missing. By default the file is `sextou/sextou.db` in the user's data directory: `$XDG_DATA_HOME` or `~/.local/share` on Linux, `~/Library/Application Support` on macOS, `%LOCALAPPDATA%` on Windows. `:memory:` opens a database that lasts until the server stops. On start, the server applies the migrations the database doesn't have yet. When the database can't be opened, a migration fails, or the database comes from a newer sextou, the server exits with 1 without listening. `/health` reports whether the database answers, with 503 when it doesn't. The bundle runs with `node apps/server/dist/server.mjs`.
