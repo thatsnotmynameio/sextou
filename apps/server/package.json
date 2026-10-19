@@ -16,6 +16,7 @@
     "@hono/node-server": "^2.1.5",
     "@sextou/contract": "workspace:*",
     "@sextou/core": "workspace:*",
+    "@sextou/data": "workspace:*",
     "hono": "^4.13.13"
   },
   "devDependencies": {

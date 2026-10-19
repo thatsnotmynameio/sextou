@@ -1,25 +1,43 @@
+import path from 'node:path';
 import { parseArgs } from 'node:util';
+import { defaultDatabasePath } from './database-path';
 
 export interface Config {
   host: string;
   port: number;
+  // An absolute file path, or ':memory:'.
+  database: string;
+}
+
+// What the database path depends on: main passes the process's own.
+export interface PathContext {
+  platform: NodeJS.Platform;
+  // Called only when the default database path is needed.
+  homedir: () => string;
+  // The directory a relative database path is resolved against.
+  cwd: string;
 }
 
 // Loopback by default: there is no authentication yet, so reaching the server
 // from the network takes an explicit --host.
-const defaults: Config = { host: '127.0.0.1', port: 4310 };
+const defaults = { host: '127.0.0.1', port: 4310 };
 
 // The server's configuration, from the environment and the command line
 // arguments (without node and the script); an argument wins over its
-// variable. Throws on an unknown flag or an invalid port.
+// variable. Throws on an unknown flag or an invalid value.
 export function loadConfig(
   env: Record<string, string | undefined>,
   args: string[],
+  { platform, homedir, cwd }: PathContext,
 ): Config {
   const { values } = parseArgs({
     args,
     strict: true,
-    options: { host: { type: 'string' }, port: { type: 'string' } },
+    options: {
+      host: { type: 'string' },
+      port: { type: 'string' },
+      database: { type: 'string' },
+    },
   });
 
   const port =
@@ -36,7 +54,18 @@ export function loadConfig(
         ? parseHost(env.SEXTOU_SERVER_HOST, 'SEXTOU_SERVER_HOST')
         : defaults.host;
 
-  return { host, port };
+  const database =
+    values.database !== undefined
+      ? parseDatabase(values.database, '--database', cwd)
+      : env.SEXTOU_SERVER_DATABASE !== undefined
+        ? parseDatabase(
+            env.SEXTOU_SERVER_DATABASE,
+            'SEXTOU_SERVER_DATABASE',
+            cwd,
+          )
+        : defaultDatabasePath(platform, env, homedir());
+
+  return { host, port, database };
 }
 
 // Node binds an empty host to every interface: an empty value is an error,
@@ -57,4 +86,14 @@ function parsePort(value: string, source: string): number {
     );
   }
   return port;
+}
+
+// SQLite opens an empty path as a temporary database it deletes on close, so
+// an empty value is an error. A relative path is made absolute, so the file
+// doesn't move with the directory the server starts from.
+function parseDatabase(value: string, source: string, cwd: string): string {
+  if (value === '') {
+    throw new Error(`Invalid ${source}: "" (expected a file path or :memory:)`);
+  }
+  return value === ':memory:' ? value : path.resolve(cwd, value);
 }

@@ -13,7 +13,7 @@ export interface RunningServer {
 // rejects when listening fails, as on a port already in use.
 export function startServer(
   app: Hono,
-  { host, port }: Config,
+  { host, port }: Pick<Config, 'host' | 'port'>,
 ): Promise<RunningServer> {
   return new Promise((resolve, reject) => {
     const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
