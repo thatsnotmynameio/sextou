@@ -1,0 +1,45 @@
+# Every pull request and each push to main: CodeQL's analysis, published to
+# GitHub code scanning. The push gives code scanning the analysis of main that
+# a pull request's alerts are compared against. CodeQL analyses JavaScript and
+# TypeScript (the repository has package.json) and GitHub Actions, through the
+# organization's workflow (thatsnotmynameio/github-actions' codeql.yml), here
+# on every run: GitHub does not allow CodeQL in a workflow a ruleset requires.
+# Grype and zizmor analyse main in security-main.yml; on a pull request the
+# organization's rulesets run them, as the checks "tnmn.io: grype" and
+# "tnmn.io: zizmor", and "tnmn.io: dependency-review" checks the dependencies
+# a pull request adds.
+# No job holds a secret: code scanning accepts an upload from any run that
+# the pull_request event started, a fork's included, with the read-only token.
+# No paths filter: these checks are required, and a required check that a
+# path filter skips stays pending.
+# CodeQL checks out a pull request's head commit and files its results under
+# it, with .github/codeql/codeql-config.yml from the base commit: a change to
+# it applies once it merges.
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # Weekly as well: CodeQL's analysis of main then picks up the queries
+  # released since the last push.
+  schedule:
+    - cron: '13 6 * * 1'
+
+permissions: {}
+
+jobs:
+  # CodeQL's advanced setup, with the security-extended suite
+  # (.github/codeql/codeql-config.yml), through the organization's workflow:
+  # the checks "codeql / javascript-typescript" and "codeql / actions", which
+  # thatsnotmynameio/admin's .github/repos/sextou.yml requires. Its alerts do
+  # not fail the jobs. A job fails on a build or analysis error, and then
+  # uploads nothing.
+  # The job's id, codeql, is a contract, as are the categories
+  # /language:javascript-typescript and /language:actions: code scanning tells
+  # analyses apart by them, so a renamed job leaves its old alerts open on main.
+  codeql:
+    permissions:
+      contents: read
+      security-events: write # uploads the results to code scanning
+    uses: thatsnotmynameio/github-actions/.github/workflows/codeql.yml@3615f1d6cbd08e5797a4fa1318a775cc1c62931e # v0.4.0
