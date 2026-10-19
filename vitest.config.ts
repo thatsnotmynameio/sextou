@@ -8,6 +8,7 @@ export default {
       'apps/web',
       'packages/contract',
       'packages/core',
+      'packages/data',
       'packages/ui',
     ],
   },
