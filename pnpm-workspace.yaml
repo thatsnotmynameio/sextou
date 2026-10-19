@@ -5,8 +5,9 @@ allowBuilds:
   electron-winstaller: true
   esbuild: false
 nodeLinker: hoisted
-# semver 6.3.1 is a backport published without the provenance of the 7.x
-# releases before it, so pnpm's trust policy (no-downgrade, the org's CI
-# policy) rejects it. Storybook pulls it in through react-docgen and Babel.
-trustPolicyExclude:
-  - semver@6.3.1
+overrides:
+  # semver 6.3.1, which Babel (through Storybook's react-docgen) asks for, is a
+  # backport published without the provenance of the 7.x releases before it,
+  # so the org's trust policy (no-downgrade) rejects it. Babel only calls
+  # intersects, lt, satisfies and valid, which 7 keeps as they were.
+  semver@^6.0.0: ^7.8.5
