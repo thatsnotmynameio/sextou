@@ -2,7 +2,7 @@ import type { Plugin } from 'vite';
 import { transform } from '@lingui/native-tools';
 
 // Compiles Lingui's macros with Lingui's native transform, for Storybook and
-// the desktop renderer. @lingui/vite-plugin would do the same, but it pulls in
+// the web app. @lingui/vite-plugin would do the same, but it pulls in
 // @lingui/cli, which depends on braces (GHSA-vfj7-8cjw-p6xm, no fixed release).
 // Each message keeps its source text in production builds: there are no
 // compiled catalogs yet, so the runtime compiles the English text.

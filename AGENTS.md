@@ -2,7 +2,7 @@
 
 Guidance for coding agents working in this repository. Claude Code reads it as `CLAUDE.md`, a symlink to this file.
 
-sextou is a desktop app: Electron, React and TypeScript, in a pnpm monorepo.
+sextou is a web app and the Electron desktop app that loads it: React and TypeScript, in a pnpm monorepo.
 
 Write every report, summary, or handoff to the user through the `ce-noslop` skill. This applies when you are the top-level agent writing to the user, not when you are a subagent reporting to its caller. Do not apply it to code, config, verbatim quotes, or text the user asked to post as written.
 
@@ -20,8 +20,8 @@ pnpm typecheck        # tsc --noEmit in each package
 pnpm test:unit        # unit tests in jsdom, fast, with coverage
 pnpm test:integration # every story in Chromium (Playwright), with coverage
 pnpm test             # both suites, one after the other
-pnpm build            # electron-forge package, then storybook build
-pnpm start            # the app in development
+pnpm build            # electron-forge package, the web app, then storybook build
+pnpm start            # the web dev server and the desktop app, in development
 pnpm storybook        # Storybook at http://localhost:6006
 ```
 
@@ -29,12 +29,12 @@ pnpm storybook        # Storybook at http://localhost:6006
 
 ## Architecture
 
+- `apps/web` (`@sextou/web`): the React app, built by its own Vite config into `apps/web/dist`. In the desktop window it talks to Electron only through what the preload exposes.
 - `apps/desktop/src/main`: Electron's main process. Bundled by Vite into `.vite/build/main.cjs`.
-- `apps/desktop/src/preload`: the preload script, the only bridge between main and the renderer (`contextBridge`).
-- `apps/desktop/src/renderer`: the React app the window loads. It talks to Electron only through what the preload exposes.
+- `apps/desktop/src/preload`: the preload script, the only bridge between main and the web app (`contextBridge`).
 - `packages/ui` (`@sextou/ui`): shared React components, each in `src/<Name>/` with `<Name>.tsx`, `<Name>.test.tsx` and `<Name>.stories.tsx`, exported from `src/index.ts`. It ships sources, not a build: each app's Vite compiles it. Components take data and callbacks as props and never touch Electron, so they render in Storybook and in any app.
-- The desktop loads the hosted web app by URL instead of bundling its build: the dev server in development, the deployed URL in production, with a bundled error page for when that URL can't load. A web deploy reaches desktop users on their next reload; only shell changes (Electron, preload, native features) need a desktop release.
-- Forge's Vite plugin packages only `.vite/`: everything the app runs must be bundled.
+- The desktop loads the hosted web app by URL instead of bundling its build: `apps/web`'s dev server (port 5173) in development, the deployed URL in production, which `vite.main.config.mts` reads from `SEXTOU_WEB_URL` at package time. When the URL can't load, the window shows the error page in `src/main/error-page.ts`, bundled into `main.cjs`. A web deploy reaches desktop users on their next reload; only shell changes (Electron, preload, native features) need a desktop release.
+- Forge's Vite plugin packages only `.vite/`: everything the shell runs (main, preload, the error page) must be bundled.
 - `.compound-engineering/artifacts/solutions/`: documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). `ce-compound` creates it with the first one.
 
 ## Tests
