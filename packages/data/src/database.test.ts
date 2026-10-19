@@ -1,5 +1,6 @@
 import {
   chmodSync,
+  existsSync,
   mkdtempSync,
   rmSync,
   statSync,
@@ -55,6 +56,13 @@ describe('openDatabase in memory', () => {
     database.close();
     expect(() => database.close()).not.toThrow();
   });
+
+  it('applies the migrations, whose table is the only one so far', () => {
+    const { db } = open(':memory:');
+    expect(
+      db.all(sql`select name from sqlite_schema where type = 'table'`),
+    ).toEqual([{ name: 'migration' }]);
+  });
 });
 
 // File modes mean nothing on Windows, where the profile's permissions apply.
@@ -104,5 +112,19 @@ describe.skipIf(process.platform === 'win32')('openDatabase on a file', () => {
     const path = join(dir, 'notes.db');
     writeFileSync(path, 'not a database, just some text that is long enough');
     expect(() => open(path)).toThrow('file is not a database');
+  });
+
+  // SQLite deletes the WAL file when the last connection closes.
+  it('throws and closes on a database a newer sextou migrated', () => {
+    const path = join(dir, 'sextou.db');
+    const other = new DatabaseSync(path);
+    other.exec(
+      "create table migration (id text primary key, time_completed integer not null); insert into migration values ('99_newer', 0)",
+    );
+    other.close();
+    expect(() => open(path)).toThrow(
+      'This database was written by a newer sextou (unknown migration 99_newer)',
+    );
+    expect(existsSync(`${path}-wal`)).toBe(false);
   });
 });
