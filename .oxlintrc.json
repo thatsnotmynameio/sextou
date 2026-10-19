@@ -2,5 +2,29 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "categories": {
     "correctness": "warn"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["apps/web/**", "packages/ui/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "electron",
+                "message": "The web app and the shared UI run in a browser too: reach native features through apps/web/src/platform.ts."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["electron/*"],
+                "message": "The web app and the shared UI run in a browser too: reach native features through apps/web/src/platform.ts."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }
