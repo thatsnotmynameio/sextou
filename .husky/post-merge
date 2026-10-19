@@ -1,0 +1,4 @@
+# A pull that changes the lockfile needs a fresh install.
+if git diff --name-only ORIG_HEAD HEAD | grep -qx pnpm-lock.yaml; then
+  pnpm install
+fi

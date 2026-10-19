@@ -1,0 +1,24 @@
+remote="$1"
+
+# Every branch pushed must contain the remote's latest main.
+git fetch --quiet "$remote" main
+main=$(git rev-parse FETCH_HEAD)
+
+pushing=0
+while read -r local_ref local_sha remote_ref _remote_sha; do
+  case "$remote_ref" in refs/heads/*) ;; *) continue ;; esac
+  # A deletion pushes nothing.
+  case "$local_sha" in *[!0]*) ;; *) continue ;; esac
+  pushing=1
+  if ! git merge-base --is-ancestor "$main" "$local_sha"; then
+    echo "pre-push: $local_ref is behind $remote/main; rebase it onto $remote/main first." >&2
+    exit 1
+  fi
+done
+
+[ "$pushing" = 1 ] || exit 0
+
+# These check the working tree, which is what's pushed when you push the
+# checked-out branch.
+pnpm typecheck
+pnpm test:unit
