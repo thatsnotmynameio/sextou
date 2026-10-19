@@ -22,4 +22,3 @@ pnpm typecheck        # tsc in each package
 pnpm build            # the packaged app (apps/desktop/out/) and the static Storybook
 pnpm make             # the installers
 ```
-
