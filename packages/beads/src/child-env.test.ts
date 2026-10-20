@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bdEnv, bdInitEnv, doltEnv } from './child-env';
+import { bdEnv, bdInitEnv, doltEnv, gitEnv } from './child-env';
 import { layoutOf } from './layout';
 
 const layout = layoutOf('/d');
@@ -51,10 +51,17 @@ describe('doltEnv', () => {
   });
 });
 
+describe('gitEnv', () => {
+  it('holds only the home', () => {
+    expect(gitEnv(linux)).toEqual({ HOME: '/d/dolt-home' });
+  });
+});
+
 describe('bdEnv', () => {
-  it('points bd at the organization and Dolt, with telemetry off', () => {
-    expect(bdEnv(linux, 'secret')).toEqual({
+  it('points bd at git, the organization and Dolt, with telemetry off', () => {
+    expect(bdEnv(linux, 'secret', '/usr/bin/git')).toEqual({
       HOME: '/d/dolt-home',
+      PATH: '/usr/bin',
       BEADS_DIR: '/d/beads/default/.beads',
       BEADS_DOLT_PASSWORD: 'secret',
       BEADS_DOLT_AUTO_START: '0',
@@ -63,8 +70,8 @@ describe('bdEnv', () => {
   });
 
   it('adds the non-interactive switch for the setup commands', () => {
-    expect(bdInitEnv(linux, 'secret')).toEqual({
-      ...bdEnv(linux, 'secret'),
+    expect(bdInitEnv(linux, 'secret', '/usr/bin/git')).toEqual({
+      ...bdEnv(linux, 'secret', '/usr/bin/git'),
       BD_NON_INTERACTIVE: '1',
     });
   });
@@ -77,11 +84,12 @@ describe('bdEnv', () => {
     try {
       for (const env of [
         doltEnv(linux),
-        bdEnv(linux, 'secret'),
-        bdInitEnv(linux, 'secret'),
+        gitEnv(linux),
+        bdEnv(linux, 'secret', '/usr/bin/git'),
+        bdInitEnv(linux, 'secret', '/usr/bin/git'),
       ]) {
         expect(env).not.toHaveProperty('BD_EVENTS_JOURNAL');
-        expect(env).not.toHaveProperty('PATH');
+        expect(env.PATH).not.toBe(process.env.PATH);
         expect(env.BEADS_DIR).not.toBe('/elsewhere');
         expect(env.DOLT_ROOT_PASSWORD).toBeUndefined();
       }

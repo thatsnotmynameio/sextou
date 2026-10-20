@@ -1,6 +1,54 @@
-import { describe, expect, it } from 'vitest';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { delimiter, join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { pins } from './pins';
-import { binaryName, releaseFor, tarPath } from './platform';
+import { binaryName, findGit, releaseFor, tarPath } from './platform';
+
+describe.runIf(process.platform !== 'win32')('findGit', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'sextou-git-'));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function file(folder: string, name: string, mode: number) {
+    mkdirSync(join(dir, folder), { recursive: true });
+    writeFileSync(join(dir, folder, name), '');
+    chmodSync(join(dir, folder, name), mode);
+  }
+
+  it('returns the first executable git on the PATH', () => {
+    file('a', 'other', 0o755);
+    file('b', 'git', 0o644);
+    file('c', 'git', 0o755);
+    file('d', 'git', 0o755);
+    const path = ['a', 'b', 'c', 'd'].map((each) => join(dir, each));
+
+    expect(findGit(path.join(delimiter), 'linux')).toBe(join(dir, 'c', 'git'));
+  });
+
+  it.each([undefined, ''])('throws asking for git when PATH is %j', (path) => {
+    expect(() => findGit(path, 'linux')).toThrow(
+      'git was not found on the PATH; beads needs it',
+    );
+  });
+
+  it('looks for git.exe on Windows', () => {
+    file('w', 'git.exe', 0o755);
+    expect(findGit(join(dir, 'w'), 'win32')).toBe(join(dir, 'w', 'git.exe'));
+  });
+});
 
 describe('releaseFor', () => {
   it.each([

@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -100,4 +101,33 @@ function signal(pid: number, name: NodeJS.Signals): boolean {
   } catch {
     return false;
   }
+}
+
+// Runs a command to its end. Rejects naming it, with its stderr, when it
+// can't run or exits with another code than 0.
+export function runToEnd(
+  name: string,
+  command: string,
+  args: string[],
+  options: { cwd: string; env: Record<string, string> },
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      ...options,
+      stdio: ['ignore', 'ignore', 'pipe'],
+      windowsHide: true,
+    });
+    let stderr = '';
+    child.stderr.setEncoding('utf8').on('data', (chunk: string) => {
+      stderr += chunk;
+    });
+    child.once('error', (error) => {
+      reject(new Error(`Could not run ${name}: ${error.message}`));
+    });
+    child.once('close', (code) => {
+      if (code === 0) resolve();
+      else
+        reject(new Error(`${name} exited with code ${code}: ${stderr.trim()}`));
+    });
+  });
 }

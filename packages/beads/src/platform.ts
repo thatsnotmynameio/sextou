@@ -1,3 +1,4 @@
+import { accessSync, constants } from 'node:fs';
 import path from 'node:path';
 import type { Pin, PlatformKey, Release } from './pins';
 
@@ -32,4 +33,24 @@ export function tarPath(
   return platform === 'win32'
     ? path.win32.join(env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe')
     : 'tar';
+}
+
+// The git on the server's PATH: bd serve runs git to find the root of the
+// organization's folder, and won't start without it.
+export function findGit(
+  pathValue: string | undefined,
+  platform: NodeJS.Platform,
+): string {
+  const name = platform === 'win32' ? 'git.exe' : 'git';
+  for (const folder of (pathValue ?? '').split(path.delimiter)) {
+    if (folder === '') continue;
+    const file = path.join(folder, name);
+    try {
+      accessSync(file, constants.X_OK);
+      return file;
+    } catch {
+      // Not here, or not executable.
+    }
+  }
+  throw new Error('git was not found on the PATH; beads needs it');
 }
