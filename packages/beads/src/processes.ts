@@ -153,30 +153,46 @@ export async function awaitReady(
 }
 
 // Runs a command to its end. Rejects naming it, with its stderr, when it
-// can't run or exits with another code than 0.
+// can't run or exits with another code than 0, and kills it when it runs past
+// the deadline, in milliseconds, so a hung command can't stall the start.
 export function runToEnd(
   name: string,
   command: string,
   args: string[],
-  options: { cwd: string; env: Record<string, string> },
+  {
+    cwd,
+    env,
+    deadline = 120_000,
+  }: { cwd: string; env: Record<string, string>; deadline?: number },
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
-      ...options,
+      cwd,
+      env,
       stdio: ['ignore', 'ignore', 'pipe'],
       windowsHide: true,
     });
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGKILL');
+    }, deadline);
     let stderr = '';
     child.stderr.setEncoding('utf8').on('data', (chunk: string) => {
       stderr += chunk;
     });
     child.once('error', (error) => {
+      clearTimeout(timer);
       reject(new Error(`Could not run ${name}: ${error.message}`));
     });
     child.once('close', (code) => {
+      clearTimeout(timer);
       if (code === 0) resolve();
-      else
+      else if (timedOut) {
+        reject(new Error(`${name} did not finish within ${deadline / 1000} s`));
+      } else {
         reject(new Error(`${name} exited with code ${code}: ${stderr.trim()}`));
+      }
     });
   });
 }

@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createServer as createHttpServer } from 'node:http';
 import { createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -13,6 +14,7 @@ import {
 import { layoutOf, prepareFolders, type Layout } from './layout';
 import { findGit } from './platform';
 import { isAlive, readRunFile, waitFor, writeRunFile } from './processes';
+import { DEFAULT_ORGANIZATION } from './service';
 import {
   fakeBinary,
   freePort,
@@ -92,8 +94,26 @@ describe.runIf(process.platform !== 'win32')('startBdServe', () => {
       BEADS_DOLT_AUTO_START: '0',
       BD_DISABLE_METRICS: '1',
     });
-    expect(serve.token).toBe(readFileSync(layout.bdServeToken, 'utf8'));
+    expect(readFileSync(layout.bdServeToken, 'utf8')).not.toBe('');
+    await expect(serve.service.ping(DEFAULT_ORGANIZATION)).resolves.toBe(true);
     expect(readRunFile(layout.bdServeRun)).toEqual({ pid: call.pid, port });
+  });
+
+  // Its first readiness ping carries the token.
+  it('fails naming the port, without sending the token, when another process holds it', async () => {
+    const authorizations: (string | undefined)[] = [];
+    const server = createHttpServer((request, response) => {
+      authorizations.push(request.headers.authorization);
+      response.writeHead(200).end();
+    }).listen(port, '127.0.0.1');
+    servers.push(server);
+    await once(server, 'listening');
+
+    await expect(startBdServe(options())).rejects.toThrow(
+      `Port ${port} is held by a process sextou did not start`,
+    );
+    expect(authorizations).toEqual([]);
+    expect(recordedCalls(calls)).toHaveLength(0);
   });
 
   it('kills a bd serve that never gets ready, and fails', async () => {

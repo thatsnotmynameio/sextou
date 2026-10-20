@@ -8,11 +8,7 @@ import { ensureOrganization } from './organization';
 import { pins as pinned, type Pins } from './pins';
 import { findGit, tarPath } from './platform';
 import { removeRunFile, stopProcess } from './processes';
-import {
-  createBeadsService,
-  DEFAULT_ORGANIZATION,
-  type BeadsService,
-} from './service';
+import type { BeadsService } from './service';
 
 export interface StartOptions {
   // sextou's data directory, absolute.
@@ -130,15 +126,13 @@ export async function startBeads({
   );
 
   return {
-    service: createBeadsService({
-      token: serve.token,
-      organizations: new Map([
-        [DEFAULT_ORGANIZATION, { port: bdServePort, child: serve.child }],
-      ]),
-    }),
+    service: serve.service,
     stop: async () => {
-      // A bd serve that got ready has a pid.
-      await stopProcess(serve.child.pid as number, 25_000);
+      // Once bd serve exited, its pid may belong to another process.
+      if (serve.child.exitCode === null && serve.child.signalCode === null) {
+        // A bd serve that got ready has a pid.
+        await stopProcess(serve.child.pid as number, 25_000);
+      }
       removeRunFile(layout.bdServeRun);
     },
   };

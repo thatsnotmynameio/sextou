@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { layoutOf } from './layout';
 import { isAlive, readRunFile, waitFor } from './processes';
 import { DEFAULT_ORGANIZATION } from './service';
@@ -153,9 +153,34 @@ describe.runIf(process.platform !== 'win32')('startBeads', () => {
     expect((error as Error).message).not.toContain(password);
   });
 
-  it('names the bd serve step when bd serve fails', async () => {
-    await expect(
-      startBeads(options({ bdMode: 'serve-exit' })),
-    ).rejects.toMatchObject({ step: 'bd serve' });
+  it('names the bd serve step, without the token bd printed', async () => {
+    const error = await startBeads(options({ bdMode: 'serve-exit' })).catch(
+      (caught: Error) => caught,
+    );
+    const token = readFileSync(layoutOf(dataDir).bdServeToken, 'utf8');
+
+    expect(error).toMatchObject({ step: 'bd serve' });
+    expect((error as Error).message).toContain('[redacted]');
+    expect((error as Error).message).not.toContain(token);
+  });
+
+  // Its pid is free once it exited, and could belong to another process.
+  it('signals nothing on stop() once bd serve has exited', async () => {
+    const beads = await start();
+    const serve = recordedCalls(calls)[3];
+    process.kill(serve.pid, 'SIGKILL');
+    await waitFor(
+      async () => !(await beads.service.ping(DEFAULT_ORGANIZATION)),
+      5000,
+    );
+    const kill = vi.spyOn(process, 'kill');
+
+    try {
+      await beads.stop();
+      expect(kill).not.toHaveBeenCalled();
+    } finally {
+      kill.mockRestore();
+    }
+    started.pop();
   });
 });

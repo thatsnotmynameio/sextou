@@ -10,6 +10,7 @@ import {
   portAccepts,
   readRunFile,
   removeRunFile,
+  runToEnd,
   stopProcess,
   waitFor,
   writeRunFile,
@@ -99,6 +100,19 @@ describe('portAccepts', () => {
     server.close();
     await once(server, 'close');
     expect(await portAccepts(port)).toBe(false);
+  });
+});
+
+describe('runToEnd', () => {
+  it('kills a command that runs past its deadline and fails naming it', async () => {
+    await expect(
+      runToEnd(
+        'a sleeper',
+        process.execPath,
+        ['-e', 'setInterval(() => {}, 1000)'],
+        { cwd: dir, env: {}, deadline: 200 },
+      ),
+    ).rejects.toThrow('a sleeper did not finish within 0.2 s');
   });
 });
 

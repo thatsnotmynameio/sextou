@@ -11,7 +11,11 @@ import {
   stopProcess,
 } from './processes';
 import { readOrCreateSecret } from './secrets';
-import { createBeadsService, DEFAULT_ORGANIZATION } from './service';
+import {
+  createBeadsService,
+  DEFAULT_ORGANIZATION,
+  type BeadsService,
+} from './service';
 
 export interface BdServeOptions {
   bd: string;
@@ -26,7 +30,8 @@ export interface BdServeOptions {
 
 export interface RunningBdServe {
   child: ChildProcess;
-  token: string;
+  // The service over this bd serve.
+  service: BeadsService;
 }
 
 // Stops the bd serve an earlier run recorded, when its pid is alive and
@@ -44,7 +49,8 @@ export async function stopLeftoverBdServe(layout: Layout): Promise<void> {
 
 // Starts the default organization's bd serve with its token, in the server's
 // process group so a Ctrl+C reaches it too, and resolves once it answers the
-// readiness route. Kills it and throws when it exits or never gets ready.
+// readiness route. Throws when another process holds the port, and kills it
+// and throws when it exits or never gets ready.
 export async function startBdServe({
   bd,
   git,
@@ -54,6 +60,11 @@ export async function startBdServe({
   env,
   readyTimeout = 30_000,
 }: BdServeOptions): Promise<RunningBdServe> {
+  // The first readiness ping carries the token, so it must never reach a
+  // process sextou did not start.
+  if (await portAccepts(port)) {
+    throw new Error(`Port ${port} is held by a process sextou did not start`);
+  }
   const token = readOrCreateSecret(layout.bdServeToken);
   const log = openSync(layout.bdServeLog, 'a', 0o600);
   const child = spawn(
@@ -87,5 +98,5 @@ export async function startBdServe({
     exitedMessage: 'bd serve exited before it was ready',
     notReadyMessage: `bd serve was not ready on port ${port} within ${readyTimeout / 1000} s`,
   });
-  return { child, token };
+  return { child, service };
 }

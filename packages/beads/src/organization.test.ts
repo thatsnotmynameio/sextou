@@ -125,4 +125,12 @@ describe.runIf(process.platform !== 'win32')('ensureOrganization', () => {
     );
     expect(recordedCalls(calls)).toHaveLength(1);
   });
+
+  it('fails with bd’s stderr when turning the journal on fails', async () => {
+    const bd = fakeBinary(join(dir, 'bd'), 'fake-bd.ts', calls, 'config-fails');
+
+    await expect(ensureOrganization(options({ bd }))).rejects.toThrow(
+      'bd config set exited with code 1: fake bd: cannot write config.yaml',
+    );
+  });
 });
