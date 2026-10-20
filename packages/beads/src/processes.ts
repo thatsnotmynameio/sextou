@@ -25,6 +25,19 @@ export function writeRunFile(file: string, record: RunRecord) {
   writeFileSync(file, JSON.stringify(record), { mode: 0o600 });
 }
 
+// The log's last lines, for an error message.
+export function lastLines(file: string, count = 10): string {
+  try {
+    return readFileSync(file, 'utf8')
+      .trim()
+      .split('\n')
+      .slice(-count)
+      .join('\n');
+  } catch {
+    return '(no log)';
+  }
+}
+
 export function removeRunFile(file: string) {
   rmSync(file, { force: true });
 }
