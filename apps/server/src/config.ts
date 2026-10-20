@@ -5,8 +5,8 @@ import { defaultDataDirectory } from './data-directory';
 export interface Config {
   host: string;
   port: number;
-  // The absolute folder that holds sextou's data: the database by default,
-  // beads' binaries, data and credentials always.
+  // The absolute folder that holds sextou's databases: the main one unless
+  // --database moves it.
   dataDir: string;
   // An absolute file path, or ':memory:'.
   database: string;

@@ -8,8 +8,6 @@ export interface AppOptions {
   now: () => Date;
   // Whether the database answers a query; never throws.
   pingDatabase: () => boolean;
-  // Whether beads answers; never rejects.
-  pingBeads: () => Promise<boolean>;
 }
 
 // The HTTP app, with each module's routes under its own path.

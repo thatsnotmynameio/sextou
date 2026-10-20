@@ -7,12 +7,7 @@ function after(ms: number) {
   return new Date(startedAt.getTime() + ms);
 }
 
-const base = {
-  version: '1.2.3',
-  startedAt,
-  databaseAnswers: true,
-  beadsAnswers: true,
-};
+const base = { version: '1.2.3', startedAt, databaseAnswers: true };
 
 describe('getHealth', () => {
   it('returns the version it is given', () => {
@@ -41,29 +36,12 @@ describe('getHealth', () => {
       version: '1.2.3',
       uptimeSeconds: 5,
       database: 'up',
-      beads: 'up',
     });
   });
 
   it('reports the database down when it does not answer', () => {
     expect(
       getHealth({ ...base, databaseAnswers: false, now: after(5000) }),
-    ).toEqual({
-      version: '1.2.3',
-      uptimeSeconds: 5,
-      database: 'down',
-      beads: 'up',
-    });
-  });
-
-  it('reports beads down when it does not answer', () => {
-    expect(
-      getHealth({ ...base, beadsAnswers: false, now: after(5000) }),
-    ).toEqual({
-      version: '1.2.3',
-      uptimeSeconds: 5,
-      database: 'up',
-      beads: 'down',
-    });
+    ).toEqual({ version: '1.2.3', uptimeSeconds: 5, database: 'down' });
   });
 });
