@@ -65,7 +65,7 @@ export async function startBdServe({
   if (await portAccepts(port)) {
     throw new Error(`Port ${port} is held by a process sextou did not start`);
   }
-  const token = readOrCreateSecret(layout.bdServeToken);
+  const token = readOrCreateSecret(layout.bdServeTokenFile);
   const log = openSync(layout.bdServeLog, 'a', 0o600);
   const child = spawn(
     bd,
@@ -74,7 +74,7 @@ export async function startBdServe({
       '--addr',
       `127.0.0.1:${port}`,
       '--auth-token-file',
-      layout.bdServeToken,
+      layout.bdServeTokenFile,
     ],
     {
       cwd: layout.organization,

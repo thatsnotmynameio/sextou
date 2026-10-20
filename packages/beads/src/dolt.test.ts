@@ -70,7 +70,7 @@ describe.runIf(process.platform !== 'win32')('ensureDolt', () => {
       '--loglevel',
       'warning',
     ]);
-    const password = readFileSync(layout.doltPassword, 'utf8');
+    const password = readFileSync(layout.doltPasswordFile, 'utf8');
     expect(call.env).toEqual({
       HOME: layout.doltHome,
       DOLT_ROOT_PATH: layout.doltHome,
@@ -154,7 +154,7 @@ describe.runIf(process.platform !== 'win32')('ensureDolt', () => {
     writeFileSync(join(layout.dolt, '.doltcfg', 'privileges.db'), '');
 
     await expect(ensureDolt(options())).rejects.toThrow(
-      `${join(layout.dolt, '.doltcfg', 'privileges.db')} exists but ${layout.doltPassword} is missing`,
+      `${join(layout.dolt, '.doltcfg', 'privileges.db')} exists but ${layout.doltPasswordFile} is missing`,
     );
     expect(recordedCalls(calls)).toHaveLength(0);
   });

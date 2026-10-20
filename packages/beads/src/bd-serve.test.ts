@@ -83,7 +83,7 @@ describe.runIf(process.platform !== 'win32')('startBdServe', () => {
       '--addr',
       `127.0.0.1:${port}`,
       '--auth-token-file',
-      layout.bdServeToken,
+      layout.bdServeTokenFile,
     ]);
     expect(call.cwd).toBe(layout.organization);
     expect(call.env).toEqual({
@@ -94,7 +94,7 @@ describe.runIf(process.platform !== 'win32')('startBdServe', () => {
       BEADS_DOLT_AUTO_START: '0',
       BD_DISABLE_METRICS: '1',
     });
-    expect(readFileSync(layout.bdServeToken, 'utf8')).not.toBe('');
+    expect(readFileSync(layout.bdServeTokenFile, 'utf8')).not.toBe('');
     await expect(serve.service.ping(DEFAULT_ORGANIZATION)).resolves.toBe(true);
     expect(readRunFile(layout.bdServeRun)).toEqual({ pid: call.pid, port });
   });

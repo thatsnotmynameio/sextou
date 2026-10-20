@@ -11,8 +11,8 @@ export interface Layout {
   // The default organization's working folder and its BEADS_DIR.
   organization: string;
   beadsDir: string;
-  doltPassword: string;
-  bdServeToken: string;
+  doltPasswordFile: string;
+  bdServeTokenFile: string;
   doltRun: string;
   bdServeRun: string;
   doltLog: string;
@@ -37,8 +37,8 @@ export function layoutOf(dataDir: string): Layout {
     doltHome,
     organization,
     beadsDir: path.join(organization, '.beads'),
-    doltPassword: path.join(secrets, 'dolt-password'),
-    bdServeToken: path.join(secrets, 'bd-serve-token'),
+    doltPasswordFile: path.join(secrets, 'dolt-password'),
+    bdServeTokenFile: path.join(secrets, 'bd-serve-token'),
     doltRun: path.join(run, 'dolt.json'),
     bdServeRun: path.join(run, 'bd-serve-default.json'),
     doltLog: path.join(logs, 'dolt.log'),

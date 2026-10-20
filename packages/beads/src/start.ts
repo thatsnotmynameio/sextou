@@ -102,7 +102,7 @@ export async function startBeads({
   );
   // The Dolt step created the password.
   const doltPassword = await step(layout, 'organization', async () => {
-    const password = readFileSync(layout.doltPassword, 'utf8');
+    const password = readFileSync(layout.doltPasswordFile, 'utf8');
     await ensureOrganization({
       bd,
       git,
@@ -149,7 +149,7 @@ async function step<T>(
     return await run();
   } catch (error) {
     let reason = (error as Error).message;
-    for (const file of [layout.doltPassword, layout.bdServeToken]) {
+    for (const file of [layout.doltPasswordFile, layout.bdServeTokenFile]) {
       try {
         reason = reason.replaceAll(readFileSync(file, 'utf8'), '[redacted]');
       } catch {

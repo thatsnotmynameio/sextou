@@ -64,7 +64,12 @@ export function pinOf(name: string, version: string, archive: Archive): Pin {
 export function fetchOf(...archives: Archive[]) {
   const urls: string[] = [];
   const fetch = (input: string | URL | Request) => {
-    const url = String(input);
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
     urls.push(url);
     const archive = archives.find((each) => each.release.url === url);
     return Promise.resolve(

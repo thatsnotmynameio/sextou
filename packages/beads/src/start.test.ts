@@ -146,7 +146,7 @@ describe.runIf(process.platform !== 'win32')('startBeads', () => {
     const error = await startBeads(options({ bdMode: 'init-fails' })).catch(
       (caught: Error) => caught,
     );
-    const password = readFileSync(layoutOf(dataDir).doltPassword, 'utf8');
+    const password = readFileSync(layoutOf(dataDir).doltPasswordFile, 'utf8');
 
     expect(error).toMatchObject({ step: 'organization' });
     expect((error as Error).message).toContain('bd init exited with code 1');
@@ -157,7 +157,7 @@ describe.runIf(process.platform !== 'win32')('startBeads', () => {
     const error = await startBeads(options({ bdMode: 'serve-exit' })).catch(
       (caught: Error) => caught,
     );
-    const token = readFileSync(layoutOf(dataDir).bdServeToken, 'utf8');
+    const token = readFileSync(layoutOf(dataDir).bdServeTokenFile, 'utf8');
 
     expect(error).toMatchObject({ step: 'bd serve' });
     expect((error as Error).message).toContain('[redacted]');

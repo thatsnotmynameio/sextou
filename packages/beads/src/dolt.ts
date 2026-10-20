@@ -76,12 +76,12 @@ async function startDolt({
   // privileges.db; a lost password can't be set again.
   const privileges = path.join(layout.dolt, '.doltcfg', 'privileges.db');
   const firstLaunch = !existsSync(privileges);
-  if (!firstLaunch && !existsSync(layout.doltPassword)) {
+  if (!firstLaunch && !existsSync(layout.doltPasswordFile)) {
     throw new Error(
-      `${privileges} exists but ${layout.doltPassword} is missing: Dolt's root password is lost`,
+      `${privileges} exists but ${layout.doltPasswordFile} is missing: Dolt's root password is lost`,
     );
   }
-  const password = readOrCreateSecret(layout.doltPassword);
+  const password = readOrCreateSecret(layout.doltPasswordFile);
 
   const log = openSync(layout.doltLog, 'a', 0o600);
   const child = spawn(
