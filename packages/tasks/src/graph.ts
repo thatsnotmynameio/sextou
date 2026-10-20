@@ -106,16 +106,21 @@ function optional(value: unknown) {
   return value.trim() || null;
 }
 
+// A nullable text column as a string, or null.
+function nullable(value: SQLOutputValue) {
+  return value === null ? null : String(value);
+}
+
 function toTask(row: Record<string, SQLOutputValue>): Task {
   return {
     id: String(row.id),
     title: String(row.title),
     kind: String(row.kind),
     priority: Number(row.priority),
-    parentId: row.parent_id === null ? null : String(row.parent_id),
+    parentId: nullable(row.parent_id),
     assignee: String(row.assignee),
-    description: row.description === null ? null : String(row.description),
-    sourcePath: row.source_path === null ? null : String(row.source_path),
+    description: nullable(row.description),
+    sourcePath: nullable(row.source_path),
     status: row.status === 'closed' ? 'closed' : 'open',
     timeCreated: Number(row.time_created),
   };

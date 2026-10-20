@@ -150,7 +150,6 @@ describe('createTask', () => {
     });
   });
 
-  // Covers AE4.
   it('stores a blank description or source path as null', () => {
     const blankDescription = tasks.createTask({
       title: 'A',
@@ -185,7 +184,6 @@ describe('createTask', () => {
     { title: 7, kind: 'task', priority: 2, assignee: 'dev' },
     { title: 'A', kind: 'task', priority: 2 },
     { title: 'A', kind: 'task', priority: 2, assignee: '' },
-    // Covers AE3.
     { title: 'A', kind: 'task', priority: 2, assignee: '   ' },
     { title: 'A', kind: 'task', priority: 2, assignee: 7 },
     { title: 'A', kind: 'task', priority: 2, assignee: 'dev', description: 42 },
@@ -454,7 +452,6 @@ describe('listReady', () => {
     });
   });
 
-  // Covers AE1.
   it("merges the assignees' ready tasks into one list and leaves out the rest", () => {
     create('A', 2, undefined, 'dev');
     create('B', 1, undefined, 'bot-dev-1');
@@ -462,7 +459,6 @@ describe('listReady', () => {
     expect(ready(100, ['bot-dev-1', 'dev'])).toEqual(['B', 'A']);
   });
 
-  // Covers AE2.
   it('matches the assignee exactly', () => {
     create('A', 2, undefined, 'dev');
     expect(ready(100, ['Dev'])).toEqual([]);
@@ -485,7 +481,6 @@ describe('listReady', () => {
     expect(ready(100, ['dev', 'dev'])).toEqual(['A']);
   });
 
-  // Covers AE5.
   it.each([[], undefined, 'dev', [''], ['  '], [7]])(
     'refuses %j as the assignees as invalid',
     (assignees) => {
