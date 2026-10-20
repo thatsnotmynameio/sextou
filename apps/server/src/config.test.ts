@@ -6,7 +6,8 @@ const paths: PathContext = {
   homedir: () => '/home/ana',
   cwd: '/work',
 };
-const defaultDatabase = '/home/ana/.local/share/sextou/sextou.db';
+const defaultDataDir = '/home/ana/.local/share/sextou';
+const defaultDatabase = `${defaultDataDir}/sextou.db`;
 
 function load(env: Record<string, string | undefined>, args: string[]) {
   return loadConfig(env, args, paths);
@@ -17,6 +18,7 @@ describe('loadConfig', () => {
     expect(load({}, [])).toEqual({
       host: '127.0.0.1',
       port: 4310,
+      dataDir: defaultDataDir,
       database: defaultDatabase,
     });
   });
@@ -24,7 +26,12 @@ describe('loadConfig', () => {
   it('reads the host and port from the environment', () => {
     expect(
       load({ SEXTOU_SERVER_HOST: '0.0.0.0', SEXTOU_SERVER_PORT: '8080' }, []),
-    ).toEqual({ host: '0.0.0.0', port: 8080, database: defaultDatabase });
+    ).toEqual({
+      host: '0.0.0.0',
+      port: 8080,
+      dataDir: defaultDataDir,
+      database: defaultDatabase,
+    });
   });
 
   it('lets the arguments override the environment', () => {
@@ -35,7 +42,12 @@ describe('loadConfig', () => {
         '--port',
         '9090',
       ]),
-    ).toEqual({ host: '::1', port: 9090, database: defaultDatabase });
+    ).toEqual({
+      host: '::1',
+      port: 9090,
+      dataDir: defaultDataDir,
+      database: defaultDatabase,
+    });
   });
 
   it('accepts port 0, for a port the system picks', () => {
@@ -101,14 +113,54 @@ describe('loadConfig', () => {
     expect(load({}, ['--database', ':memory:']).database).toBe(':memory:');
   });
 
-  it('does not read the home directory when a database path is given', () => {
-    const config = loadConfig({}, ['--database', '/b.db'], {
+  it('does not read the home directory when both paths are given', () => {
+    const config = loadConfig({}, ['--data-dir', '/d', '--database', '/b.db'], {
       ...paths,
       homedir: () => {
         throw new Error('read the home directory');
       },
     });
-    expect(config.database).toBe('/b.db');
+    expect(config).toMatchObject({ dataDir: '/d', database: '/b.db' });
+  });
+
+  it('puts everything in --data-dir', () => {
+    expect(load({}, ['--data-dir', '/d'])).toMatchObject({
+      dataDir: '/d',
+      database: '/d/sextou.db',
+    });
+  });
+
+  it('keeps a configured database outside the data directory', () => {
+    expect(load({}, ['--data-dir', '/d', '--database', '/x.db'])).toMatchObject(
+      { dataDir: '/d', database: '/x.db' },
+    );
+  });
+
+  it('reads the data directory from the environment', () => {
+    expect(load({ SEXTOU_SERVER_DATA_DIR: '/e' }, [])).toMatchObject({
+      dataDir: '/e',
+      database: '/e/sextou.db',
+    });
+  });
+
+  it('lets --data-dir override the environment', () => {
+    expect(
+      load({ SEXTOU_SERVER_DATA_DIR: '/e' }, ['--data-dir', '/d']).dataDir,
+    ).toBe('/d');
+  });
+
+  it('resolves a relative data directory against the working directory', () => {
+    expect(load({}, ['--data-dir', 'data']).dataDir).toBe('/work/data');
+  });
+
+  it('rejects an empty data directory from SEXTOU_SERVER_DATA_DIR', () => {
+    expect(() => load({ SEXTOU_SERVER_DATA_DIR: '' }, [])).toThrow(
+      'Invalid SEXTOU_SERVER_DATA_DIR: ""',
+    );
+  });
+
+  it('rejects an empty data directory from --data-dir', () => {
+    expect(() => load({}, ['--data-dir='])).toThrow('Invalid --data-dir: ""');
   });
 
   // SQLite opens an empty path as a temporary database, deleted on close.

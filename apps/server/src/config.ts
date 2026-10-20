@@ -1,20 +1,23 @@
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { defaultDatabasePath } from './database-path';
+import { defaultDataDirectory } from './data-directory';
 
 export interface Config {
   host: string;
   port: number;
+  // The absolute folder that holds sextou's data: the database by default,
+  // beads' binaries, data and credentials always.
+  dataDir: string;
   // An absolute file path, or ':memory:'.
   database: string;
 }
 
-// What the database path depends on: main passes the process's own.
+// What the paths depend on: main passes the process's own.
 export interface PathContext {
   platform: NodeJS.Platform;
-  // Called only when the default database path is needed.
+  // Called only when the default data directory is needed.
   homedir: () => string;
-  // The directory a relative database path is resolved against.
+  // The directory a relative path is resolved against.
   cwd: string;
 }
 
@@ -36,6 +39,7 @@ export function loadConfig(
     options: {
       host: { type: 'string' },
       port: { type: 'string' },
+      'data-dir': { type: 'string' },
       database: { type: 'string' },
     },
   });
@@ -54,6 +58,17 @@ export function loadConfig(
         ? parseHost(env.SEXTOU_SERVER_HOST, 'SEXTOU_SERVER_HOST')
         : defaults.host;
 
+  const dataDir =
+    values['data-dir'] !== undefined
+      ? parseDataDir(values['data-dir'], '--data-dir', cwd)
+      : env.SEXTOU_SERVER_DATA_DIR !== undefined
+        ? parseDataDir(
+            env.SEXTOU_SERVER_DATA_DIR,
+            'SEXTOU_SERVER_DATA_DIR',
+            cwd,
+          )
+        : defaultDataDirectory(platform, env, homedir());
+
   const database =
     values.database !== undefined
       ? parseDatabase(values.database, '--database', cwd)
@@ -63,9 +78,9 @@ export function loadConfig(
             'SEXTOU_SERVER_DATABASE',
             cwd,
           )
-        : defaultDatabasePath(platform, env, homedir());
+        : path.join(dataDir, 'sextou.db');
 
-  return { host, port, database };
+  return { host, port, dataDir, database };
 }
 
 // Node binds an empty host to every interface: an empty value is an error,
@@ -86,6 +101,16 @@ function parsePort(value: string, source: string): number {
     );
   }
   return port;
+}
+
+// An empty value would put the data in the working directory. A relative
+// path is made absolute, so the data doesn't move with the directory the
+// server starts from.
+function parseDataDir(value: string, source: string, cwd: string): string {
+  if (value === '') {
+    throw new Error(`Invalid ${source}: "" (expected a folder path)`);
+  }
+  return path.resolve(cwd, value);
 }
 
 // SQLite opens an empty path as a temporary database it deletes on close, so

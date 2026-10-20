@@ -65,6 +65,7 @@ beforeEach(() => {
   vi.stubEnv('SEXTOU_SERVER_HOST', undefined);
   vi.stubEnv('SEXTOU_SERVER_PORT', undefined);
   vi.stubEnv('SEXTOU_SERVER_DATABASE', undefined);
+  vi.stubEnv('SEXTOU_SERVER_DATA_DIR', undefined);
   on = vi.spyOn(process, 'on').mockImplementation(() => process);
   off = vi.spyOn(process, 'off').mockImplementation(() => process);
   exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
@@ -83,13 +84,18 @@ afterEach(() => {
 });
 
 it('starts the server from the arguments and prints where it listens', async () => {
-  args('--port', '0', '--database', ':memory:');
+  args('--port', '0', '--data-dir', dir, '--database', ':memory:');
 
   await import('./main');
 
   expect(startServer).toHaveBeenCalledOnce();
   const [app, config] = vi.mocked(startServer).mock.calls[0];
-  expect(config).toEqual({ host: '127.0.0.1', port: 0, database: ':memory:' });
+  expect(config).toEqual({
+    host: '127.0.0.1',
+    port: 0,
+    dataDir: dir,
+    database: ':memory:',
+  });
   // The app reports the package's version, an uptime counted from the start
   // just now, and the database it opened.
   const response = await (app as Hono).request('/health');
