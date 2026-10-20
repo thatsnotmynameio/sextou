@@ -6,6 +6,7 @@ export default {
       'apps/desktop',
       'apps/server',
       'apps/web',
+      'packages/beads',
       'packages/contract',
       'packages/core',
       'packages/data',

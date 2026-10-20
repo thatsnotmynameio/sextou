@@ -9,6 +9,7 @@ const options = {
   startedAt,
   now: () => startedAt,
   pingDatabase: () => true,
+  pingBeads: () => Promise.resolve(true),
 };
 
 describe('GET /health', () => {
@@ -19,6 +20,7 @@ describe('GET /health', () => {
       version: '1.2.3',
       uptimeSeconds: 0,
       database: 'up',
+      beads: 'up',
     });
   });
 
@@ -39,7 +41,36 @@ describe('GET /health', () => {
       version: '1.2.3',
       uptimeSeconds: 0,
       database: 'down',
+      beads: 'up',
     });
+  });
+
+  it('answers 503 when beads does not answer', async () => {
+    const routes = healthRoutes({
+      ...options,
+      pingBeads: () => Promise.resolve(false),
+    });
+    const response = await routes.request('/');
+    expect(response.status).toBe(503);
+    expect(healthResponseSchema.parse(await response.json())).toEqual({
+      version: '1.2.3',
+      uptimeSeconds: 0,
+      database: 'up',
+      beads: 'down',
+    });
+  });
+
+  it('asks beads again on each request', async () => {
+    let answers = false;
+    const routes = healthRoutes({
+      ...options,
+      pingBeads: () => Promise.resolve(answers),
+    });
+    expect((await routes.request('/')).status).toBe(503);
+    answers = true;
+    const response = await routes.request('/');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ beads: 'up' });
   });
 
   it('answers 503 once a real database is closed', async () => {
