@@ -176,8 +176,11 @@ describe.runIf(process.platform !== 'win32')('ensureDolt', () => {
     await expect(
       ensureDolt(options({ binary, readyTimeout: 500 })),
     ).rejects.toThrow(`Dolt did not accept connections on port ${port}`);
-    const [call] = recordedCalls(calls);
-    expect(await waitFor(() => !isAlive(call.pid), 5000)).toBe(true);
+    // Under load it can be killed before the fake records its call.
+    for (const call of recordedCalls(calls)) {
+      expect(await waitFor(() => !isAlive(call.pid), 5000)).toBe(true);
+    }
+    expect(readRunFile(layout.doltRun)).toBeUndefined();
   });
 
   it('fails when the binary cannot run', async () => {

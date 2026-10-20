@@ -24,18 +24,22 @@ export interface Call {
   cwd: string;
 }
 
-// Writes an executable wrapper at file that runs the fake script with the
-// given leading arguments: the file its calls are recorded in, and a mode.
+type Fake = 'fake-dolt.ts' | 'fake-bd.ts';
+
+// A wrapper that runs the fake script with the given leading arguments: the
+// file its calls are recorded in, and a mode.
+export function wrapper(script: Fake, calls: string, mode = 'normal') {
+  return `#!/bin/sh\nexec "${process.execPath}" "${join(import.meta.dirname, script)}" "${calls}" "${mode}" "$@"\n`;
+}
+
+// Writes the wrapper as an executable at file.
 export function fakeBinary(
   file: string,
-  script: 'fake-dolt.ts' | 'fake-bd.ts',
+  script: Fake,
   calls: string,
   mode = 'normal',
 ) {
-  writeFileSync(
-    file,
-    `#!/bin/sh\nexec "${process.execPath}" "${join(import.meta.dirname, script)}" "${calls}" "${mode}" "$@"\n`,
-  );
+  writeFileSync(file, wrapper(script, calls, mode));
   chmodSync(file, 0o755);
   return file;
 }
