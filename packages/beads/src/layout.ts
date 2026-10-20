@@ -23,30 +23,37 @@ export interface Layout {
 
 export function layoutOf(dataDir: string): Layout {
   const at = (...segments: string[]) => path.join(dataDir, ...segments);
-  const folders = [
-    dataDir,
-    at('bin'),
-    at('dolt'),
-    at('dolt-home'),
-    at('beads'),
-    at('beads', 'default'),
-    at('secrets'),
-    at('run'),
-    at('logs'),
-  ];
+  const bin = at('bin');
+  const dolt = at('dolt');
+  const doltHome = at('dolt-home');
+  const beads = at('beads');
+  const organization = path.join(beads, 'default');
+  const secrets = at('secrets');
+  const run = at('run');
+  const logs = at('logs');
   return {
-    bin: at('bin'),
-    dolt: at('dolt'),
-    doltHome: at('dolt-home'),
-    organization: at('beads', 'default'),
-    beadsDir: at('beads', 'default', '.beads'),
-    doltPassword: at('secrets', 'dolt-password'),
-    bdServeToken: at('secrets', 'bd-serve-token'),
-    doltRun: at('run', 'dolt.json'),
-    bdServeRun: at('run', 'bd-serve-default.json'),
-    doltLog: at('logs', 'dolt.log'),
-    bdServeLog: at('logs', 'bd-serve-default.log'),
-    folders,
+    bin,
+    dolt,
+    doltHome,
+    organization,
+    beadsDir: path.join(organization, '.beads'),
+    doltPassword: path.join(secrets, 'dolt-password'),
+    bdServeToken: path.join(secrets, 'bd-serve-token'),
+    doltRun: path.join(run, 'dolt.json'),
+    bdServeRun: path.join(run, 'bd-serve-default.json'),
+    doltLog: path.join(logs, 'dolt.log'),
+    bdServeLog: path.join(logs, 'bd-serve-default.log'),
+    folders: [
+      dataDir,
+      bin,
+      dolt,
+      doltHome,
+      beads,
+      organization,
+      secrets,
+      run,
+      logs,
+    ],
   };
 }
 

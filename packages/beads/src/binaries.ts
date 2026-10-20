@@ -42,24 +42,49 @@ export async function ensureBinaries(
       });
     }
   }
+  // Both binaries are hashed at once; downloads run one after the other.
+  const [bd, dolt] = await Promise.all([
+    verifiedInPlace(options, 'bd'),
+    verifiedInPlace(options, 'dolt'),
+  ]);
   return {
-    bd: await ensureBinary(options, 'bd'),
-    dolt: await ensureBinary(options, 'dolt'),
+    bd: bd ?? (await downloadBinary(options, 'bd')),
+    dolt: dolt ?? (await downloadBinary(options, 'dolt')),
   };
 }
 
-async function ensureBinary(
-  { layout, pins, platform, arch, tar, fetch, log }: BinariesOptions,
+// Where a tool's binary lives, for its pinned version.
+function placeOf(
+  { layout, pins, platform, arch }: BinariesOptions,
   tool: keyof Pins,
-): Promise<string> {
+) {
   const pin = pins[tool];
   const release = releaseFor(pin, platform, arch);
   const folder = path.join(layout.bin, `${tool}-${pin.version}`);
-  const binary = path.join(folder, binaryName(release));
-  if ((await hashOf(binary).catch(() => undefined)) === release.binarySha256) {
-    return binary;
-  }
+  return {
+    pin,
+    release,
+    folder,
+    binary: path.join(folder, binaryName(release)),
+  };
+}
 
+// The binary's path when it is in place with its pinned hash.
+async function verifiedInPlace(
+  options: BinariesOptions,
+  tool: keyof Pins,
+): Promise<string | undefined> {
+  const { release, binary } = placeOf(options, tool);
+  const hash = await hashOf(binary).catch(() => undefined);
+  return hash === release.binarySha256 ? binary : undefined;
+}
+
+async function downloadBinary(
+  options: BinariesOptions,
+  tool: keyof Pins,
+): Promise<string> {
+  const { layout, tar, fetch, log } = options;
+  const { pin, release, folder, binary } = placeOf(options, tool);
   log(`Downloading ${pin.name} ${pin.version} from ${release.url}`);
   const temporary = mkdtempSync(path.join(layout.bin, '.tmp-'));
   try {

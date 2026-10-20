@@ -4,14 +4,12 @@ import path from 'node:path';
 import { doltEnv, type ChildEnvContext } from './child-env';
 import type { Layout } from './layout';
 import {
+  awaitReady,
   isAlive,
-  lastLines,
   portAccepts,
   readRunFile,
   removeRunFile,
   stopProcess,
-  waitFor,
-  writeRunFile,
 } from './processes';
 import { readOrCreateSecret } from './secrets';
 
@@ -32,21 +30,22 @@ export interface DoltOptions {
 export async function ensureDolt(options: DoltOptions): Promise<void> {
   const { layout, port, version } = options;
   const recorded = readRunFile(layout.doltRun);
+  const accepts = await portAccepts(port);
   // Two independent records must agree: sextou's own and the one Dolt keeps
   // in the folder it serves.
   const ours =
+    accepts &&
     recorded !== undefined &&
     recorded.port === port &&
     recorded.pid === servingPid(layout) &&
-    isAlive(recorded.pid) &&
-    (await portAccepts(port));
+    isAlive(recorded.pid);
 
   if (ours && recorded.version === version) return;
   if (ours) {
     // The new one must never find the old one still writing to the folder.
     await stopProcess(recorded.pid, 30_000);
     removeRunFile(layout.doltRun);
-  } else if (await portAccepts(port)) {
+  } else if (accepts) {
     throw new Error(`Port ${port} is held by a process sextou did not start`);
   }
   await startDolt(options);
@@ -110,33 +109,13 @@ async function startDolt({
   closeSync(log);
   child.unref();
 
-  let exited = false;
-  const failed = new Promise<never>((_, reject) => {
-    child.once('error', reject);
-    child.once('exit', () => {
-      exited = true;
-      reject(
-        new Error(
-          `Dolt exited before accepting connections: ${lastLines(layout.doltLog)}`,
-        ),
-      );
-    });
+  await awaitReady(child, {
+    runFile: layout.doltRun,
+    record: { port, version },
+    log: layout.doltLog,
+    ready: () => portAccepts(port),
+    deadline: readyTimeout,
+    exitedMessage: 'Dolt exited before accepting connections',
+    notReadyMessage: `Dolt did not accept connections on port ${port} within ${readyTimeout / 1000} s`,
   });
-  failed.catch(() => undefined);
-  if (child.pid !== undefined) {
-    writeRunFile(layout.doltRun, { pid: child.pid, port, version });
-  }
-
-  const ready = await Promise.race([
-    waitFor(() => exited || portAccepts(port), readyTimeout),
-    failed,
-  ]);
-  if (exited) await failed;
-  if (!ready) {
-    child.kill('SIGKILL');
-    removeRunFile(layout.doltRun);
-    throw new Error(
-      `Dolt did not accept connections on port ${port} within ${readyTimeout / 1000} s`,
-    );
-  }
 }

@@ -3,14 +3,12 @@ import { closeSync, openSync } from 'node:fs';
 import { bdEnv, type ChildEnvContext } from './child-env';
 import type { Layout } from './layout';
 import {
+  awaitReady,
   isAlive,
-  lastLines,
   portAccepts,
   readRunFile,
   removeRunFile,
   stopProcess,
-  waitFor,
-  writeRunFile,
 } from './processes';
 import { readOrCreateSecret } from './secrets';
 import { createBeadsService, DEFAULT_ORGANIZATION } from './service';
@@ -76,41 +74,18 @@ export async function startBdServe({
   );
   closeSync(log);
 
-  let exited = false;
-  const failed = new Promise<never>((_, reject) => {
-    child.once('error', reject);
-    child.once('exit', () => {
-      exited = true;
-      reject(
-        new Error(
-          `bd serve exited before it was ready: ${lastLines(layout.bdServeLog)}`,
-        ),
-      );
-    });
-  });
-  failed.catch(() => undefined);
-  if (child.pid !== undefined) {
-    writeRunFile(layout.bdServeRun, { pid: child.pid, port });
-  }
-
   const service = createBeadsService({
     token,
     organizations: new Map([[DEFAULT_ORGANIZATION, { port, child }]]),
   });
-  const ready = await Promise.race([
-    waitFor(
-      async () => exited || (await service.ping(DEFAULT_ORGANIZATION)),
-      readyTimeout,
-    ),
-    failed,
-  ]);
-  if (exited) await failed;
-  if (!ready) {
-    child.kill('SIGKILL');
-    removeRunFile(layout.bdServeRun);
-    throw new Error(
-      `bd serve was not ready on port ${port} within ${readyTimeout / 1000} s`,
-    );
-  }
+  await awaitReady(child, {
+    runFile: layout.bdServeRun,
+    record: { port },
+    log: layout.bdServeLog,
+    ready: () => service.ping(DEFAULT_ORGANIZATION),
+    deadline: readyTimeout,
+    exitedMessage: 'bd serve exited before it was ready',
+    notReadyMessage: `bd serve was not ready on port ${port} within ${readyTimeout / 1000} s`,
+  });
   return { child, token };
 }

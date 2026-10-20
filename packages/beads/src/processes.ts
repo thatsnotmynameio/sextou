@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -100,6 +100,55 @@ function signal(pid: number, name: NodeJS.Signals): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+// Waits for a child sextou just spawned to get ready, recording it in
+// runFile meanwhile. Throws exitedMessage with the log's last lines when it
+// exits first; kills it and throws notReadyMessage at the deadline, in
+// milliseconds.
+export async function awaitReady(
+  child: ChildProcess,
+  {
+    runFile,
+    record,
+    log,
+    ready,
+    deadline,
+    exitedMessage,
+    notReadyMessage,
+  }: {
+    runFile: string;
+    record: Omit<RunRecord, 'pid'>;
+    log: string;
+    ready: () => Promise<boolean>;
+    deadline: number;
+    exitedMessage: string;
+    notReadyMessage: string;
+  },
+): Promise<void> {
+  let exited = false;
+  const failed = new Promise<never>((_, reject) => {
+    child.once('error', reject);
+    child.once('exit', () => {
+      exited = true;
+      reject(new Error(`${exitedMessage}: ${lastLines(log)}`));
+    });
+  });
+  failed.catch(() => undefined);
+  if (child.pid !== undefined) {
+    writeRunFile(runFile, { pid: child.pid, ...record });
+  }
+
+  const isReady = await Promise.race([
+    waitFor(async () => exited || (await ready()), deadline),
+    failed,
+  ]);
+  if (exited) await failed;
+  if (!isReady) {
+    child.kill('SIGKILL');
+    removeRunFile(runFile);
+    throw new Error(notReadyMessage);
   }
 }
 

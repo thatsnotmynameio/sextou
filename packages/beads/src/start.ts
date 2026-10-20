@@ -40,10 +40,18 @@ export interface Beads {
   stop: () => Promise<void>;
 }
 
+// The start steps, in the order they run.
+export type StartStep =
+  | 'binaries'
+  | 'bd serve leftover'
+  | 'dolt'
+  | 'organization'
+  | 'bd serve';
+
 // A failed start step, named for the server's message.
 export class BeadsStartError extends Error {
   constructor(
-    readonly step: string,
+    readonly step: StartStep,
     readonly reason: string,
   ) {
     super(`${step}: ${reason}`);
@@ -98,9 +106,16 @@ export async function startBeads({
   );
   // The Dolt step created the password.
   const doltPassword = await step(layout, 'organization', async () => {
-    const doltPassword = readFileSync(layout.doltPassword, 'utf8');
-    await ensureOrganization({ bd, git, doltPort, doltPassword, layout, env });
-    return doltPassword;
+    const password = readFileSync(layout.doltPassword, 'utf8');
+    await ensureOrganization({
+      bd,
+      git,
+      doltPort,
+      doltPassword: password,
+      layout,
+      env,
+    });
+    return password;
   });
   const serve = await step(layout, 'bd serve', () =>
     startBdServe({
@@ -133,7 +148,7 @@ export async function startBeads({
 // a credential it was given, so the message never carries one.
 async function step<T>(
   layout: Layout,
-  name: string,
+  name: StartStep,
   run: () => Promise<T>,
 ): Promise<T> {
   try {
