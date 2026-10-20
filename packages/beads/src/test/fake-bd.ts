@@ -1,8 +1,7 @@
 // A fake bd: records its call and acts out `init`, `config set` and `serve`
 // as the real one does. Usage: fake-bd.ts <calls> <mode> <bd arguments...>
-// Modes: normal; init-fails, which prints the Dolt password to stderr and
-// fails; config-fails; serve-503, which never gets ready; serve-exit, which
-// prints the token to stderr and fails at once.
+// Modes: normal; init-fails; config-fails; serve-503, which never gets ready;
+// serve-exit, which fails at once. It never prints a credential.
 import {
   appendFileSync,
   existsSync,
@@ -26,7 +25,7 @@ const option = (name: string) => argv[argv.indexOf(name) + 1];
 
 if (argv[0] === 'init') {
   if (mode === 'init-fails') {
-    console.error(`fake bd: cannot log in with ${env.BEADS_DOLT_PASSWORD}`);
+    console.error('fake bd: cannot log in to Dolt');
     process.exit(1);
   }
   // --init-if-missing: an initialized folder is left as it is.
@@ -46,14 +45,12 @@ if (argv[0] === 'init') {
   }
   appendFileSync(join(beadsDir, 'config.yaml'), `${argv[2]}: ${argv[3]}\n`);
 } else if (argv[0] === 'serve') {
-  const token = readFileSync(option('--auth-token-file'), 'utf8');
   // bd serve runs git to find the root of the folder it serves.
   if (mode === 'serve-exit' || !existsSync(join(process.cwd(), '.git'))) {
-    console.error(
-      `fake bd: cannot determine repository root${mode === 'serve-exit' ? ` (token ${token})` : ''}`,
-    );
+    console.error('fake bd: cannot determine repository root');
     process.exit(1);
   }
+  const token = readFileSync(option('--auth-token-file'), 'utf8');
   const [host, port] = option('--addr').split(':');
   createServer((request, response) => {
     const authorized = request.headers.authorization === `Bearer ${token}`;

@@ -121,7 +121,7 @@ describe.runIf(process.platform !== 'win32')('ensureOrganization', () => {
     const bd = fakeBinary(join(dir, 'bd'), 'fake-bd.ts', calls, 'init-fails');
 
     await expect(ensureOrganization(options({ bd }))).rejects.toThrow(
-      'bd init exited with code 1: fake bd: cannot log in with the-password',
+      'bd init exited with code 1: fake bd: cannot log in to Dolt',
     );
     expect(recordedCalls(calls)).toHaveLength(1);
   });

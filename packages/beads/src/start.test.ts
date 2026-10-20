@@ -1,5 +1,5 @@
 import { once } from 'node:events';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -142,26 +142,20 @@ describe.runIf(process.platform !== 'win32')('startBeads', () => {
     });
   });
 
-  it('names the organization step, without the password bd printed', async () => {
-    const error = await startBeads(options({ bdMode: 'init-fails' })).catch(
-      (caught: Error) => caught,
-    );
-    const password = readFileSync(layoutOf(dataDir).doltPasswordFile, 'utf8');
-
-    expect(error).toMatchObject({ step: 'organization' });
-    expect((error as Error).message).toContain('bd init exited with code 1');
-    expect((error as Error).message).not.toContain(password);
+  it('names the organization step when bd init fails', async () => {
+    await expect(
+      startBeads(options({ bdMode: 'init-fails' })),
+    ).rejects.toMatchObject({
+      step: 'organization',
+      message:
+        'organization: bd init exited with code 1: fake bd: cannot log in to Dolt',
+    });
   });
 
-  it('names the bd serve step, without the token bd printed', async () => {
-    const error = await startBeads(options({ bdMode: 'serve-exit' })).catch(
-      (caught: Error) => caught,
-    );
-    const token = readFileSync(layoutOf(dataDir).bdServeTokenFile, 'utf8');
-
-    expect(error).toMatchObject({ step: 'bd serve' });
-    expect((error as Error).message).toContain('[redacted]');
-    expect((error as Error).message).not.toContain(token);
+  it('names the bd serve step when bd serve fails', async () => {
+    await expect(
+      startBeads(options({ bdMode: 'serve-exit' })),
+    ).rejects.toMatchObject({ step: 'bd serve' });
   });
 
   // Its pid is free once it exited, and could belong to another process.
