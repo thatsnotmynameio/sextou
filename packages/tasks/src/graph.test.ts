@@ -37,8 +37,23 @@ function links() {
     .all();
 }
 
-function create(title: string, priority = 2, parentId?: string) {
-  const result = tasks.createTask({ title, kind: 'task', priority, parentId });
+function rows() {
+  return connection().prepare('SELECT count(*) AS n FROM task').get()?.n;
+}
+
+function create(
+  title: string,
+  priority = 2,
+  parentId?: string,
+  assignee = 'dev',
+) {
+  const result = tasks.createTask({
+    title,
+    kind: 'task',
+    priority,
+    parentId,
+    assignee,
+  });
   if (!result.ok) throw new Error(`create ${title}: ${result.reason}`);
   return result.task.id;
 }
@@ -51,8 +66,8 @@ function unlink(taskId: string, blockerId: string) {
   return tasks.unlink({ taskId, blockerId });
 }
 
-function ready(limit = 100) {
-  const result = tasks.listReady(limit);
+function ready(limit = 100, assignees = ['dev']) {
+  const result = tasks.listReady({ assignees, limit });
   if (!result.ok) throw new Error(`ready: ${result.reason}`);
   return result.tasks.map((task) => task.title);
 }
@@ -74,6 +89,7 @@ describe('createTask', () => {
       title: '  Write the parser ',
       kind: ' task ',
       priority: 2,
+      assignee: '  dev ',
     });
     expect(result).toEqual({
       ok: true,
@@ -83,6 +99,9 @@ describe('createTask', () => {
         kind: 'task',
         priority: 2,
         parentId: null,
+        assignee: 'dev',
+        description: null,
+        sourcePath: null,
         status: 'open',
         timeCreated: 1_700_000_000_000,
       },
@@ -90,22 +109,93 @@ describe('createTask', () => {
     expect(ready()).toEqual(['Write the parser']);
   });
 
+  it('keeps the description and source path, trimmed at the ends only', () => {
+    const result = tasks.createTask({
+      title: 'A',
+      kind: 'task',
+      priority: 2,
+      assignee: 'dev',
+      description: '\n  Parse the input.\n\nThen print it.  ',
+      sourcePath: ' https://github.com/o/r/issues/1 ',
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      task: {
+        description: 'Parse the input.\n\nThen print it.',
+        sourcePath: 'https://github.com/o/r/issues/1',
+      },
+    });
+    expect(
+      connection()
+        .prepare('SELECT assignee, description, source_path FROM task')
+        .get(),
+    ).toEqual({
+      assignee: 'dev',
+      description: 'Parse the input.\n\nThen print it.',
+      source_path: 'https://github.com/o/r/issues/1',
+    });
+  });
+
+  it('stores a file path as the source path, as given', () => {
+    const result = tasks.createTask({
+      title: 'A',
+      kind: 'task',
+      priority: 2,
+      assignee: 'dev',
+      sourcePath: './notes/task.md',
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      task: { sourcePath: './notes/task.md' },
+    });
+  });
+
+  // Covers AE4.
+  it('stores a blank description or source path as null', () => {
+    const blankDescription = tasks.createTask({
+      title: 'A',
+      kind: 'task',
+      priority: 2,
+      assignee: 'dev',
+      description: '   ',
+    });
+    const blankSource = tasks.createTask({
+      title: 'B',
+      kind: 'task',
+      priority: 2,
+      assignee: 'dev',
+      sourcePath: ' ',
+    });
+    expect(blankDescription).toMatchObject({
+      ok: true,
+      task: { description: null, sourcePath: null },
+    });
+    expect(blankSource).toMatchObject({ ok: true, task: { sourcePath: null } });
+  });
+
   it.each([
-    { title: '', kind: 'task', priority: 2 },
-    { title: '   ', kind: 'task', priority: 2 },
-    { title: 'A', kind: '', priority: 2 },
-    { title: 'A', kind: ' ', priority: 2 },
-    { title: 'A', kind: 'task', priority: 5 },
-    { title: 'A', kind: 'task', priority: -1 },
-    { title: 'A', kind: 'task', priority: 1.5 },
-    { title: 'A', kind: 'task', priority: 2, parentId: 7 },
-    { title: 7, kind: 'task', priority: 2 },
+    { title: '', kind: 'task', priority: 2, assignee: 'dev' },
+    { title: '   ', kind: 'task', priority: 2, assignee: 'dev' },
+    { title: 'A', kind: '', priority: 2, assignee: 'dev' },
+    { title: 'A', kind: ' ', priority: 2, assignee: 'dev' },
+    { title: 'A', kind: 'task', priority: 5, assignee: 'dev' },
+    { title: 'A', kind: 'task', priority: -1, assignee: 'dev' },
+    { title: 'A', kind: 'task', priority: 1.5, assignee: 'dev' },
+    { title: 'A', kind: 'task', priority: 2, assignee: 'dev', parentId: 7 },
+    { title: 7, kind: 'task', priority: 2, assignee: 'dev' },
+    { title: 'A', kind: 'task', priority: 2 },
+    { title: 'A', kind: 'task', priority: 2, assignee: '' },
+    // Covers AE3.
+    { title: 'A', kind: 'task', priority: 2, assignee: '   ' },
+    { title: 'A', kind: 'task', priority: 2, assignee: 7 },
+    { title: 'A', kind: 'task', priority: 2, assignee: 'dev', description: 42 },
+    { title: 'A', kind: 'task', priority: 2, assignee: 'dev', sourcePath: 42 },
   ])('refuses %j as invalid, writing nothing', (input) => {
     expect(tasks.createTask(input as never)).toEqual({
       ok: false,
       reason: 'invalid',
     });
-    expect(ready()).toEqual([]);
+    expect(rows()).toBe(0);
   });
 
   it('refuses a missing parent as not_found, writing nothing', () => {
@@ -115,6 +205,7 @@ describe('createTask', () => {
         kind: 'task',
         priority: 2,
         parentId: 'tsk_missing',
+        assignee: 'dev',
       }),
     ).toEqual({ ok: false, reason: 'not_found' });
     expect(ready()).toEqual([]);
@@ -128,6 +219,7 @@ describe('createTask', () => {
       kind: 'task',
       priority: 2,
       parentId: parent,
+      assignee: 'dev',
     });
     expect(result).toMatchObject({ ok: true, task: { parentId: parent } });
   });
@@ -137,6 +229,7 @@ describe('createTask', () => {
       title: 'A',
       kind: 'initiative',
       priority: 0,
+      assignee: 'dev',
     });
     expect(result).toMatchObject({ ok: true, task: { kind: 'initiative' } });
   });
@@ -346,27 +439,88 @@ describe('listReady', () => {
   });
 
   it('returns whole tasks', () => {
-    const a = create('A');
-    const result = tasks.listReady(1);
-    expect(result).toMatchObject({ ok: true, tasks: [{ id: a, title: 'A' }] });
+    const created = tasks.createTask({
+      title: 'A',
+      kind: 'task',
+      priority: 2,
+      assignee: 'dev',
+      description: 'Parse the input.',
+      sourcePath: './notes/task.md',
+    });
+    if (!created.ok) throw new Error(`create: ${created.reason}`);
+    expect(tasks.listReady({ assignees: ['dev'], limit: 1 })).toEqual({
+      ok: true,
+      tasks: [created.task],
+    });
   });
+
+  // Covers AE1.
+  it("merges the assignees' ready tasks into one list and leaves out the rest", () => {
+    create('A', 2, undefined, 'dev');
+    create('B', 1, undefined, 'bot-dev-1');
+    create('C', 0, undefined, 'qa');
+    expect(ready(100, ['bot-dev-1', 'dev'])).toEqual(['B', 'A']);
+  });
+
+  // Covers AE2.
+  it('matches the assignee exactly', () => {
+    create('A', 2, undefined, 'dev');
+    expect(ready(100, ['Dev'])).toEqual([]);
+    expect(ready(100, ['dev-1'])).toEqual([]);
+  });
+
+  it('orders two assignees by creation across both, up to the limit', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+    const titles = Array.from({ length: 6 }, (_, n) => `T${n}`);
+    titles.forEach((title, n) =>
+      create(title, 2, undefined, ['dev', 'qa'][n % 2]),
+    );
+    expect(ready(100, ['qa', 'dev'])).toEqual(titles);
+    expect(ready(3, ['qa', 'dev'])).toEqual(['T0', 'T1', 'T2']);
+  });
+
+  it('trims the assignees asked for and returns a task once', () => {
+    create('A');
+    expect(ready(100, [' dev '])).toEqual(['A']);
+    expect(ready(100, ['dev', 'dev'])).toEqual(['A']);
+  });
+
+  // Covers AE5.
+  it.each([[], undefined, 'dev', [''], ['  '], [7]])(
+    'refuses %j as the assignees as invalid',
+    (assignees) => {
+      expect(tasks.listReady({ assignees, limit: 1 } as never)).toEqual({
+        ok: false,
+        reason: 'invalid',
+      });
+    },
+  );
 
   it.each([0, -1, 1.5, Number.NaN])(
     'refuses a limit of %d as invalid',
     (limit) => {
-      expect(tasks.listReady(limit)).toEqual({ ok: false, reason: 'invalid' });
+      expect(tasks.listReady({ assignees: ['dev'], limit })).toEqual({
+        ok: false,
+        reason: 'invalid',
+      });
     },
   );
 
-  it('reads through the ready index, with no table scan or sort', () => {
+  it('searches the ready index by assignee, with no table scan', () => {
     const statement = prepare.mock.results
       .map((result) => result.value as StatementSync)
       .find((candidate) => candidate.sourceSQL.includes('open_blockers = 0'));
     const plan = connection()
       .prepare(`EXPLAIN QUERY PLAN ${statement?.sourceSQL}`)
-      .all(10)
+      .all('["dev","qa"]', 10)
       .map((row) => String(row.detail));
-    expect(plan).toEqual(['SCAN task USING INDEX task_ready']);
+    // The sort covers only the rows the search found.
+    expect(plan).toEqual([
+      'SEARCH task USING INDEX task_ready (assignee=?)',
+      'LIST SUBQUERY 1',
+      'SCAN json_each VIRTUAL TABLE INDEX 1:',
+      'USE TEMP B-TREE FOR ORDER BY',
+    ]);
   });
 });
 
@@ -401,8 +555,10 @@ describe('the graph after random operations', () => {
     const ids = [create('T0')];
     for (let step = 0; step < 400; step++) {
       const roll = next();
-      if (roll < 0.25) ids.push(create(`T${ids.length}`, 2, pick(ids)));
-      else if (roll < 0.6) link(pick(ids), pick(ids));
+      if (roll < 0.25) {
+        const assignee = pick(['dev', 'qa', 'ops']);
+        ids.push(create(`T${ids.length}`, 2, pick(ids), assignee));
+      } else if (roll < 0.6) link(pick(ids), pick(ids));
       else if (roll < 0.8) unlink(pick(ids), pick(ids));
       else tasks.closeTask(pick(ids));
     }
