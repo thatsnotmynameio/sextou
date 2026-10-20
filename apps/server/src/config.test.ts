@@ -8,6 +8,7 @@ const paths: PathContext = {
 };
 const defaultDataDir = '/home/ana/.local/share/sextou';
 const defaultDatabase = `${defaultDataDir}/sextou.db`;
+const defaultTasks = `${defaultDataDir}/default.tasks.db`;
 
 function load(env: Record<string, string | undefined>, args: string[]) {
   return loadConfig(env, args, paths);
@@ -20,6 +21,7 @@ describe('loadConfig', () => {
       port: 4310,
       dataDir: defaultDataDir,
       database: defaultDatabase,
+      tasks: defaultTasks,
     });
   });
 
@@ -31,6 +33,7 @@ describe('loadConfig', () => {
       port: 8080,
       dataDir: defaultDataDir,
       database: defaultDatabase,
+      tasks: defaultTasks,
     });
   });
 
@@ -47,6 +50,7 @@ describe('loadConfig', () => {
       port: 9090,
       dataDir: defaultDataDir,
       database: defaultDatabase,
+      tasks: defaultTasks,
     });
   });
 
@@ -127,12 +131,13 @@ describe('loadConfig', () => {
     expect(load({}, ['--data-dir', '/d'])).toMatchObject({
       dataDir: '/d',
       database: '/d/sextou.db',
+      tasks: '/d/default.tasks.db',
     });
   });
 
-  it('keeps a configured database outside the data directory', () => {
+  it('keeps a configured database outside the data directory, and the tasks in it', () => {
     expect(load({}, ['--data-dir', '/d', '--database', '/x.db'])).toMatchObject(
-      { dataDir: '/d', database: '/x.db' },
+      { dataDir: '/d', database: '/x.db', tasks: '/d/default.tasks.db' },
     );
   });
 
@@ -140,6 +145,7 @@ describe('loadConfig', () => {
     expect(load({ SEXTOU_SERVER_DATA_DIR: '/e' }, [])).toMatchObject({
       dataDir: '/e',
       database: '/e/sextou.db',
+      tasks: '/e/default.tasks.db',
     });
   });
 

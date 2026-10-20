@@ -1,8 +1,16 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { healthResponseSchema } from '@sextou/contract';
 import { openDatabase, type Database } from '@sextou/data';
+import { openTasks, type Tasks } from '@sextou/tasks';
 import type { Hono } from 'hono';
 import {
   afterEach,
@@ -32,6 +40,12 @@ vi.mock('@sextou/data', async (importOriginal) => {
   return { openDatabase: vi.fn(data.openDatabase) };
 });
 
+// The real package too, so each test can reach the task graph main opened.
+vi.mock('@sextou/tasks', async (importOriginal) => {
+  const tasks = await importOriginal<typeof import('@sextou/tasks')>();
+  return { openTasks: vi.fn(tasks.openTasks) };
+});
+
 let dir: string;
 let on: MockInstance<typeof process.on>;
 let off: MockInstance<typeof process.off>;
@@ -47,6 +61,20 @@ function args(...rest: string[]) {
 
 function openedDatabase(): Database {
   return vi.mocked(openDatabase).mock.results[0].value as Database;
+}
+
+function openedTasks(): Tasks {
+  return vi.mocked(openTasks).mock.results[0].value as Tasks;
+}
+
+// A closed task graph throws on any operation.
+function tasksOpen() {
+  try {
+    openedTasks().listReady(1);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // The handler main registered for a signal.
@@ -77,6 +105,9 @@ afterEach(() => {
   for (const result of vi.mocked(openDatabase).mock.results) {
     if (result.type === 'return') result.value.close();
   }
+  for (const result of vi.mocked(openTasks).mock.results) {
+    if (result.type === 'return') result.value.close();
+  }
   process.exitCode = undefined;
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
@@ -95,6 +126,7 @@ it('starts the server from the arguments and prints where it listens', async () 
     port: 0,
     dataDir: dir,
     database: ':memory:',
+    tasks: join(dir, 'default.tasks.db'),
   });
   // The app reports the package's version, an uptime counted from the start
   // just now, and the database it opened.
@@ -139,14 +171,62 @@ it.runIf(process.platform === 'linux')(
   },
 );
 
-it('opens the database, then listens', async () => {
+it('opens the database, then the task graph, then listens', async () => {
   args('--database', ':memory:');
 
   await import('./main');
 
   expect(vi.mocked(openDatabase).mock.invocationCallOrder[0]).toBeLessThan(
+    vi.mocked(openTasks).mock.invocationCallOrder[0],
+  );
+  expect(vi.mocked(openTasks).mock.invocationCallOrder[0]).toBeLessThan(
     vi.mocked(startServer).mock.invocationCallOrder[0],
   );
+});
+
+// Covers AE7. The default path is the Linux one; CI runs Linux.
+it.runIf(process.platform === 'linux')(
+  'starts with no git on the PATH and keeps only its two databases',
+  async () => {
+    vi.stubEnv('PATH', join(dir, 'empty'));
+    const dataDir = join(dir, 'data');
+    args('--data-dir', dataDir);
+
+    await import('./main');
+
+    const [app] = vi.mocked(startServer).mock.calls[0];
+    const response = await (app as Hono).request('/health');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ database: 'up' });
+    const files = readdirSync(dataDir);
+    expect(files).toEqual(
+      expect.arrayContaining(['sextou.db', 'default.tasks.db']),
+    );
+    for (const file of files) {
+      expect(file).toMatch(/^(sextou|default\.tasks)\.db(-wal|-shm)?$/);
+    }
+  },
+);
+
+describe('when the task graph cannot be opened', () => {
+  it('exits with 1 naming the path and the reason, closes the database, and never listens', async () => {
+    // A newer version wrote this file.
+    const tasks = join(dir, 'default.tasks.db');
+    const newer = new DatabaseSync(tasks);
+    newer.exec('PRAGMA user_version = 99');
+    newer.close();
+    args('--data-dir', dir, '--database', ':memory:');
+
+    await import('./main');
+
+    expect(startServer).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+    expect(console.error).toHaveBeenCalledWith(
+      `Could not open the task graph at ${tasks}: This tasks database was written by a newer version (schema 99, this one knows 1)`,
+    );
+    expect(openedDatabase().ping()).toBe(false);
+    expect(on).not.toHaveBeenCalled();
+  });
 });
 
 describe('when the database cannot be opened', () => {
@@ -158,6 +238,7 @@ describe('when the database cannot be opened', () => {
     await import('./main');
 
     expect(startServer).not.toHaveBeenCalled();
+    expect(openTasks).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
     // The reason is the file system's: the folder is a file.
     expect(console.error).toHaveBeenCalledWith(
@@ -167,7 +248,7 @@ describe('when the database cannot be opened', () => {
   });
 });
 
-it('closes the database and rethrows when listening fails', async () => {
+it('closes the task graph and the database and rethrows when listening fails', async () => {
   const error = Object.assign(new Error('listen EADDRINUSE'), {
     code: 'EADDRINUSE',
   });
@@ -176,31 +257,40 @@ it('closes the database and rethrows when listening fails', async () => {
 
   await expect(import('./main')).rejects.toBe(error);
 
+  expect(tasksOpen()).toBe(false);
   expect(openedDatabase().ping()).toBe(false);
   expect(on).not.toHaveBeenCalled();
 });
 
 describe.each(['SIGTERM', 'SIGINT'])('on %s', (signal) => {
-  it('closes the server, then the database, then exits with 0', async () => {
-    let databaseAnsweredAtServerClose: boolean | undefined;
+  it('closes the server, then the task graph, then the database, then exits with 0', async () => {
+    let openAtServerClose: boolean[] | undefined;
+    let databaseAnsweredAtTasksClose: boolean | undefined;
     vi.mocked(startServer).mockResolvedValueOnce({
       host: '127.0.0.1',
       port: 54321,
       close: () => {
-        databaseAnsweredAtServerClose = openedDatabase().ping();
+        openAtServerClose = [tasksOpen(), openedDatabase().ping()];
         return Promise.resolve();
       },
     });
     exit.mockImplementation(((code: number) => {
+      expect(tasksOpen()).toBe(false);
       expect(openedDatabase().ping()).toBe(false);
       expect(code).toBe(0);
     }) as never);
     args('--database', ':memory:');
     await import('./main');
+    const close = openedTasks().close;
+    vi.spyOn(openedTasks(), 'close').mockImplementation(() => {
+      databaseAnsweredAtTasksClose = openedDatabase().ping();
+      close();
+    });
 
     await handler(signal)();
 
-    expect(databaseAnsweredAtServerClose).toBe(true);
+    expect(openAtServerClose).toEqual([true, true]);
+    expect(databaseAnsweredAtTasksClose).toBe(true);
     expect(exit).toHaveBeenCalledWith(0);
   });
 

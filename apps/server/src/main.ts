@@ -2,6 +2,7 @@
 // source, dist/server.mjs is its build.
 import { homedir } from 'node:os';
 import { openDatabase, type Database } from '@sextou/data';
+import { openTasks, type Tasks } from '@sextou/tasks';
 import packageJson from '../package.json';
 import { createApp } from './app';
 import { loadConfig } from './config';
@@ -25,9 +26,24 @@ try {
   process.exitCode = 1;
 }
 
-if (database) await serve(database);
+// The task graph opens after the database and before the server listens. No
+// route reaches it yet.
+let tasks: Tasks | undefined;
+if (database) {
+  try {
+    tasks = openTasks(config.tasks);
+  } catch (error) {
+    console.error(
+      `Could not open the task graph at ${config.tasks}: ${(error as Error).message}`,
+    );
+    database.close();
+    process.exitCode = 1;
+  }
+}
 
-async function serve(database: Database) {
+if (database && tasks) await serve(database, tasks);
+
+async function serve(database: Database, tasks: Tasks) {
   const app = createApp({
     version: packageJson.version,
     startedAt: new Date(),
@@ -35,6 +51,7 @@ async function serve(database: Database) {
     pingDatabase: database.ping,
   });
   const server = await startServer(app, config).catch((error: unknown) => {
+    tasks.close();
     database.close();
     throw error;
   });
@@ -48,6 +65,7 @@ async function serve(database: Database) {
     process.off('SIGINT', shutdown);
     process.off('SIGTERM', shutdown);
     await server.close();
+    tasks.close();
     database.close();
     process.exit(0);
   };

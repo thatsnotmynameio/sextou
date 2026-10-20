@@ -5,11 +5,15 @@ import { defaultDataDirectory } from './data-directory';
 export interface Config {
   host: string;
   port: number;
-  // The absolute folder that holds sextou's databases: the main one unless
-  // --database moves it.
+  // The absolute folder that holds sextou's databases: the task graph
+  // always, the main database unless --database moves it.
   dataDir: string;
   // An absolute file path, or ':memory:'.
   database: string;
+  // The default organization's task graph, an absolute file path in the data
+  // directory. Each organization will get a file of its own; only the
+  // default exists.
+  tasks: string;
 }
 
 // What the paths depend on: main passes the process's own.
@@ -80,7 +84,9 @@ export function loadConfig(
           )
         : path.join(dataDir, 'sextou.db');
 
-  return { host, port, dataDir, database };
+  const tasks = path.join(dataDir, 'default.tasks.db');
+
+  return { host, port, dataDir, database, tasks };
 }
 
 // Node binds an empty host to every interface: an empty value is an error,
