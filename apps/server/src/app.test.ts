@@ -8,7 +8,6 @@ const app = createApp({
   startedAt,
   now: () => startedAt,
   pingDatabase: () => true,
-  pingBeads: () => Promise.resolve(true),
 });
 
 describe('createApp', () => {
@@ -19,7 +18,6 @@ describe('createApp', () => {
       version: '1.2.3',
       uptimeSeconds: 0,
       database: 'up',
-      beads: 'up',
     });
   });
 
@@ -29,24 +27,10 @@ describe('createApp', () => {
       startedAt,
       now: () => startedAt,
       pingDatabase: () => false,
-      pingBeads: () => Promise.resolve(true),
     });
     const response = await down.request('/health');
     expect(response.status).toBe(503);
     expect(await response.json()).toMatchObject({ database: 'down' });
-  });
-
-  it('passes its beads probe to /health', async () => {
-    const down = createApp({
-      version: '1.2.3',
-      startedAt,
-      now: () => startedAt,
-      pingDatabase: () => true,
-      pingBeads: () => Promise.resolve(false),
-    });
-    const response = await down.request('/health');
-    expect(response.status).toBe(503);
-    expect(await response.json()).toMatchObject({ beads: 'down' });
   });
 
   it('answers 404 for a path no module serves', async () => {

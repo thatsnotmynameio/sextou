@@ -14,10 +14,10 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.5",
-    "@sextou/beads": "workspace:*",
     "@sextou/contract": "workspace:*",
     "@sextou/core": "workspace:*",
     "@sextou/data": "workspace:*",
+    "@sextou/tasks": "workspace:*",
     "hono": "^4.13.13"
   },
   "devDependencies": {

@@ -8,28 +8,23 @@ export interface HealthRoutesOptions {
   now: () => Date;
   // Whether the database answers a query; never throws.
   pingDatabase: () => boolean;
-  // Whether beads answers; never rejects.
-  pingBeads: () => Promise<boolean>;
 }
 
-// GET /: the server's version, uptime, and database and beads status,
-// computed by the core. 503 when either does not answer, with the same body.
+// GET /: the server's version, uptime and database status, computed by the
+// core. 503 when the database does not answer, with the same body.
 export function healthRoutes({
   version,
   startedAt,
   now,
   pingDatabase,
-  pingBeads,
 }: HealthRoutesOptions) {
-  return new Hono().get('/', async (c) => {
+  return new Hono().get('/', (c) => {
     const health = getHealth({
       version,
       startedAt,
       now: now(),
       databaseAnswers: pingDatabase(),
-      beadsAnswers: await pingBeads(),
     });
-    const up = health.database === 'up' && health.beads === 'up';
-    return c.json<HealthResponse>(health, up ? 200 : 503);
+    return c.json<HealthResponse>(health, health.database === 'up' ? 200 : 503);
   });
 }

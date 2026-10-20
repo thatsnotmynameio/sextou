@@ -1,9 +1,16 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { BeadsStartError, startBeads, type Beads } from '@sextou/beads';
+import { DatabaseSync } from 'node:sqlite';
 import { healthResponseSchema } from '@sextou/contract';
 import { openDatabase, type Database } from '@sextou/data';
+import { openTasks, type Tasks } from '@sextou/tasks';
 import type { Hono } from 'hono';
 import {
   afterEach,
@@ -27,22 +34,19 @@ vi.mock('./server', () => ({
   ),
 }));
 
-// No test downloads or runs bd or Dolt: startBeads is a stub each test
-// shapes, with the package's real error class.
-vi.mock('@sextou/beads', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@sextou/beads')>()),
-  startBeads: vi.fn(),
-}));
-
 // The real package, watched so each test can reach the database main opened.
 vi.mock('@sextou/data', async (importOriginal) => {
   const data = await importOriginal<typeof import('@sextou/data')>();
   return { openDatabase: vi.fn(data.openDatabase) };
 });
 
+// The real package too, so each test can reach the task graph main opened.
+vi.mock('@sextou/tasks', async (importOriginal) => {
+  const tasks = await importOriginal<typeof import('@sextou/tasks')>();
+  return { openTasks: vi.fn(tasks.openTasks) };
+});
+
 let dir: string;
-let beads: Beads;
-let beadsAnswers: boolean;
 let on: MockInstance<typeof process.on>;
 let off: MockInstance<typeof process.off>;
 let exit: MockInstance<typeof process.exit>;
@@ -55,15 +59,22 @@ function args(...rest: string[]) {
   ]);
 }
 
-function stubBeads(): Beads {
-  return {
-    service: { ping: vi.fn(() => Promise.resolve(beadsAnswers)) },
-    stop: vi.fn(() => Promise.resolve()),
-  };
-}
-
 function openedDatabase(): Database {
   return vi.mocked(openDatabase).mock.results[0].value as Database;
+}
+
+function openedTasks(): Tasks {
+  return vi.mocked(openTasks).mock.results[0].value as Tasks;
+}
+
+// A closed task graph throws on any operation.
+function tasksOpen() {
+  try {
+    openedTasks().listReady(1);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // The handler main registered for a signal.
@@ -83,9 +94,6 @@ beforeEach(() => {
   vi.stubEnv('SEXTOU_SERVER_PORT', undefined);
   vi.stubEnv('SEXTOU_SERVER_DATABASE', undefined);
   vi.stubEnv('SEXTOU_SERVER_DATA_DIR', undefined);
-  beadsAnswers = true;
-  beads = stubBeads();
-  vi.mocked(startBeads).mockImplementation(() => Promise.resolve(beads));
   on = vi.spyOn(process, 'on').mockImplementation(() => process);
   off = vi.spyOn(process, 'off').mockImplementation(() => process);
   exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
@@ -95,6 +103,9 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const result of vi.mocked(openDatabase).mock.results) {
+    if (result.type === 'return') result.value.close();
+  }
+  for (const result of vi.mocked(openTasks).mock.results) {
     if (result.type === 'return') result.value.close();
   }
   process.exitCode = undefined;
@@ -115,6 +126,7 @@ it('starts the server from the arguments and prints where it listens', async () 
     port: 0,
     dataDir: dir,
     database: ':memory:',
+    tasks: join(dir, 'default.tasks.db'),
   });
   // The app reports the package's version, an uptime counted from the start
   // just now, and the database it opened.
@@ -124,39 +136,10 @@ it('starts the server from the arguments and prints where it listens', async () 
     version: packageJson.version,
     uptimeSeconds: 0,
     database: 'up',
-    beads: 'up',
   });
   expect(console.log).toHaveBeenCalledWith(
     'listening on http://127.0.0.1:54321',
   );
-});
-
-it('starts beads in the data directory, with the PATH for git', async () => {
-  vi.stubEnv('PATH', '/usr/bin');
-  args('--data-dir', dir, '--database', ':memory:');
-
-  await import('./main');
-
-  expect(startBeads).toHaveBeenCalledOnce();
-  const [options] = vi.mocked(startBeads).mock.calls[0];
-  expect(options).toMatchObject({ dataDir: dir, pathEnv: '/usr/bin' });
-  options.log('Downloading bd');
-  expect(console.log).toHaveBeenCalledWith('Downloading bd');
-});
-
-it('asks beads about the default organization on each health request', async () => {
-  args('--database', ':memory:');
-  await import('./main');
-  const [app] = vi.mocked(startServer).mock.calls[0];
-
-  beadsAnswers = false;
-  const down = await (app as Hono).request('/health');
-  expect(down.status).toBe(503);
-  expect(await down.json()).toMatchObject({ beads: 'down' });
-  beadsAnswers = true;
-  expect((await (app as Hono).request('/health')).status).toBe(200);
-  expect(beads.service.ping).toHaveBeenCalledTimes(2);
-  expect(beads.service.ping).toHaveBeenCalledWith('default');
 });
 
 it('brackets an IPv6 address in the listening URL', async () => {
@@ -188,35 +171,58 @@ it.runIf(process.platform === 'linux')(
   },
 );
 
-it('opens the database, then starts beads, then listens', async () => {
+it('opens the database, then the task graph, then listens', async () => {
   args('--database', ':memory:');
 
   await import('./main');
 
   expect(vi.mocked(openDatabase).mock.invocationCallOrder[0]).toBeLessThan(
-    vi.mocked(startBeads).mock.invocationCallOrder[0],
+    vi.mocked(openTasks).mock.invocationCallOrder[0],
   );
-  expect(vi.mocked(startBeads).mock.invocationCallOrder[0]).toBeLessThan(
+  expect(vi.mocked(openTasks).mock.invocationCallOrder[0]).toBeLessThan(
     vi.mocked(startServer).mock.invocationCallOrder[0],
   );
 });
 
-describe('when beads cannot start', () => {
-  it('exits with 1 naming the step, closes the database, and never listens', async () => {
-    vi.mocked(startBeads).mockRejectedValueOnce(
-      new BeadsStartError(
-        'binaries',
-        'Could not download https://x: fetch failed',
-      ),
+// Covers AE7. The default path is the Linux one; CI runs Linux.
+it.runIf(process.platform === 'linux')(
+  'starts with no git on the PATH and keeps only its two databases',
+  async () => {
+    vi.stubEnv('PATH', join(dir, 'empty'));
+    const dataDir = join(dir, 'data');
+    args('--data-dir', dataDir);
+
+    await import('./main');
+
+    const [app] = vi.mocked(startServer).mock.calls[0];
+    const response = await (app as Hono).request('/health');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ database: 'up' });
+    const files = readdirSync(dataDir);
+    expect(files).toEqual(
+      expect.arrayContaining(['sextou.db', 'default.tasks.db']),
     );
-    args('--database', ':memory:');
+    for (const file of files) {
+      expect(file).toMatch(/^(sextou|default\.tasks)\.db(-wal|-shm)?$/);
+    }
+  },
+);
+
+describe('when the task graph cannot be opened', () => {
+  it('exits with 1 naming the path and the reason, closes the database, and never listens', async () => {
+    // A newer version wrote this file.
+    const tasks = join(dir, 'default.tasks.db');
+    const newer = new DatabaseSync(tasks);
+    newer.exec('PRAGMA user_version = 99');
+    newer.close();
+    args('--data-dir', dir, '--database', ':memory:');
 
     await import('./main');
 
     expect(startServer).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
     expect(console.error).toHaveBeenCalledWith(
-      'Could not start beads (binaries): Could not download https://x: fetch failed',
+      `Could not open the task graph at ${tasks}: This tasks database was written by a newer version (schema 99, this one knows 1)`,
     );
     expect(openedDatabase().ping()).toBe(false);
     expect(on).not.toHaveBeenCalled();
@@ -232,7 +238,7 @@ describe('when the database cannot be opened', () => {
     await import('./main');
 
     expect(startServer).not.toHaveBeenCalled();
-    expect(startBeads).not.toHaveBeenCalled();
+    expect(openTasks).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
     // The reason is the file system's: the folder is a file.
     expect(console.error).toHaveBeenCalledWith(
@@ -242,7 +248,7 @@ describe('when the database cannot be opened', () => {
   });
 });
 
-it('stops beads, closes the database and rethrows when listening fails', async () => {
+it('closes the task graph and the database and rethrows when listening fails', async () => {
   const error = Object.assign(new Error('listen EADDRINUSE'), {
     code: 'EADDRINUSE',
   });
@@ -251,42 +257,40 @@ it('stops beads, closes the database and rethrows when listening fails', async (
 
   await expect(import('./main')).rejects.toBe(error);
 
-  expect(beads.stop).toHaveBeenCalledOnce();
+  expect(tasksOpen()).toBe(false);
   expect(openedDatabase().ping()).toBe(false);
   expect(on).not.toHaveBeenCalled();
 });
 
 describe.each(['SIGTERM', 'SIGINT'])('on %s', (signal) => {
-  it('closes the server, then stops beads, then closes the database, then exits with 0', async () => {
-    let databaseAnsweredAtServerClose: boolean | undefined;
-    let beadsStoppedAtServerClose: boolean | undefined;
-    let databaseAnsweredAtBeadsStop: boolean | undefined;
+  it('closes the server, then the task graph, then the database, then exits with 0', async () => {
+    let openAtServerClose: boolean[] | undefined;
+    let databaseAnsweredAtTasksClose: boolean | undefined;
     vi.mocked(startServer).mockResolvedValueOnce({
       host: '127.0.0.1',
       port: 54321,
       close: () => {
-        databaseAnsweredAtServerClose = openedDatabase().ping();
-        beadsStoppedAtServerClose = vi.mocked(beads.stop).mock.calls.length > 0;
+        openAtServerClose = [tasksOpen(), openedDatabase().ping()];
         return Promise.resolve();
       },
     });
-    vi.mocked(beads.stop).mockImplementation(() => {
-      databaseAnsweredAtBeadsStop = openedDatabase().ping();
-      return Promise.resolve();
-    });
     exit.mockImplementation(((code: number) => {
+      expect(tasksOpen()).toBe(false);
       expect(openedDatabase().ping()).toBe(false);
       expect(code).toBe(0);
     }) as never);
     args('--database', ':memory:');
     await import('./main');
+    const close = openedTasks().close;
+    vi.spyOn(openedTasks(), 'close').mockImplementation(() => {
+      databaseAnsweredAtTasksClose = openedDatabase().ping();
+      close();
+    });
 
     await handler(signal)();
 
-    expect(databaseAnsweredAtServerClose).toBe(true);
-    expect(beadsStoppedAtServerClose).toBe(false);
-    expect(databaseAnsweredAtBeadsStop).toBe(true);
-    expect(beads.stop).toHaveBeenCalledOnce();
+    expect(openAtServerClose).toEqual([true, true]);
+    expect(databaseAnsweredAtTasksClose).toBe(true);
     expect(exit).toHaveBeenCalledWith(0);
   });
 
