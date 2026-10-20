@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.5",
+    "@sextou/beads": "workspace:*",
     "@sextou/contract": "workspace:*",
     "@sextou/core": "workspace:*",
     "@sextou/data": "workspace:*",

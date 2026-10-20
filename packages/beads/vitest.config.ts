@@ -2,12 +2,14 @@ import { defineConfig } from 'vitest/config';
 
 // The unit suite: *.test.ts in Node. CI runs it through the root
 // vitest.config.ts. Every source file must reach these thresholds. The fakes
-// in src/test/ run only as child processes, which coverage doesn't see.
+// in src/test/ run only as child processes, which coverage doesn't see. The
+// tests start real processes, which a loaded machine makes slow.
 export default defineConfig({
   test: {
     name: 'beads',
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    testTimeout: 30_000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],

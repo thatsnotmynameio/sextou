@@ -8,6 +8,7 @@ const app = createApp({
   startedAt: new Date(),
   now: () => new Date(),
   pingDatabase: () => true,
+  pingBeads: () => Promise.resolve(true),
 });
 
 const running: RunningServer[] = [];

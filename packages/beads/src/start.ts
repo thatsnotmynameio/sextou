@@ -53,8 +53,8 @@ export class BeadsStartError extends Error {
 
 // Brings beads up: the binaries, then stopping a leftover bd serve, then
 // sextou's Dolt, then the default organization's database, then its bd
-// serve. Throws a BeadsStartError naming the step that failed; a step that
-// fails stops what it started, and a ready Dolt keeps running.
+// serve. Throws only a BeadsStartError, naming the step that failed; a step
+// that fails stops what it started, and a ready Dolt keeps running.
 export async function startBeads({
   dataDir,
   pathEnv,
@@ -97,10 +97,11 @@ export async function startBeads({
     }),
   );
   // The Dolt step created the password.
-  const doltPassword = readFileSync(layout.doltPassword, 'utf8');
-  await step(layout, 'organization', () =>
-    ensureOrganization({ bd, git, doltPort, doltPassword, layout, env }),
-  );
+  const doltPassword = await step(layout, 'organization', async () => {
+    const doltPassword = readFileSync(layout.doltPassword, 'utf8');
+    await ensureOrganization({ bd, git, doltPort, doltPassword, layout, env });
+    return doltPassword;
+  });
   const serve = await step(layout, 'bd serve', () =>
     startBdServe({
       bd,
