@@ -2,22 +2,22 @@
 
 > Shared domain vocabulary for this project — entities, named processes, and status concepts with project-specific meaning. Seeded with core domain vocabulary, then accretes as ce-compound and ce-compound-refresh process learnings; direct edits are fine. Glossary only, not a spec or catch-all.
 
-## Organizations and beads
+## Organizations and tasks
 
 ### Organization
 
-The unit sextou does work for: it groups a set of workspaces and owns exactly one beads store.
+The unit sextou does work for: it groups a set of workspaces and owns exactly one task graph, in a database file of its own.
 
-Every call into beads names the organization it is for. Today the server creates a single default organization with a fixed id; creating, listing and naming organizations is not a feature yet.
+The server names each organization's file; the task graph itself knows nothing of organizations. Today only the default organization exists, in `default.tasks.db`; creating, listing and naming organizations is not a feature yet.
 
 ### Workspace
 
-A repository-like folder that an organization works on. A workspace has no database of its own; its work is tracked in its organization's beads store.
+A repository-like folder that an organization works on. A workspace has no database of its own; its work is tracked in its organization's task graph.
 
-### Beads
+### Task graph
 
-The operational layer: a graph of work items and their dependencies, with a numbered journal of every change, kept per organization. sextou reaches it only through each organization's beads server, never by reading its tables.
+An organization's work items and the `blocked_by` links between them, kept per organization by `@sextou/tasks`. A task has a title, a free kind (initiative, issue, task, or any other label), a priority from 0, the most urgent, to 4, and optionally a parent, which only organizes: it never blocks. A task is ready when it is open and every task that blocks it is closed. A link that would close a cycle is refused, a task closes only once none of its blockers is open, and closed is final.
 
 ### Data directory
 
-The one folder where a sextou server keeps everything it owns on a machine: its own database, the pinned beads and database binaries, each organization's beads configuration, the credentials and the logs. It is private to the user who runs the server, and moving it moves all of them.
+The one folder where a sextou server keeps everything it owns on a machine: its own database and each organization's task graph. It is private to the user who runs the server, and moving it moves all of them.
