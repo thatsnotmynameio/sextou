@@ -1,8 +1,9 @@
 import { DatabaseSync } from 'node:sqlite';
+import { createGraph, type Graph } from './graph';
 import { migrate } from './migrations';
 import { restrictToOwner } from './owner-only';
 
-export interface Tasks {
+export interface Tasks extends Graph {
   // Closes the database; does nothing once closed.
   close: () => void;
 }
@@ -32,6 +33,7 @@ export function openTasks(path: string): Tasks {
   }
 
   return {
+    ...createGraph(client),
     close: () => {
       // A second DatabaseSync.close() throws.
       if (client.isOpen) client.close();
