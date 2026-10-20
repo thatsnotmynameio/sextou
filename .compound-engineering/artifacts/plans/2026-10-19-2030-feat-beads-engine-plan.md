@@ -26,7 +26,7 @@ execution: code
 
 ## Product Contract
 
-Product Contract preservation: changed R2 (each binary is checked once per server start, before its first run, instead of before every run), Dependencies / Assumptions (Dolt pinned to 2.2.0 instead of 2.5.0, beads served from `gastownhall/beads`), F1 (a leftover `bd serve` is stopped before the Dolt step, not after it), R3 and the Summary (only sextou's own Dolt, in the configured data directory and on another version, is replaced; any other Dolt fails the step), KD2 (the exception also turns the journal on) and R6 (the database is created only when its beads configuration is missing). The questions deferred to planning are answered by KTD2–KTD11 and removed from Outstanding Questions.
+Product Contract preservation: changed R2 (each binary is checked once per server start, before its first run, instead of before every run), Dependencies / Assumptions (Dolt pinned to 2.2.0 instead of 2.5.0, beads served from `gastownhall/beads`), F1 (a leftover `bd serve` is stopped before the Dolt step, not after it), R3 and the Summary (only sextou's own Dolt, in the configured data directory and on another version, is replaced; any other Dolt fails the step), KD2 (the exception also turns the journal on) and R6 (the database is created only when its beads configuration is missing). Added during implementation: KD13 and R15 (git is required). The questions deferred to planning are answered by KTD2–KTD11 and removed from Outstanding Questions.
 
 ### Summary
 
@@ -52,6 +52,7 @@ Nothing in sextou runs beads today. No tracked file outside the plans mentions b
 - KD10. **The events journal is on from the first start.** No one subscribes yet, but turning it on later means restarting `bd serve`, and every planned participant depends on it. Governs R6.
 - KD11. **Dolt and `bd serve` require credentials, not just loopback.** Loopback alone lets any local process, or a web page in the user's browser, write to beads without going through the service. (session-settled: user-approved — proposed in review with loopback alone as the alternative.) Governs R8.
 - KD12. **Each binary is checked once per server start, before its first run.** A start runs bd up to three times, and hashing the 154 MB binary costs about 0.8 s each time. The check guards against a corrupted download or a tampered release, not against malware running as the same user. (session-settled: user-approved — proposed in plan scoping against checking before every run.) Governs R2.
+- KD13. **git is required on the server's PATH.** `bd serve` 1.3.1 runs `git rev-parse` to find the root of the folder it serves and refuses to start outside a repository; a `.beads/redirect` does not avoid it (checked with the real binaries). The organization's folder becomes an empty git repository of its own, with no commit and no hook, and the bd children get a PATH holding only git's folder. (session-settled: user-directed — chosen during implementation over downloading a portable git when the machine has none, which is #37.) Governs R6, R7, R15.
 
 ### Requirements
 
@@ -83,6 +84,7 @@ Nothing in sextou runs beads today. No tracked file outside the plans mentions b
 
 - R13. When any step of F1 fails, the server exits with code 1 without listening, and its message names the step that failed. It stops any `bd serve` it started and closes the SQLite database it already opened.
 - R14. The health response reports whether beads answers, and the endpoint answers 503 when beads does not answer, as it does for the database.
+- R15. The server finds git on its PATH; without it, the binaries step fails naming git. The default organization's folder in the data directory is a git repository of its own, never the user's.
 
 ### Key Flows
 
@@ -133,6 +135,7 @@ flowchart TB
 - The web app showing beads or its status.
 - Retrying when beads fails to come up, or running without it.
 - Upgrading bd or Dolt other than by changing the pinned versions and checksums in sextou's source.
+- Downloading a portable git when the machine has none (#37).
 
 #### Considered and Not Built
 
@@ -161,6 +164,7 @@ This plan covers bringing beads up inside the server. The breakdown below is the
 - The pins are bd 1.3.1 and Dolt 2.2.0, the pair beads 1.3.1 itself tests (`scripts/ci/install-dolt.sh`). The design notes measured Dolt 2.5.0, which beads has not validated.
 - beads' releases are served from `github.com/gastownhall/beads`; `steveyegge/beads` redirects there.
 - `bd serve` needs a Dolt sql-server and does not run on beads' embedded mode (design notes).
+- `bd serve` 1.3.1 needs git, and its working folder inside a git repository (KD13).
 - One `bd serve` serves one database, with its own journal and sequence (design notes).
 - The events journal must be on before `bd serve` starts; turning it on later needs a restart (design notes, `bd serve` reads it once at startup).
 - beads marks its HTTP backend experimental and asks embedders to pin an exact version (beads README).
@@ -220,7 +224,7 @@ This plan covers bringing beads up inside the server. The breakdown below is the
   | `bd config set events-journal true` | as shown                                                                                                                                                                                                       | same as `bd init`                                                                                                                             |
   | `bd serve`                          | `--addr 127.0.0.1:<bd serve port> --auth-token-file <data>/secrets/bd-serve-token`                                                                                                                             | `BEADS_DIR`, `BEADS_DOLT_PASSWORD`, `BEADS_DOLT_AUTO_START=0`, `BD_DISABLE_METRICS=1`                                                         |
 
-  The platform minimum is `HOME` set to `dolt-home/` on POSIX, plus `SystemRoot`, `TEMP` and `TMP` on Windows, with `USERPROFILE` set to `dolt-home\`. `BEADS_DOLT_AUTO_START=0` with an explicit `--server-port` stops bd from starting a Dolt of its own. `BEADS_DIR` stops `bd init` from running `git init`. The bd children run with `beads/default/` as their working folder. Secrets travel only in the environment, never in arguments, which other users can read. Governs R6, R7, R8.
+  The platform minimum is `HOME` set to `dolt-home/` on POSIX, plus `SystemRoot`, `TEMP` and `TMP` on Windows, with `USERPROFILE` set to `dolt-home\`. `BEADS_DOLT_AUTO_START=0` with an explicit `--server-port` stops bd from starting a Dolt of its own. `BEADS_DIR` stops `bd init` from running `git init`. The bd children run with `beads/default/` as their working folder, and get `PATH` set to git's folder (KD13); `git init` gets the platform minimum. Secrets travel only in the environment, never in arguments, which other users can read. Governs R6, R7, R8.
 
 - KTD8. **Dolt is reused when two independent records agree; anything else on its port fails the step.** `run/dolt.json` holds the pid, port and version sextou started, written right after spawning. Dolt's own `dolt/.dolt/sql-server.info` names the pid serving that directory.
   - Dolt counts as sextou's running Dolt when both files name the same pid, that pid is alive, and its port accepts a TCP connection. Reuse it when the recorded version also equals the pin.

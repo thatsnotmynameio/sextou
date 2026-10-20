@@ -15,12 +15,13 @@ The desktop app loads the hosted web app by URL, so a web deploy reaches desktop
 | `packages/core`     | `@sextou/core`: the domain, with no HTTP                                                                       |
 | `packages/contract` | `@sextou/contract`: the API's schemas, for the server and the web app                                          |
 | `packages/data`     | `@sextou/data`: the SQLite database, through Node's `node:sqlite` and drizzle                                  |
+| `packages/beads`    | `@sextou/beads`: starts beads (bd and Dolt) and holds the service the server reaches it through                |
 
-The server, the core and the contract group their code by feature under `src/modules/<feature>/`. The server imports the core, the contract and the data package; the core and the data package import no other sextou package.
+The server, the core and the contract group their code by feature under `src/modules/<feature>/`. The server imports the core, the contract, the data package and the beads package; the core, the data package and the beads package import no other sextou package.
 
 ## Develop
 
-Needs Node 24 (`.node-version`), pnpm and [gitleaks](https://github.com/gitleaks/gitleaks#installing), which the pre-commit hook runs.
+Needs Node 24 (`.node-version`), pnpm, git and [gitleaks](https://github.com/gitleaks/gitleaks#installing), which the pre-commit hook runs.
 
 ```sh
 pnpm install
@@ -36,4 +37,17 @@ pnpm make             # the installers
 
 `pnpm package` and `pnpm make` read the deployed web app's URL from `SEXTOU_WEB_URL`, which must be https. Without it, the packaged app opens on its error page.
 
-The server reads its host and port from `SEXTOU_SERVER_HOST` and `SEXTOU_SERVER_PORT`, or from `--host` and `--port`, which win. It listens on `127.0.0.1:4310` by default; port `0` lets the system pick one. It reads the database path from `SEXTOU_SERVER_DATABASE` or `--database`, which wins, and creates the file when it is missing. By default the file is `sextou/sextou.db` in the user's data directory: `$XDG_DATA_HOME` or `~/.local/share` on Linux, `~/Library/Application Support` on macOS, `%LOCALAPPDATA%` on Windows. `:memory:` opens a database that lasts until the server stops. On start, the server applies the migrations the database doesn't have yet. When the database can't be opened, a migration fails, or the database comes from a newer sextou, the server exits with 1 without listening. `/health` reports whether the database answers, with 503 when it doesn't. The bundle runs with `node apps/server/dist/server.mjs`.
+The server reads its host and port from `SEXTOU_SERVER_HOST` and `SEXTOU_SERVER_PORT`, or from `--host` and `--port`, which win. It listens on `127.0.0.1:4310` by default; port `0` lets the system pick one. It keeps its data in one folder, from `SEXTOU_SERVER_DATA_DIR` or `--data-dir`, which wins; by default `sextou` in the user's data directory: `$XDG_DATA_HOME` or `~/.local/share` on Linux, `~/Library/Application Support` on macOS, `%LOCALAPPDATA%` on Windows. It reads the database path from `SEXTOU_SERVER_DATABASE` or `--database`, which wins, and creates the file when it is missing; by default the file is `sextou.db` in that folder. `:memory:` opens a database that lasts until the server stops. On start, the server applies the migrations the database doesn't have yet. When the database can't be opened, a migration fails, or the database comes from a newer sextou, the server exits with 1 without listening. `/health` reports whether the database and beads answer, with 503 when either doesn't. The bundle runs with `node apps/server/dist/server.mjs`.
+
+After the database, the server brings up beads, and exits with 1 without listening when a step fails, naming it. It needs git on its PATH. The first start downloads the pinned bd and Dolt, about 280 MB unpacked; later starts only check their sha256. Everything lives in the data folder, owner-only:
+
+| Path                  | What it holds                                        |
+| --------------------- | ---------------------------------------------------- |
+| `bin/`                | bd and Dolt, one folder per version                  |
+| `dolt/`, `dolt-home/` | Dolt's data and its home                             |
+| `beads/default/`      | The default organization's beads configuration       |
+| `secrets/`            | The Dolt password and the `bd serve` token           |
+| `run/`                | The pid, port and version of each process it started |
+| `logs/`               | Dolt's and `bd serve`'s output                       |
+
+Dolt listens on `127.0.0.1:4311` and the default organization's `bd serve` on `127.0.0.1:4312`, each requiring its credential. `bd serve` stops with the server; Dolt keeps running, and the next start reuses it. To stop Dolt, send SIGTERM to the pid in `<data folder>/run/dolt.json`.
