@@ -169,10 +169,9 @@ describe.runIf(process.platform !== 'win32')('startBeads', () => {
     const beads = await start();
     const serve = recordedCalls(calls)[3];
     process.kill(serve.pid, 'SIGKILL');
-    await waitFor(
-      async () => !(await beads.service.ping(DEFAULT_ORGANIZATION)),
-      5000,
-    );
+    // Node reaps the child and records its exit together; until then the pid
+    // is the server's own zombie, which no other process can hold.
+    await waitFor(() => !isAlive(serve.pid), 5000);
     const kill = vi.spyOn(process, 'kill');
 
     try {
