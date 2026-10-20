@@ -48,6 +48,7 @@ pnpm --filter @sextou/data migration --name <change> # a migration from src/sche
     - Migrations run with foreign keys on, inside a transaction where `PRAGMA foreign_keys` does nothing. When drizzle-kit rebuilds a table that other tables reference, dropping the old table acts on their rows: `ON DELETE CASCADE` deletes them, `SET NULL` and `SET DEFAULT` overwrite their reference, and `NO ACTION` or `RESTRICT` with any row fails the migration, which stops the server. Before such a migration, add foreign-key handling to the runner in `src/migration.ts`.
   - The server, the core and the contract group code by feature, under the same `src/modules/<feature>/` name: `health.schema.ts` in the contract, `health.service.ts` in the core, `health.routes.ts` in the server, each test beside its file. Code shared across features sits at the top of the package's `src/`.
 - `.compound-engineering/artifacts/solutions/`: documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). `ce-compound` creates it with the first one.
+- `CONCEPTS.md`: the project's shared domain vocabulary (organization, workspace, beads, data directory), relevant when orienting to the codebase or discussing domain concepts.
 
 ## Desktop security
 
