@@ -1,4 +1,9 @@
 {
   "extends": "../../tsconfig.json",
-  "include": ["src/**/*", "*.ts"]
+  "compilerOptions": {
+    // Node runs scripts/ with its type stripping, which needs the .ts
+    // extension on their imports.
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src/**/*", "scripts/**/*", "*.ts"]
 }

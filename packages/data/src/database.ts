@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { sql } from 'drizzle-orm';
 import { drizzle, type NodeSQLiteDatabase } from 'drizzle-orm/node-sqlite';
+import { migrateDatabase } from './migration';
 
 export interface Database {
   // The drizzle handle features query through.
@@ -14,8 +15,8 @@ export interface Database {
 }
 
 // Opens the SQLite database at an absolute file path, or in memory for
-// ':memory:'. Throws when it can't, with the error from the file system or
-// SQLite.
+// ':memory:', and applies the migrations it doesn't have yet. Throws when it
+// can't, with the error from the file system, SQLite or the migrations.
 export function openDatabase(path: string): Database {
   const inMemory = path === ':memory:';
   if (!inMemory) restrictToOwner(path);
@@ -30,6 +31,7 @@ export function openDatabase(path: string): Database {
         ? 'select 1'
         : 'PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL',
     );
+    migrateDatabase(client);
   } catch (error) {
     client.close();
     throw error;

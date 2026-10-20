@@ -9,6 +9,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "migration": "node scripts/migration.ts",
     "test": "pnpm test:unit",
     "test:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit"
   },
@@ -18,6 +19,7 @@
   "devDependencies": {
     "@types/node": "^24.19.2",
     "@vitest/coverage-v8": "^5.0.5",
+    "drizzle-kit": "1.0.0-rc.4",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
   }
