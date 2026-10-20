@@ -9,6 +9,7 @@ export default {
       'packages/contract',
       'packages/core',
       'packages/data',
+      'packages/tasks',
       'packages/ui',
     ],
   },
