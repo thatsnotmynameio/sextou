@@ -1,0 +1,90 @@
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { connect } from 'node:net';
+import { setTimeout as sleep } from 'node:timers/promises';
+
+// What sextou records about a process it started, right after spawning it.
+export interface RunRecord {
+  pid: number;
+  port: number;
+  version?: string;
+}
+
+// The record in file; a missing or unreadable one reads as absent.
+export function readRunFile(file: string): RunRecord | undefined {
+  try {
+    const record: unknown = JSON.parse(readFileSync(file, 'utf8'));
+    const { pid, port, version } = (record ?? {}) as Partial<RunRecord>;
+    if (typeof pid !== 'number' || typeof port !== 'number') return undefined;
+    return typeof version === 'string' ? { pid, port, version } : { pid, port };
+  } catch {
+    return undefined;
+  }
+}
+
+export function writeRunFile(file: string, record: RunRecord) {
+  writeFileSync(file, JSON.stringify(record), { mode: 0o600 });
+}
+
+export function removeRunFile(file: string) {
+  rmSync(file, { force: true });
+}
+
+// Whether a process with this pid exists. EPERM means it exists under
+// another user.
+export function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+// Whether something accepts TCP connections on this loopback port.
+export function portAccepts(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = connect({ host: '127.0.0.1', port });
+    socket.setTimeout(1000);
+    const done = (accepts: boolean) => {
+      socket.destroy();
+      resolve(accepts);
+    };
+    socket.once('connect', () => done(true));
+    socket.once('error', () => done(false));
+    socket.once('timeout', () => done(false));
+  });
+}
+
+// Checks every interval until check passes or the deadline, in milliseconds,
+// runs out. Resolves whether it passed.
+export async function waitFor(
+  check: () => boolean | Promise<boolean>,
+  deadline: number,
+  interval = 100,
+): Promise<boolean> {
+  const end = Date.now() + deadline;
+  for (;;) {
+    if (await check()) return true;
+    if (Date.now() >= end) return false;
+    await sleep(interval);
+  }
+}
+
+// Sends SIGTERM, waits up to the deadline for the process to exit, then sends
+// SIGKILL and waits for it to go. Does nothing for a pid that already exited.
+export async function stopProcess(pid: number, deadline: number) {
+  if (!signal(pid, 'SIGTERM')) return;
+  if (await waitFor(() => !isAlive(pid), deadline)) return;
+  signal(pid, 'SIGKILL');
+  await waitFor(() => !isAlive(pid), 5000);
+}
+
+// Whether the signal reached the process: false once it exited.
+function signal(pid: number, name: NodeJS.Signals): boolean {
+  try {
+    process.kill(pid, name);
+    return true;
+  } catch {
+    return false;
+  }
+}
