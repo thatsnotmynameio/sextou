@@ -6,7 +6,7 @@ import { defineConfig } from 'vitest/config';
 // thresholds.
 export default defineConfig({
   test: {
-    name: 'desktop',
+    name: 'desktop/unit',
     environment: 'node',
     include: ['src/**/*.test.ts'],
     coverage: {

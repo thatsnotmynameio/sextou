@@ -12,9 +12,9 @@
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "typecheck": "tsc --noEmit",
-    "test": "pnpm test:unit && pnpm test:integration",
+    "test": "pnpm test:unit && pnpm test:component",
     "test:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit",
-    "test:integration": "vitest run --config vitest.integration.config.ts --coverage --coverage.reportsDirectory=coverage/integration"
+    "test:component": "vitest run --config vitest.component.config.ts --coverage --coverage.reportsDirectory=coverage/component"
   },
   "peerDependencies": {
     "@lingui/core": "^6.10.0",

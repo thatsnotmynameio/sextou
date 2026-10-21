@@ -5,8 +5,9 @@ import { storybookTest } from '@storybook/addon-vitest/vitest-plugin';
 import viteConfig from './vite.config';
 import { coverage } from './vitest.config';
 
-// The integration suite: every story renders in Chromium and must pass its
-// play function. It needs Playwright's Chromium, so it runs locally only.
+// The component suite: every story renders in Chromium and must pass its
+// play function. It needs Playwright's Chromium, so the root vitest.config.ts
+// leaves it out.
 export default mergeConfig(
   viteConfig,
   defineConfig({
@@ -17,7 +18,7 @@ export default mergeConfig(
       }),
     ],
     test: {
-      name: 'integration',
+      name: 'ui/component',
       browser: {
         enabled: true,
         provider: playwright({}),
