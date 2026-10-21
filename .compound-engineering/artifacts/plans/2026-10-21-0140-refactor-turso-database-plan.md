@@ -36,6 +36,7 @@ Both of sextou's databases use the SQLite built into Node: `@sextou/data` throug
 Turso, the Rust rewrite of SQLite, ships those as native features. `node:sqlite` cannot reach them: Turso offers no extension, VFS or server mode that upstream SQLite can use, and a file with Turso's MVCC or encryption turned on is refused by `node:sqlite` as "file is not a database". Each feature therefore needs Turso as the engine first. Swapping the engine now, with no feature turned on, turns each later feature into a small change on top of it instead of an engine migration.
 
 <!-- ce-section: work-relationships -->
+
 ### How This Work Fits Together
 
 This plan covers only the engine swap. The areas below are the current understanding of what follows, not a committed roadmap; each would get its own brainstorm.
@@ -184,6 +185,7 @@ sequenceDiagram
   - While the test holds a file open through `openTasks`, a child Node process that opens it through Turso fails with "File is locked by another process", and the test's graph still reads and writes.
   - Once closed, an operation rejects, and a second `close` doesn't.
 - **Verification:** `pnpm --filter @sextou/tasks test:unit` passes at 90% coverage or more per file, and no source file in `packages/tasks/src` imports `node:sqlite`.
+
 ### U3. Data database opens through Turso
 
 - **Goal:** `openDatabase`, `ping` and `close` run on Turso through drizzle's Turso driver and return promises, with migrations applied as today.
@@ -240,16 +242,17 @@ sequenceDiagram
 
 ## Verification Contract
 
-| Gate | Command | Proves |
-|---|---|---|
-| Lint and format | `pnpm lint` | oxlint and oxfmt pass |
-| Types | `pnpm typecheck` | every package checks with the async signatures |
-| Tests | `pnpm test` | both suites, every source file at 90% or more; the stories still pass in Chromium |
-| Build | `pnpm build` | the desktop package, web app, Storybook and `server.mjs` build |
-| No `node:sqlite` in sources | `rg -l "node:sqlite" apps packages --glob '!*.test.ts'` | prints nothing |
-| Bundle smoke | see below | R7 |
+| Gate                        | Command                                                 | Proves                                                                            |
+| --------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Lint and format             | `pnpm lint`                                             | oxlint and oxfmt pass                                                             |
+| Types                       | `pnpm typecheck`                                        | every package checks with the async signatures                                    |
+| Tests                       | `pnpm test`                                             | both suites, every source file at 90% or more; the stories still pass in Chromium |
+| Build                       | `pnpm build`                                            | the desktop package, web app, Storybook and `server.mjs` build                    |
+| No `node:sqlite` in sources | `rg -l "node:sqlite" apps packages --glob '!*.test.ts'` | prints nothing                                                                    |
+| Bundle smoke                | see below                                               | R7                                                                                |
 
 Bundle smoke, run once after `pnpm build` from the repository root:
+
 - Start `node apps/server/dist/server.mjs --port 0 --data-dir <new temp dir>`.
 - `GET /health` at the printed address answers 200 with `"database":"up"`.
 - SIGTERM ends the process with 0.
