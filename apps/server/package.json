@@ -20,7 +20,11 @@
     "@sextou/core": "workspace:*",
     "@sextou/data": "workspace:*",
     "@sextou/tasks": "workspace:*",
-    "hono": "^4.13.13"
+    "@trpc/server": "^11.19.0",
+    "@tursodatabase/database": "0.8.3",
+    "drizzle-orm": "1.0.0-rc.4",
+    "hono": "^4.13.13",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@stryker-mutator/core": "10.0.0",
