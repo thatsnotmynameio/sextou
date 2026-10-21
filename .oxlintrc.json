@@ -6,7 +6,7 @@
   },
   "overrides": [
     {
-      "files": ["apps/web/**", "packages/ui/**"],
+      "files": ["packages/ui/**"],
       "rules": {
         "no-restricted-imports": [
           "error",
@@ -14,13 +14,13 @@
             "paths": [
               {
                 "name": "electron",
-                "message": "The web app and the shared UI run in a browser too: reach native features through apps/web/src/platform.ts."
+                "message": "The web app and the shared UI run in a browser too: reach native features through web APIs, which Electron maps in the desktop window, or through what the preload exposes."
               }
             ],
             "patterns": [
               {
                 "group": ["electron/*"],
-                "message": "The web app and the shared UI run in a browser too: reach native features through apps/web/src/platform.ts."
+                "message": "The web app and the shared UI run in a browser too: reach native features through web APIs, which Electron maps in the desktop window, or through what the preload exposes."
               }
             ]
           }
@@ -28,7 +28,7 @@
       }
     },
     {
-      "files": ["**/src/modules/*/*.ts"],
+      "files": ["**/src/modules/*/*.{ts,tsx}"],
       "rules": {
         "no-restricted-imports": [
           "error",
@@ -50,12 +50,128 @@
       }
     },
     {
-      "files": ["**/src/modules/*/*/*.ts"],
+      "files": ["**/src/modules/*/*/*.{ts,tsx}"],
       "rules": {
         "no-restricted-imports": [
           "error",
           {
             "patterns": [
+              {
+                "group": [
+                  "../../*/**",
+                  "!../../*/index",
+                  "!../../../**",
+                  "../../../modules/*/**",
+                  "!../../../modules/*/index"
+                ],
+                "message": "A module reaches another module only through its entry point, the index.ts in its folder."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/web/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "electron",
+                "message": "The web app and the shared UI run in a browser too: reach native features through web APIs, which Electron maps in the desktop window, or through what the preload exposes."
+              },
+              {
+                "name": "@sextou/server",
+                "message": "The web app takes only types from the server: import type { … } from it.",
+                "allowTypeImports": true
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["electron/*"],
+                "message": "The web app and the shared UI run in a browser too: reach native features through web APIs, which Electron maps in the desktop window, or through what the preload exposes."
+              },
+              {
+                "group": ["@sextou/server/*"],
+                "message": "The web app takes only types from the server: import type { … } from it.",
+                "allowTypeImports": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/web/src/modules/*/*.{ts,tsx}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "electron",
+                "message": "The web app and the shared UI run in a browser too: reach native features through web APIs, which Electron maps in the desktop window, or through what the preload exposes."
+              },
+              {
+                "name": "@sextou/server",
+                "message": "The web app takes only types from the server: import type { … } from it.",
+                "allowTypeImports": true
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["electron/*"],
+                "message": "The web app and the shared UI run in a browser too: reach native features through web APIs, which Electron maps in the desktop window, or through what the preload exposes."
+              },
+              {
+                "group": ["@sextou/server/*"],
+                "message": "The web app takes only types from the server: import type { … } from it.",
+                "allowTypeImports": true
+              },
+              {
+                "group": [
+                  "../*/**",
+                  "!../*/index",
+                  "!../../**",
+                  "../../modules/*/**",
+                  "!../../modules/*/index"
+                ],
+                "message": "A module reaches another module only through its entry point, the index.ts in its folder."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/web/src/modules/*/*/*.{ts,tsx}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "electron",
+                "message": "The web app and the shared UI run in a browser too: reach native features through web APIs, which Electron maps in the desktop window, or through what the preload exposes."
+              },
+              {
+                "name": "@sextou/server",
+                "message": "The web app takes only types from the server: import type { … } from it.",
+                "allowTypeImports": true
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["electron/*"],
+                "message": "The web app and the shared UI run in a browser too: reach native features through web APIs, which Electron maps in the desktop window, or through what the preload exposes."
+              },
+              {
+                "group": ["@sextou/server/*"],
+                "message": "The web app takes only types from the server: import type { … } from it.",
+                "allowTypeImports": true
+              },
               {
                 "group": [
                   "../../*/**",
