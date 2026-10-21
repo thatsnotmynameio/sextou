@@ -341,12 +341,15 @@ test('createTask keeps a parent and its open children ready when nothing links t
   expect(await ready()).toEqual(['Issue', 'Child 1', 'Child 2']);
 });
 
+// A thousand writes, one transaction each: about a second alone, and up to
+// eight when every package's suite runs at once (`pnpm -r test:unit`, as
+// the pre-push hook does), past Vitest's five-second default.
 test('createTask gives a thousand tasks a thousand distinct ids', async () => {
   const ids: string[] = [];
   for (let n = 0; n < 1000; n++) ids.push(await create(`T${n}`));
   expect(new Set(ids).size).toBe(1000);
   for (const id of ids) expect(id).toMatch(/^tsk_/);
-});
+}, 30_000);
 
 test('link takes a task blocked by an open task out of the ready list', async () => {
   const a = await create('A');
