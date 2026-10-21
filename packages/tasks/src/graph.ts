@@ -8,12 +8,17 @@ export type Reason =
   | 'same_task'
   | 'not_open'
   | 'cycle'
-  | 'open_blockers';
+  | 'blocked'
+  | 'not_running';
 
 export interface Refused<R extends Reason> {
   ok: false;
   reason: R;
 }
+
+// How a task ended. A task in one never changes state again. succeeded and
+// skipped free the tasks it blocks; failed keeps them waiting.
+export type FinalStatus = 'succeeded' | 'failed' | 'skipped';
 
 export interface Task {
   // tsk_ and 32 hex digits. Not a sort key.
@@ -31,8 +36,8 @@ export interface Task {
   // A URL or a file path where the task's longer text lives. Stored as given
   // and never read.
   sourcePath: string | null;
-  // A closed task never reopens.
-  status: 'open' | 'closed';
+  // open, then running, then a final state; running never returns to open.
+  status: 'open' | 'running' | FinalStatus;
   // Milliseconds since the epoch.
   timeCreated: number;
 }
@@ -61,23 +66,31 @@ export interface Graph {
   createTask: (
     task: NewTask,
   ) => { ok: true; task: Task } | Refused<'invalid' | 'not_found'>;
-  // Refuses a link that would close a cycle, or whose task is closed. A pair
+  // Refuses a link that would close a cycle, or whose task isn't open. A pair
   // already linked succeeds and changes nothing.
   link: (
     link: Link,
   ) =>
     | { ok: true }
     | Refused<'invalid' | 'not_found' | 'same_task' | 'not_open' | 'cycle'>;
-  // Refuses a closed task. A pair not linked succeeds and changes nothing.
+  // Refuses a task that isn't open. A pair not linked succeeds and changes
+  // nothing.
   unlink: (
     link: Link,
   ) => { ok: true } | Refused<'invalid' | 'not_found' | 'not_open'>;
-  // Refuses a task with an open blocker. A closed task succeeds and changes
-  // nothing.
-  closeTask: (
-    id: string,
-  ) => { ok: true } | Refused<'invalid' | 'not_found' | 'open_blockers'>;
-  // The open tasks with no open blocker whose assignee is one of assignees,
+  // Moves a ready task to running. Refuses a task that isn't open, or that a
+  // blocker still holds.
+  startTask: (start: {
+    id: string;
+  }) =>
+    | { ok: true }
+    | Refused<'invalid' | 'not_found' | 'not_open' | 'blocked'>;
+  // Moves a running task to a final state.
+  finishTask: (finish: {
+    id: string;
+    status: FinalStatus;
+  }) => { ok: true } | Refused<'invalid' | 'not_found' | 'not_running'>;
+  // The open tasks no blocker holds whose assignee is one of assignees,
   // matched exactly, most urgent first, then oldest, at most limit of them.
   listReady: (query: {
     assignees: string[];
@@ -106,6 +119,15 @@ function optional(value: unknown) {
   return value.trim() || null;
 }
 
+function isFinal(value: unknown): value is FinalStatus {
+  return value === 'succeeded' || value === 'failed' || value === 'skipped';
+}
+
+// Whether a blocker in this state keeps the tasks it blocks waiting.
+function holds(status: SQLOutputValue) {
+  return status !== 'succeeded' && status !== 'skipped';
+}
+
 // A nullable text column as a string, or null.
 function nullable(value: SQLOutputValue) {
   return value === null ? null : String(value);
@@ -121,17 +143,18 @@ function toTask(row: Record<string, SQLOutputValue>): Task {
     assignee: String(row.assignee),
     description: nullable(row.description),
     sourcePath: nullable(row.source_path),
-    status: row.status === 'closed' ? 'closed' : 'open',
+    // The table's check keeps it one of the five.
+    status: String(row.status) as Task['status'],
     timeCreated: Number(row.time_created),
   };
 }
 
 // The graph's operations over a migrated connection. Readiness is kept in
-// each task's open_blockers, which every write moves in the same transaction,
-// so no closed task ever has an open blocker.
+// each task's holding_blockers, which every write moves in the same
+// transaction, so no task past open is ever held by a blocker.
 export function createGraph(client: DatabaseSync): Graph {
   const find = client.prepare(
-    'SELECT status, open_blockers FROM task WHERE id = ?',
+    'SELECT status, holding_blockers FROM task WHERE id = ?',
   );
   const insertTask = client.prepare(
     "INSERT INTO task (id, title, kind, priority, parent_id, assignee, description, source_path, status, time_created) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)",
@@ -146,8 +169,8 @@ export function createGraph(client: DatabaseSync): Graph {
     'DELETE FROM link WHERE task_id = ? AND blocker_id = ?',
   );
   // Whether the second task is reachable from the first through open
-  // blockers. A closed task's blockers are all closed, so a path to an open
-  // task never runs through closed history.
+  // blockers. A task past open has only succeeded or skipped blockers, so a
+  // path to an open task never runs through one.
   const reaches = client.prepare(
     `WITH RECURSIVE reached (id) AS (
       SELECT ?
@@ -159,21 +182,19 @@ export function createGraph(client: DatabaseSync): Graph {
     SELECT 1 FROM reached WHERE id = ? LIMIT 1`,
   );
   const addBlocker = client.prepare(
-    'UPDATE task SET open_blockers = open_blockers + 1 WHERE id = ?',
+    'UPDATE task SET holding_blockers = holding_blockers + 1 WHERE id = ?',
   );
   const removeBlocker = client.prepare(
-    'UPDATE task SET open_blockers = open_blockers - 1 WHERE id = ?',
+    'UPDATE task SET holding_blockers = holding_blockers - 1 WHERE id = ?',
   );
-  const markClosed = client.prepare(
-    "UPDATE task SET status = 'closed' WHERE id = ?",
-  );
+  const setStatus = client.prepare('UPDATE task SET status = ? WHERE id = ?');
   const unblockDependents = client.prepare(
-    'UPDATE task SET open_blockers = open_blockers - 1 WHERE id IN (SELECT task_id FROM link WHERE blocker_id = ?)',
+    'UPDATE task SET holding_blockers = holding_blockers - 1 WHERE id IN (SELECT task_id FROM link WHERE blocker_id = ?)',
   );
   // The WHERE matches task_ready's, so SQLite searches that index once per
   // assignee in the JSON array, then sorts only the rows it found.
   const ready = client.prepare(
-    "SELECT id, title, kind, priority, parent_id, assignee, description, source_path, status, time_created FROM task WHERE assignee IN (SELECT value FROM json_each(?)) AND status = 'open' AND open_blockers = 0 ORDER BY priority, rowid LIMIT ?",
+    "SELECT id, title, kind, priority, parent_id, assignee, description, source_path, status, time_created FROM task WHERE assignee IN (SELECT value FROM json_each(?)) AND status = 'open' AND holding_blockers = 0 ORDER BY priority, rowid LIMIT ?",
   );
 
   // Runs fn in an immediate transaction, which takes the write lock first, so
@@ -261,13 +282,14 @@ export function createGraph(client: DatabaseSync): Graph {
         if (taskId === blockerId) return refuse('same_task');
         if (findLink.get(taskId, blockerId) !== undefined) return { ok: true };
         if (task.status !== 'open') return refuse('not_open');
-        // A closed blocker reaches no open task and keeps no task waiting.
-        if (blocker.status === 'open') {
-          if (reaches.get(blockerId, taskId) !== undefined) {
-            return refuse('cycle');
-          }
-          addBlocker.run(taskId);
+        // A blocker past open reaches no open task.
+        if (
+          blocker.status === 'open' &&
+          reaches.get(blockerId, taskId) !== undefined
+        ) {
+          return refuse('cycle');
         }
+        if (holds(blocker.status)) addBlocker.run(taskId);
         insertLink.run(taskId, blockerId);
         return { ok: true };
       });
@@ -283,21 +305,32 @@ export function createGraph(client: DatabaseSync): Graph {
         }
         if (task.status !== 'open') return refuse('not_open');
         const { changes } = deleteLink.run(taskId, blockerId);
-        if (changes > 0 && blocker.status === 'open') removeBlocker.run(taskId);
+        if (changes > 0 && holds(blocker.status)) removeBlocker.run(taskId);
         return { ok: true };
       });
     },
 
-    closeTask: (id) => {
+    startTask: ({ id }) => {
       if (!isId(id)) return refuse('invalid');
       return write(() => {
         const task = find.get(id);
         if (task === undefined) return refuse('not_found');
-        if (task.status === 'closed') return { ok: true };
-        if (Number(task.open_blockers) > 0) return refuse('open_blockers');
-        markClosed.run(id);
-        // Every task it blocks is open: a closed one has no open blocker.
-        unblockDependents.run(id);
+        if (task.status !== 'open') return refuse('not_open');
+        if (Number(task.holding_blockers) > 0) return refuse('blocked');
+        setStatus.run('running', id);
+        return { ok: true };
+      });
+    },
+
+    finishTask: ({ id, status }) => {
+      if (!isId(id) || !isFinal(status)) return refuse('invalid');
+      return write(() => {
+        const task = find.get(id);
+        if (task === undefined) return refuse('not_found');
+        if (task.status !== 'running') return refuse('not_running');
+        setStatus.run(status, id);
+        // Every task it blocks is open: no task past open is held.
+        if (!holds(status)) unblockDependents.run(id);
         return { ok: true };
       });
     },

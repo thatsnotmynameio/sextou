@@ -8,7 +8,10 @@ import {
   vi,
   type MockInstance,
 } from 'vitest';
+import type { FinalStatus, Task } from './graph';
 import { openTasks, type Tasks } from './open-tasks';
+
+type Status = Task['status'];
 
 let tasks: Tasks;
 let prepare: MockInstance<DatabaseSync['prepare']>;
@@ -20,8 +23,8 @@ function connection() {
 
 function counter(id: string) {
   return connection()
-    .prepare('SELECT open_blockers FROM task WHERE id = ?')
-    .get(id)?.open_blockers;
+    .prepare('SELECT holding_blockers FROM task WHERE id = ?')
+    .get(id)?.holding_blockers;
 }
 
 function status(id: string) {
@@ -64,6 +67,21 @@ function link(taskId: string, blockerId: string) {
 
 function unlink(taskId: string, blockerId: string) {
   return tasks.unlink({ taskId, blockerId });
+}
+
+function start(id: string) {
+  return tasks.startTask({ id });
+}
+
+function finish(id: string, status: FinalStatus) {
+  return tasks.finishTask({ id, status });
+}
+
+// Starts a ready open task and, for a final state, finishes it.
+function moveTo(id: string, to: Status) {
+  if (to === 'open') return;
+  if (!start(id).ok) throw new Error(`start ${id}`);
+  if (to !== 'running' && !finish(id, to).ok) throw new Error(`finish ${id}`);
 }
 
 function ready(limit = 100, assignees = ['dev']) {
@@ -209,9 +227,9 @@ describe('createTask', () => {
     expect(ready()).toEqual([]);
   });
 
-  it('accepts a child of a closed parent', () => {
+  it('accepts a child of a finished parent', () => {
     const parent = create('Parent');
-    tasks.closeTask(parent);
+    moveTo(parent, 'failed');
     const result = tasks.createTask({
       title: 'Child',
       kind: 'task',
@@ -293,35 +311,55 @@ describe('link', () => {
     expect(link(7 as never, a)).toEqual({ ok: false, reason: 'invalid' });
   });
 
-  it('changes nothing for a pair already linked, even once both closed', () => {
+  it('changes nothing for a pair already linked, even once both finished', () => {
     const a = create('A');
     const b = create('B');
     link(b, a);
     expect(link(b, a)).toEqual({ ok: true });
     expect(counter(b)).toBe(1);
-    tasks.closeTask(a);
-    tasks.closeTask(b);
+    moveTo(a, 'succeeded');
+    moveTo(b, 'succeeded');
     expect(link(b, a)).toEqual({ ok: true });
     expect(counter(b)).toBe(0);
     expect(links()).toEqual([{ task_id: b, blocker_id: a }]);
   });
 
-  it('refuses a closed task as not_open', () => {
-    const a = create('A');
-    const b = create('B');
-    tasks.closeTask(b);
-    expect(link(b, a)).toEqual({ ok: false, reason: 'not_open' });
-    expect(links()).toEqual([]);
-  });
+  it.each<Status>(['running', 'succeeded', 'failed', 'skipped'])(
+    'refuses a %s task as not_open',
+    (to) => {
+      const a = create('A');
+      const b = create('B');
+      moveTo(b, to);
+      expect(link(b, a)).toEqual({ ok: false, reason: 'not_open' });
+      expect(links()).toEqual([]);
+    },
+  );
 
-  it('links to a closed blocker without moving the counter', () => {
-    const a = create('A');
-    const b = create('B');
-    tasks.closeTask(b);
-    expect(link(a, b)).toEqual({ ok: true });
-    expect(counter(a)).toBe(0);
-    expect(ready()).toEqual(['A']);
-  });
+  // Covers AE7.
+  it.each<Status>(['succeeded', 'skipped'])(
+    'links to a %s blocker without holding the task',
+    (to) => {
+      const a = create('A');
+      const b = create('B');
+      moveTo(b, to);
+      expect(link(a, b)).toEqual({ ok: true });
+      expect(counter(a)).toBe(0);
+      expect(ready()).toEqual(['A']);
+    },
+  );
+
+  // Covers AE7.
+  it.each<Status>(['open', 'running', 'failed'])(
+    'links to a %s blocker, which holds the task',
+    (to) => {
+      const a = create('A');
+      const b = create('B');
+      moveTo(b, to);
+      expect(link(a, b)).toEqual({ ok: true });
+      expect(counter(a)).toBe(1);
+      expect(ready()).not.toContain('A');
+    },
+  );
 });
 
 describe('unlink', () => {
@@ -343,26 +381,45 @@ describe('unlink', () => {
     expect(counter(b)).toBe(1);
   });
 
-  it('unlinks a closed blocker without moving the counter', () => {
-    const a = create('A');
-    const b = create('B');
-    const c = create('C');
-    link(c, a);
-    link(c, b);
-    tasks.closeTask(a);
-    expect(unlink(c, a)).toEqual({ ok: true });
-    expect(counter(c)).toBe(1);
-  });
+  it.each<Status>(['succeeded', 'skipped'])(
+    'unlinks a %s blocker without moving the counter',
+    (to) => {
+      const a = create('A');
+      const b = create('B');
+      const c = create('C');
+      link(c, a);
+      link(c, b);
+      moveTo(a, to);
+      expect(unlink(c, a)).toEqual({ ok: true });
+      expect(counter(c)).toBe(1);
+    },
+  );
 
-  it('refuses a closed task as not_open, keeping the link', () => {
-    const a = create('A');
-    const b = create('B');
-    link(b, a);
-    tasks.closeTask(a);
-    tasks.closeTask(b);
-    expect(unlink(b, a)).toEqual({ ok: false, reason: 'not_open' });
-    expect(links()).toEqual([{ task_id: b, blocker_id: a }]);
-  });
+  it.each<Status>(['running', 'failed'])(
+    'makes a task ready once its %s blocker is unlinked',
+    (to) => {
+      const a = create('A');
+      const b = create('B');
+      link(b, a);
+      moveTo(a, to);
+      expect(unlink(b, a)).toEqual({ ok: true });
+      expect(counter(b)).toBe(0);
+      expect(ready()).toEqual(['B']);
+    },
+  );
+
+  it.each<Status>(['running', 'succeeded', 'failed', 'skipped'])(
+    'refuses a %s task as not_open, keeping the link',
+    (to) => {
+      const a = create('A');
+      const b = create('B');
+      link(b, a);
+      moveTo(a, 'succeeded');
+      moveTo(b, to);
+      expect(unlink(b, a)).toEqual({ ok: false, reason: 'not_open' });
+      expect(links()).toEqual([{ task_id: b, blocker_id: a }]);
+    },
+  );
 
   it('refuses a missing task as not_found and a non-string id as invalid', () => {
     const a = create('A');
@@ -374,49 +431,127 @@ describe('unlink', () => {
   });
 });
 
-describe('closeTask', () => {
-  // Covers AE2.
-  it('refuses a task whose blocker is open, which stays open', () => {
+describe('startTask', () => {
+  it('moves a ready task to running, out of the ready list', () => {
     const a = create('A');
-    const b = create('B');
-    link(b, a);
-    expect(tasks.closeTask(b)).toEqual({ ok: false, reason: 'open_blockers' });
-    expect(status(b)).toBe('open');
+    expect(start(a)).toEqual({ ok: true });
+    expect(status(a)).toBe('running');
+    expect(ready()).toEqual([]);
   });
 
   // Covers AE3.
-  it('makes a task ready in the same call that closes its last open blocker', () => {
-    const a = create('A');
-    const b = create('B');
-    const c = create('C');
-    link(c, a);
-    link(c, b);
-    tasks.closeTask(a);
-    expect(ready()).toEqual(['B']);
-    expect(tasks.closeTask(b)).toEqual({ ok: true });
-    expect(ready()).toEqual(['C']);
-  });
+  it.each<Status>(['open', 'running', 'failed'])(
+    'refuses a task with a %s blocker as blocked, which stays open',
+    (to) => {
+      const a = create('A');
+      const b = create('B');
+      link(b, a);
+      moveTo(a, to);
+      expect(start(b)).toEqual({ ok: false, reason: 'blocked' });
+      expect(status(b)).toBe('open');
+    },
+  );
 
   // Covers AE4.
-  it('changes nothing when the task is already closed', () => {
+  it('refuses a task already started as not_open', () => {
     const a = create('A');
-    const b = create('B');
-    const c = create('C');
-    link(b, a);
-    link(b, c);
-    tasks.closeTask(a);
-    expect(tasks.closeTask(a)).toEqual({ ok: true });
-    expect(status(a)).toBe('closed');
-    expect(counter(b)).toBe(1);
-    expect(ready()).toEqual(['C']);
+    expect(start(a)).toEqual({ ok: true });
+    expect(start(a)).toEqual({ ok: false, reason: 'not_open' });
+    expect(status(a)).toBe('running');
   });
 
+  it.each<Status>(['succeeded', 'failed', 'skipped'])(
+    'refuses a %s task as not_open',
+    (to) => {
+      const a = create('A');
+      moveTo(a, to);
+      expect(start(a)).toEqual({ ok: false, reason: 'not_open' });
+      expect(status(a)).toBe(to);
+    },
+  );
+
   it('refuses a missing task as not_found and a non-string id as invalid', () => {
-    expect(tasks.closeTask('tsk_missing')).toEqual({
+    expect(start('tsk_missing')).toEqual({ ok: false, reason: 'not_found' });
+    expect(start(undefined as never)).toEqual({
+      ok: false,
+      reason: 'invalid',
+    });
+  });
+});
+
+describe('finishTask', () => {
+  // Covers AE1.
+  it.each<FinalStatus>(['succeeded', 'skipped'])(
+    'frees the tasks it blocks when it finishes as %s',
+    (to) => {
+      const a = create('A');
+      const b = create('B');
+      const c = create('C');
+      link(c, a);
+      link(c, b);
+      start(a);
+      expect(finish(a, to)).toEqual({ ok: true });
+      expect(status(a)).toBe(to);
+      expect(ready()).toEqual(['B']);
+      moveTo(b, to);
+      expect(ready()).toEqual(['C']);
+    },
+  );
+
+  // Covers AE2.
+  it('keeps the tasks it blocks waiting when it fails, until unlinked', () => {
+    const a = create('A');
+    const b = create('B');
+    link(b, a);
+    start(a);
+    expect(finish(a, 'failed')).toEqual({ ok: true });
+    expect(status(a)).toBe('failed');
+    expect(status(b)).toBe('open');
+    expect(counter(b)).toBe(1);
+    expect(ready()).toEqual([]);
+    unlink(b, a);
+    expect(ready()).toEqual(['B']);
+  });
+
+  // Covers AE5.
+  it.each<FinalStatus>(['succeeded', 'failed', 'skipped'])(
+    'refuses to finish an open task as %s, as not_running',
+    (to) => {
+      const a = create('A');
+      expect(finish(a, to)).toEqual({ ok: false, reason: 'not_running' });
+      expect(status(a)).toBe('open');
+    },
+  );
+
+  // Covers AE6.
+  it('refuses to finish a finished task again, in any state', () => {
+    const a = create('A');
+    const b = create('B');
+    link(b, a);
+    moveTo(a, 'succeeded');
+    for (const to of ['succeeded', 'failed', 'skipped'] as const) {
+      expect(finish(a, to)).toEqual({ ok: false, reason: 'not_running' });
+    }
+    expect(status(a)).toBe('succeeded');
+    expect(counter(b)).toBe(0);
+  });
+
+  it.each(['open', 'running', 'closed', undefined, 7])(
+    'refuses %j as the final state as invalid',
+    (to) => {
+      const a = create('A');
+      start(a);
+      expect(finish(a, to as never)).toEqual({ ok: false, reason: 'invalid' });
+      expect(status(a)).toBe('running');
+    },
+  );
+
+  it('refuses a missing task as not_found and a non-string id as invalid', () => {
+    expect(finish('tsk_missing', 'succeeded')).toEqual({
       ok: false,
       reason: 'not_found',
     });
-    expect(tasks.closeTask(undefined as never)).toEqual({
+    expect(finish(7 as never, 'succeeded')).toEqual({
       ok: false,
       reason: 'invalid',
     });
@@ -504,7 +639,9 @@ describe('listReady', () => {
   it('searches the ready index by assignee, with no table scan', () => {
     const statement = prepare.mock.results
       .map((result) => result.value as StatementSync)
-      .find((candidate) => candidate.sourceSQL.includes('open_blockers = 0'));
+      .find((candidate) =>
+        candidate.sourceSQL.includes('holding_blockers = 0'),
+      );
     const plan = connection()
       .prepare(`EXPLAIN QUERY PLAN ${statement?.sourceSQL}`)
       .all('["dev","qa"]', 10)
@@ -544,44 +681,59 @@ describe('the graph after random operations', () => {
     };
   }
 
-  it('keeps every counter equal to the open blockers, and no closed task blocked by an open one', () => {
+  it('keeps every counter equal to the holding blockers, and no task past open held by one', () => {
     const next = random(42);
     const pick = <T>(items: T[]) => items[Math.floor(next() * items.length)];
+    const running = connection().prepare(
+      "SELECT id FROM task WHERE status = 'running'",
+    );
     const ids = [create('T0')];
     for (let step = 0; step < 400; step++) {
       const roll = next();
       if (roll < 0.25) {
         const assignee = pick(['dev', 'qa', 'ops']);
         ids.push(create(`T${ids.length}`, 2, pick(ids), assignee));
-      } else if (roll < 0.6) link(pick(ids), pick(ids));
-      else if (roll < 0.8) unlink(pick(ids), pick(ids));
-      else tasks.closeTask(pick(ids));
+      } else if (roll < 0.55) link(pick(ids), pick(ids));
+      else if (roll < 0.7) unlink(pick(ids), pick(ids));
+      else if (roll < 0.85) start(pick(ids));
+      else {
+        // Mostly a running task, so finishes happen; any task otherwise.
+        const candidates = running.all().map((row) => String(row.id));
+        finish(
+          next() < 0.8 && candidates.length > 0 ? pick(candidates) : pick(ids),
+          pick<FinalStatus>(['succeeded', 'failed', 'skipped']),
+        );
+      }
     }
 
+    const holding = "blocker.status IN ('open', 'running', 'failed')";
     const drift = connection()
       .prepare(
-        `SELECT task.id FROM task WHERE task.status = 'open' AND task.open_blockers <> (
+        `SELECT task.id FROM task WHERE task.status = 'open' AND task.holding_blockers <> (
           SELECT count(*) FROM link JOIN task AS blocker ON blocker.id = link.blocker_id
-          WHERE link.task_id = task.id AND blocker.status = 'open')`,
+          WHERE link.task_id = task.id AND ${holding})`,
       )
       .all();
-    const closedBlocked = connection()
+    const heldPastOpen = connection()
       .prepare(
         `SELECT link.task_id FROM link
         JOIN task ON task.id = link.task_id
         JOIN task AS blocker ON blocker.id = link.blocker_id
-        WHERE task.status = 'closed' AND blocker.status = 'open'`,
+        WHERE task.status <> 'open' AND ${holding}`,
       )
       .all();
-    const counts = connection()
-      .prepare(
-        "SELECT (SELECT count(*) FROM link) AS links, (SELECT count(*) FROM task WHERE status = 'closed') AS closed",
-      )
-      .get();
+    const counts = Object.fromEntries(
+      connection()
+        .prepare('SELECT status, count(*) AS n FROM task GROUP BY status')
+        .all()
+        .map((row) => [row.status, row.n]),
+    );
     expect(drift).toEqual([]);
-    expect(closedBlocked).toEqual([]);
-    // The run exercised links and closes, not only refusals.
-    expect(counts?.links).toBeGreaterThan(20);
-    expect(counts?.closed).toBeGreaterThan(10);
+    expect(heldPastOpen).toEqual([]);
+    // The run exercised links, starts and every finish, not only refusals.
+    expect(links().length).toBeGreaterThan(20);
+    for (const to of ['succeeded', 'failed', 'skipped']) {
+      expect(counts[to]).toBeGreaterThan(2);
+    }
   });
 });

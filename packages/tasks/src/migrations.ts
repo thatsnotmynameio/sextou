@@ -4,11 +4,12 @@ import type { DatabaseSync } from 'node:sqlite';
 // many steps it has in user_version. Never edit or remove a merged step: a
 // database that already applied it never runs the edit.
 export const steps = [
-  // open_blockers counts the task's blockers that are still open, so a ready
-  // task is one row of task_ready, which no other index covers: with a second
-  // candidate, SQLite can pick the wrong one. The index orders by assignee,
-  // then by priority, then by rowid, which is the order the tasks were
-  // created in. link_blocker finds the tasks a closing task blocks.
+  // holding_blockers counts the task's blockers that still hold it: those
+  // open, running or failed. A ready task is then one row of task_ready, which
+  // no other index covers: with a second candidate, SQLite can pick the wrong
+  // one. The index orders by assignee, then by priority, then by rowid, which
+  // is the order the tasks were created in. link_blocker finds the tasks a
+  // finishing task blocks.
   `CREATE TABLE task (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
@@ -18,12 +19,13 @@ export const steps = [
     assignee TEXT NOT NULL,
     description TEXT,
     source_path TEXT,
-    status TEXT NOT NULL CHECK (status IN ('open', 'closed')),
-    open_blockers INTEGER NOT NULL DEFAULT 0 CHECK (open_blockers >= 0),
+    status TEXT NOT NULL
+      CHECK (status IN ('open', 'running', 'succeeded', 'failed', 'skipped')),
+    holding_blockers INTEGER NOT NULL DEFAULT 0 CHECK (holding_blockers >= 0),
     time_created INTEGER NOT NULL
   );
   CREATE INDEX task_ready ON task (assignee, priority)
-    WHERE status = 'open' AND open_blockers = 0;
+    WHERE status = 'open' AND holding_blockers = 0;
   CREATE TABLE link (
     task_id TEXT NOT NULL REFERENCES task (id),
     blocker_id TEXT NOT NULL REFERENCES task (id),
