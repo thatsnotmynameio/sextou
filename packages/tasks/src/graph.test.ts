@@ -8,8 +8,9 @@ import {
   vi,
   type MockInstance,
 } from 'vitest';
+import { Reason } from './graph';
 import { openTasks, type Tasks } from './open-tasks';
-import { type FinalStatus, finalStatuses, type Status } from './status';
+import { type FinalStatus, finalStatuses, Status } from './status';
 
 let tasks: Tasks;
 let prepare: MockInstance<DatabaseSync['prepare']>;
@@ -96,9 +97,10 @@ function finish(id: string, status: FinalStatus) {
 
 // Starts a ready open task and, for a final state, finishes it.
 function moveTo(id: string, to: Status) {
-  if (to === 'open') return;
+  if (to === Status.open) return;
   if (!start(id).ok) throw new Error(`start ${id}`);
-  if (to !== 'running' && !finish(id, to).ok) throw new Error(`finish ${id}`);
+  if (to !== Status.running && !finish(id, to).ok)
+    throw new Error(`finish ${id}`);
 }
 
 function ready(limit = 100, assignees = ['dev']) {
@@ -138,14 +140,14 @@ describe('createTask', () => {
         assignee: 'dev',
         description: null,
         sourcePath: null,
-        status: 'open',
+        status: Status.open,
       },
     });
     expect(ready()).toEqual(['Write the parser']);
     expect(history(result.ok ? result.task.id : '')).toEqual([
       {
         from_status: null,
-        to_status: 'open',
+        to_status: Status.open,
         changed_by: 'planner',
         reason: null,
         time_changed: 1_700_000_000_000,
@@ -246,17 +248,17 @@ describe('createTask', () => {
       assignee: 'dev',
       createdBy: undefined,
     },
-  ])('refuses %j as invalid, writing nothing', (input) => {
+  ])(`refuses %j as ${Reason.invalid}, writing nothing`, (input) => {
     expect(
       tasks.createTask({ createdBy: 'planner', ...input } as never),
-    ).toEqual({ ok: false, reason: 'invalid' });
+    ).toEqual({ ok: false, reason: Reason.invalid });
     expect(rows()).toBe(0);
     expect(connection().prepare('SELECT * FROM status_change').all()).toEqual(
       [],
     );
   });
 
-  it('refuses a missing parent as not_found, writing nothing', () => {
+  it(`refuses a missing parent as ${Reason.notFound}, writing nothing`, () => {
     expect(
       tasks.createTask({
         title: 'A',
@@ -266,13 +268,13 @@ describe('createTask', () => {
         assignee: 'dev',
         createdBy: 'planner',
       }),
-    ).toEqual({ ok: false, reason: 'not_found' });
+    ).toEqual({ ok: false, reason: Reason.notFound });
     expect(ready()).toEqual([]);
   });
 
   it('accepts a child of a finished parent', () => {
     const parent = create('Parent');
-    moveTo(parent, 'failed');
+    moveTo(parent, Status.failed);
     const result = tasks.createTask({
       title: 'Child',
       kind: 'task',
@@ -326,7 +328,7 @@ describe('link', () => {
     const c = create('C');
     link(b, a);
     link(c, b);
-    expect(link(a, c)).toEqual({ ok: false, reason: 'cycle' });
+    expect(link(a, c)).toEqual({ ok: false, reason: Reason.cycle });
     expect(links()).toHaveLength(2);
     expect(links()).toEqual(
       expect.arrayContaining([
@@ -337,23 +339,29 @@ describe('link', () => {
     expect([counter(a), counter(b), counter(c)]).toEqual([0, 1, 1]);
   });
 
-  it('refuses a task blocked by itself as same_task', () => {
+  it(`refuses a task blocked by itself as ${Reason.sameTask}`, () => {
     const a = create('A');
-    expect(link(a, a)).toEqual({ ok: false, reason: 'same_task' });
+    expect(link(a, a)).toEqual({ ok: false, reason: Reason.sameTask });
     expect(links()).toEqual([]);
   });
 
-  it('refuses a missing task on either side as not_found', () => {
+  it(`refuses a missing task on either side as ${Reason.notFound}`, () => {
     const a = create('A');
-    expect(link(a, 'tsk_missing')).toEqual({ ok: false, reason: 'not_found' });
-    expect(link('tsk_missing', a)).toEqual({ ok: false, reason: 'not_found' });
+    expect(link(a, 'tsk_missing')).toEqual({
+      ok: false,
+      reason: Reason.notFound,
+    });
+    expect(link('tsk_missing', a)).toEqual({
+      ok: false,
+      reason: Reason.notFound,
+    });
     expect(links()).toEqual([]);
   });
 
-  it('refuses an id that is not a string as invalid', () => {
+  it(`refuses an id that is not a string as ${Reason.invalid}`, () => {
     const a = create('A');
-    expect(link(a, 7 as never)).toEqual({ ok: false, reason: 'invalid' });
-    expect(link(7 as never, a)).toEqual({ ok: false, reason: 'invalid' });
+    expect(link(a, 7 as never)).toEqual({ ok: false, reason: Reason.invalid });
+    expect(link(7 as never, a)).toEqual({ ok: false, reason: Reason.invalid });
   });
 
   it('changes nothing for a pair already linked, even once both finished', () => {
@@ -362,26 +370,28 @@ describe('link', () => {
     link(b, a);
     expect(link(b, a)).toEqual({ ok: true });
     expect(counter(b)).toBe(1);
-    moveTo(a, 'succeeded');
-    moveTo(b, 'succeeded');
+    moveTo(a, Status.succeeded);
+    moveTo(b, Status.succeeded);
     expect(link(b, a)).toEqual({ ok: true });
     expect(counter(b)).toBe(0);
     expect(links()).toEqual([{ task_id: b, blocker_id: a }]);
   });
 
-  it.each<Status>(['running', 'succeeded', 'failed', 'skipped'])(
-    'refuses a %s task as not_open',
-    (to) => {
-      const a = create('A');
-      const b = create('B');
-      moveTo(b, to);
-      expect(link(b, a)).toEqual({ ok: false, reason: 'not_open' });
-      expect(links()).toEqual([]);
-    },
-  );
+  it.each<Status>([
+    Status.running,
+    Status.succeeded,
+    Status.failed,
+    Status.skipped,
+  ])(`refuses a %s task as ${Reason.notOpen}`, (to) => {
+    const a = create('A');
+    const b = create('B');
+    moveTo(b, to);
+    expect(link(b, a)).toEqual({ ok: false, reason: Reason.notOpen });
+    expect(links()).toEqual([]);
+  });
 
   // Covers AE7.
-  it.each<Status>(['succeeded', 'skipped'])(
+  it.each<Status>([Status.succeeded, Status.skipped])(
     'links to a %s blocker without holding the task',
     (to) => {
       const a = create('A');
@@ -394,7 +404,7 @@ describe('link', () => {
   );
 
   // Covers AE7.
-  it.each<Status>(['open', 'running', 'failed'])(
+  it.each<Status>([Status.open, Status.running, Status.failed])(
     'links to a %s blocker, which holds the task',
     (to) => {
       const a = create('A');
@@ -426,7 +436,7 @@ describe('unlink', () => {
     expect(counter(b)).toBe(1);
   });
 
-  it.each<Status>(['succeeded', 'skipped'])(
+  it.each<Status>([Status.succeeded, Status.skipped])(
     'unlinks a %s blocker without moving the counter',
     (to) => {
       const a = create('A');
@@ -440,7 +450,7 @@ describe('unlink', () => {
     },
   );
 
-  it.each<Status>(['running', 'failed'])(
+  it.each<Status>([Status.running, Status.failed])(
     'makes a task ready once its %s blocker is unlinked',
     (to) => {
       const a = create('A');
@@ -453,26 +463,31 @@ describe('unlink', () => {
     },
   );
 
-  it.each<Status>(['running', 'succeeded', 'failed', 'skipped'])(
-    'refuses a %s task as not_open, keeping the link',
-    (to) => {
-      const a = create('A');
-      const b = create('B');
-      link(b, a);
-      moveTo(a, 'succeeded');
-      moveTo(b, to);
-      expect(unlink(b, a)).toEqual({ ok: false, reason: 'not_open' });
-      expect(links()).toEqual([{ task_id: b, blocker_id: a }]);
-    },
-  );
+  it.each<Status>([
+    Status.running,
+    Status.succeeded,
+    Status.failed,
+    Status.skipped,
+  ])(`refuses a %s task as ${Reason.notOpen}, keeping the link`, (to) => {
+    const a = create('A');
+    const b = create('B');
+    link(b, a);
+    moveTo(a, Status.succeeded);
+    moveTo(b, to);
+    expect(unlink(b, a)).toEqual({ ok: false, reason: Reason.notOpen });
+    expect(links()).toEqual([{ task_id: b, blocker_id: a }]);
+  });
 
-  it('refuses a missing task as not_found and a non-string id as invalid', () => {
+  it(`refuses a missing task as ${Reason.notFound} and a non-string id as ${Reason.invalid}`, () => {
     const a = create('A');
     expect(unlink(a, 'tsk_missing')).toEqual({
       ok: false,
-      reason: 'not_found',
+      reason: Reason.notFound,
     });
-    expect(unlink(a, null as never)).toEqual({ ok: false, reason: 'invalid' });
+    expect(unlink(a, null as never)).toEqual({
+      ok: false,
+      reason: Reason.invalid,
+    });
   });
 });
 
@@ -480,41 +495,41 @@ describe('startTask', () => {
   it('moves a ready task to running, out of the ready list', () => {
     const a = create('A');
     expect(start(a)).toEqual({ ok: true });
-    expect(status(a)).toBe('running');
+    expect(status(a)).toBe(Status.running);
     expect(ready()).toEqual([]);
   });
 
   // Covers AE3.
-  it.each<Status>(['open', 'running', 'failed'])(
-    'refuses a task with a %s blocker as blocked, which stays open',
+  it.each<Status>([Status.open, Status.running, Status.failed])(
+    `refuses a task with a %s blocker as ${Reason.blocked}, which stays open`,
     (to) => {
       const a = create('A');
       const b = create('B');
       link(b, a);
       moveTo(a, to);
-      expect(start(b)).toEqual({ ok: false, reason: 'blocked' });
-      expect(status(b)).toBe('open');
+      expect(start(b)).toEqual({ ok: false, reason: Reason.blocked });
+      expect(status(b)).toBe(Status.open);
       expect(history(b)).toHaveLength(1);
       expect(execution(b)).toEqual([]);
     },
   );
 
   // Covers AE4.
-  it('refuses a task already started as not_open', () => {
+  it(`refuses a task already started as ${Reason.notOpen}`, () => {
     const a = create('A');
     expect(start(a)).toEqual({ ok: true });
-    expect(start(a)).toEqual({ ok: false, reason: 'not_open' });
-    expect(status(a)).toBe('running');
+    expect(start(a)).toEqual({ ok: false, reason: Reason.notOpen });
+    expect(status(a)).toBe(Status.running);
     expect(history(a)).toHaveLength(2);
     expect(execution(a)).toHaveLength(1);
   });
 
-  it.each<Status>(['succeeded', 'failed', 'skipped'])(
-    'refuses a %s task as not_open',
+  it.each<Status>([Status.succeeded, Status.failed, Status.skipped])(
+    `refuses a %s task as ${Reason.notOpen}`,
     (to) => {
       const a = create('A');
       moveTo(a, to);
-      expect(start(a)).toEqual({ ok: false, reason: 'not_open' });
+      expect(start(a)).toEqual({ ok: false, reason: Reason.notOpen });
       expect(status(a)).toBe(to);
     },
   );
@@ -529,29 +544,32 @@ describe('startTask', () => {
     { changedBy: 'orchestrator', actor: 7 },
     { changedBy: 'orchestrator' },
     { changedBy: 'orchestrator', actor: 'bot', logPath: 7 },
-  ])('refuses %j as invalid, writing nothing', (input) => {
+  ])(`refuses %j as ${Reason.invalid}, writing nothing`, (input) => {
     const a = create('A');
     expect(tasks.startTask({ id: a, ...input } as never)).toEqual({
       ok: false,
-      reason: 'invalid',
+      reason: Reason.invalid,
     });
-    expect(status(a)).toBe('open');
+    expect(status(a)).toBe(Status.open);
     expect(history(a)).toHaveLength(1);
     expect(execution(a)).toEqual([]);
   });
 
-  it('refuses a missing task as not_found and a non-string id as invalid', () => {
-    expect(start('tsk_missing')).toEqual({ ok: false, reason: 'not_found' });
+  it(`refuses a missing task as ${Reason.notFound} and a non-string id as ${Reason.invalid}`, () => {
+    expect(start('tsk_missing')).toEqual({
+      ok: false,
+      reason: Reason.notFound,
+    });
     expect(start(undefined as never)).toEqual({
       ok: false,
-      reason: 'invalid',
+      reason: Reason.invalid,
     });
   });
 });
 
 describe('finishTask', () => {
   // Covers AE1.
-  it.each<FinalStatus>(['succeeded', 'skipped'])(
+  it.each<FinalStatus>([Status.succeeded, Status.skipped])(
     'frees the tasks it blocks when it finishes as %s',
     (to) => {
       const a = create('A');
@@ -574,9 +592,9 @@ describe('finishTask', () => {
     const b = create('B');
     link(b, a);
     start(a);
-    expect(finish(a, 'failed')).toEqual({ ok: true });
-    expect(status(a)).toBe('failed');
-    expect(status(b)).toBe('open');
+    expect(finish(a, Status.failed)).toEqual({ ok: true });
+    expect(status(a)).toBe(Status.failed);
+    expect(status(b)).toBe(Status.open);
     expect(counter(b)).toBe(1);
     expect(ready()).toEqual([]);
     unlink(b, a);
@@ -585,11 +603,11 @@ describe('finishTask', () => {
 
   // Covers AE5.
   it.each(finalStatuses)(
-    'refuses to finish an open task as %s, as not_running',
+    `refuses to finish an open task as %s, as ${Reason.notRunning}`,
     (to) => {
       const a = create('A');
-      expect(finish(a, to)).toEqual({ ok: false, reason: 'not_running' });
-      expect(status(a)).toBe('open');
+      expect(finish(a, to)).toEqual({ ok: false, reason: Reason.notRunning });
+      expect(status(a)).toBe(Status.open);
     },
   );
 
@@ -598,21 +616,24 @@ describe('finishTask', () => {
     const a = create('A');
     const b = create('B');
     link(b, a);
-    moveTo(a, 'succeeded');
+    moveTo(a, Status.succeeded);
     for (const to of finalStatuses) {
-      expect(finish(a, to)).toEqual({ ok: false, reason: 'not_running' });
+      expect(finish(a, to)).toEqual({ ok: false, reason: Reason.notRunning });
     }
-    expect(status(a)).toBe('succeeded');
+    expect(status(a)).toBe(Status.succeeded);
     expect(counter(b)).toBe(0);
   });
 
-  it.each(['open', 'running', 'closed', undefined, 7])(
-    'refuses %j as the final state as invalid',
+  it.each([Status.open, Status.running, 'closed', undefined, 7])(
+    `refuses %j as the final state as ${Reason.invalid}`,
     (to) => {
       const a = create('A');
       start(a);
-      expect(finish(a, to as never)).toEqual({ ok: false, reason: 'invalid' });
-      expect(status(a)).toBe('running');
+      expect(finish(a, to as never)).toEqual({
+        ok: false,
+        reason: Reason.invalid,
+      });
+      expect(status(a)).toBe(Status.running);
     },
   );
 
@@ -623,27 +644,27 @@ describe('finishTask', () => {
     {},
     { changedBy: 'bot-dev-1', reason: 7 },
     { changedBy: 'bot-dev-1', resultPath: 7 },
-  ])('refuses %j as invalid, writing nothing', (input) => {
+  ])(`refuses %j as ${Reason.invalid}, writing nothing`, (input) => {
     const a = create('A');
     start(a);
     expect(
-      tasks.finishTask({ id: a, status: 'succeeded', ...input } as never),
-    ).toEqual({ ok: false, reason: 'invalid' });
-    expect(status(a)).toBe('running');
+      tasks.finishTask({ id: a, status: Status.succeeded, ...input } as never),
+    ).toEqual({ ok: false, reason: Reason.invalid });
+    expect(status(a)).toBe(Status.running);
     expect(history(a)).toHaveLength(2);
     expect(execution(a)).toEqual([
       { actor: 'bot-dev-1', log_path: null, result_path: null },
     ]);
   });
 
-  it('refuses a missing task as not_found and a non-string id as invalid', () => {
-    expect(finish('tsk_missing', 'succeeded')).toEqual({
+  it(`refuses a missing task as ${Reason.notFound} and a non-string id as ${Reason.invalid}`, () => {
+    expect(finish('tsk_missing', Status.succeeded)).toEqual({
       ok: false,
-      reason: 'not_found',
+      reason: Reason.notFound,
     });
-    expect(finish(7 as never, 'succeeded')).toEqual({
+    expect(finish(7 as never, Status.succeeded)).toEqual({
       ok: false,
-      reason: 'invalid',
+      reason: Reason.invalid,
     });
   });
 });
@@ -708,21 +729,21 @@ describe('listReady', () => {
   });
 
   it.each([[], undefined, 'dev', [''], ['  '], [7]])(
-    'refuses %j as the assignees as invalid',
+    `refuses %j as the assignees as ${Reason.invalid}`,
     (assignees) => {
       expect(tasks.listReady({ assignees, limit: 1 } as never)).toEqual({
         ok: false,
-        reason: 'invalid',
+        reason: Reason.invalid,
       });
     },
   );
 
   it.each([0, -1, 1.5, Number.NaN])(
-    'refuses a limit of %d as invalid',
+    `refuses a limit of %d as ${Reason.invalid}`,
     (limit) => {
       expect(tasks.listReady({ assignees: ['dev'], limit })).toEqual({
         ok: false,
-        reason: 'invalid',
+        reason: Reason.invalid,
       });
     },
   );
@@ -755,25 +776,25 @@ describe('the history and the execution', () => {
     now.mockReturnValue(1_700_000_001_000);
     start(a);
     now.mockReturnValue(1_700_000_002_000);
-    finish(a, 'succeeded');
+    finish(a, Status.succeeded);
     expect(history(a)).toEqual([
       {
         from_status: null,
-        to_status: 'open',
+        to_status: Status.open,
         changed_by: 'planner',
         reason: null,
         time_changed: 1_700_000_000_000,
       },
       {
-        from_status: 'open',
-        to_status: 'running',
+        from_status: Status.open,
+        to_status: Status.running,
         changed_by: 'orchestrator',
         reason: null,
         time_changed: 1_700_000_001_000,
       },
       {
-        from_status: 'running',
-        to_status: 'succeeded',
+        from_status: Status.running,
+        to_status: Status.succeeded,
         changed_by: 'bot-dev-1',
         reason: null,
         time_changed: 1_700_000_002_000,
@@ -796,7 +817,7 @@ describe('the history and the execution', () => {
     tasks.finishTask({
       id: a,
       changedBy: 'bot-dev-2',
-      status: 'failed',
+      status: Status.failed,
       reason: 'tests failed',
       resultPath: 'out/run-1',
     });
@@ -810,15 +831,15 @@ describe('the history and the execution', () => {
     // The execution started and ended with these two changes.
     expect(history(a).slice(1)).toEqual([
       {
-        from_status: 'open',
-        to_status: 'running',
+        from_status: Status.open,
+        to_status: Status.running,
         changed_by: 'orchestrator',
         reason: null,
         time_changed: 1_700_000_001_000,
       },
       {
-        from_status: 'running',
-        to_status: 'failed',
+        from_status: Status.running,
+        to_status: Status.failed,
         changed_by: 'bot-dev-2',
         reason: 'tests failed',
         time_changed: 1_700_000_009_000,
@@ -828,7 +849,7 @@ describe('the history and the execution', () => {
 
   it('stores no log or result path when none is given', () => {
     const a = create('A');
-    moveTo(a, 'skipped');
+    moveTo(a, Status.skipped);
     expect(execution(a)).toEqual([
       { actor: 'bot-dev-1', log_path: null, result_path: null },
     ]);
@@ -846,7 +867,7 @@ describe('the history and the execution', () => {
     tasks.finishTask({
       id: a,
       changedBy: ' bot-dev-2 ',
-      status: 'skipped',
+      status: Status.skipped,
       reason: ' not needed ',
       resultPath: ' out/run-1 ',
     });
@@ -859,7 +880,7 @@ describe('the history and the execution', () => {
     tasks.finishTask({
       id: b,
       changedBy: 'bot-dev-1',
-      status: 'succeeded',
+      status: Status.succeeded,
       reason: ' ',
       resultPath: ' ',
     });
@@ -906,7 +927,7 @@ describe('an error from SQLite', () => {
       "CREATE TRIGGER fail BEFORE INSERT ON execution BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END",
     );
     expect(() => start(a)).toThrow('disk I/O error');
-    expect(status(a)).toBe('open');
+    expect(status(a)).toBe(Status.open);
     expect(history(a)).toHaveLength(1);
     expect(connection().isTransaction).toBe(false);
   });
@@ -924,11 +945,11 @@ describe('an error from SQLite', () => {
       tasks.finishTask({
         id: a,
         changedBy: 'bot-dev-1',
-        status: 'succeeded',
+        status: Status.succeeded,
         resultPath: 'out/run-1',
       }),
     ).toThrow('disk I/O error');
-    expect(status(a)).toBe('running');
+    expect(status(a)).toBe(Status.running);
     expect(history(a)).toHaveLength(2);
     expect(execution(a)).toEqual([
       { actor: 'bot-dev-1', log_path: null, result_path: null },
@@ -951,7 +972,7 @@ describe('the graph after random operations', () => {
     const next = random(42);
     const pick = <T>(items: T[]) => items[Math.floor(next() * items.length)];
     const running = connection().prepare(
-      "SELECT id FROM task WHERE status = 'running'",
+      `SELECT id FROM task WHERE status = '${Status.running}'`,
     );
     const ids = [create('T0')];
     for (let step = 0; step < 400; step++) {
@@ -972,10 +993,10 @@ describe('the graph after random operations', () => {
       }
     }
 
-    const holding = "blocker.status IN ('open', 'running', 'failed')";
+    const holding = `blocker.status IN ('${Status.open}', '${Status.running}', '${Status.failed}')`;
     const drift = connection()
       .prepare(
-        `SELECT task.id FROM task WHERE task.status = 'open' AND task.holding_blockers <> (
+        `SELECT task.id FROM task WHERE task.status = '${Status.open}' AND task.holding_blockers <> (
           SELECT count(*) FROM link JOIN task AS blocker ON blocker.id = link.blocker_id
           WHERE link.task_id = task.id AND ${holding})`,
       )
@@ -985,7 +1006,7 @@ describe('the graph after random operations', () => {
         `SELECT link.task_id FROM link
         JOIN task ON task.id = link.task_id
         JOIN task AS blocker ON blocker.id = link.blocker_id
-        WHERE task.status <> 'open' AND ${holding}`,
+        WHERE task.status <> '${Status.open}' AND ${holding}`,
       )
       .all();
     const counts = Object.fromEntries(
@@ -1002,7 +1023,7 @@ describe('the graph after random operations', () => {
           SELECT to_status FROM status_change WHERE task_id = task.id
           ORDER BY id DESC LIMIT 1)
         OR (SELECT count(*) FROM execution WHERE task_id = task.id)
-          <> (task.status <> 'open')`,
+          <> (task.status <> '${Status.open}')`,
       )
       .all();
     expect(drift).toEqual([]);

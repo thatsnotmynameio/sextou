@@ -1,21 +1,30 @@
 // A task's states: open, then running, then a final one. running never
 // returns to open.
-const statuses = ['open', 'running', 'succeeded', 'failed', 'skipped'] as const;
+export const Status = {
+  open: 'open',
+  running: 'running',
+  succeeded: 'succeeded',
+  failed: 'failed',
+  skipped: 'skipped',
+} as const;
 
-export type Status = (typeof statuses)[number];
+export type Status = (typeof Status)[keyof typeof Status];
 
 // How a task ended. A task in one never changes state again.
 export const finalStatuses = [
-  'succeeded',
-  'failed',
-  'skipped',
-] as const satisfies readonly Status[];
+  Status.succeeded,
+  Status.failed,
+  Status.skipped,
+] as const;
 
 export type FinalStatus = (typeof finalStatuses)[number];
 
 // succeeded and skipped free the tasks a task blocks; failed keeps them
 // waiting.
-const freeing: ReadonlySet<unknown> = new Set<Status>(['succeeded', 'skipped']);
+const freeing: ReadonlySet<unknown> = new Set<Status>([
+  Status.succeeded,
+  Status.skipped,
+]);
 
 export function isFinal(value: unknown): value is FinalStatus {
   return (finalStatuses as readonly unknown[]).includes(value);
@@ -27,4 +36,6 @@ export function holds(status: unknown) {
 }
 
 // The states as a SQL list, for a column's check.
-export const statusList = statuses.map((status) => `'${status}'`).join(', ');
+export const statusList = Object.values(Status)
+  .map((status) => `'${status}'`)
+  .join(', ');
