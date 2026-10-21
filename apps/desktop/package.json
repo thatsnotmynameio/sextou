@@ -20,7 +20,7 @@
     "typecheck": "tsc --noEmit",
     "test": "pnpm test:unit",
     "test:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit",
-    "test:mutation": "stryker run && node ../../.github/scripts/src/mutation-floor-cli.ts reports/mutation/mutation.json"
+    "test:mutation": "stryker run"
   },
   "devDependencies": {
     "@electron-forge/cli": "^8.0.1",

@@ -30,31 +30,6 @@ importers:
         specifier: ^5.0.5
         version: 5.0.5(@types/node@26.6.5)(@vitest/browser-playwright@5.0.5)(@vitest/coverage-v8@5.0.5)(@vitest/ui@5.0.5)(jsdom@30.1.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
 
-  .github/scripts:
-    dependencies:
-      mutation-testing-metrics:
-        specifier: 3.8.4
-        version: 3.8.4
-    devDependencies:
-      '@stryker-mutator/core':
-        specifier: 10.0.0
-        version: 10.0.0(@types/node@24.19.2)
-      '@stryker-mutator/vitest-runner':
-        specifier: 10.0.0
-        version: 10.0.0(@stryker-mutator/core@10.0.0(@types/node@24.19.2))(vitest@5.0.5)
-      '@types/node':
-        specifier: ^24.19.2
-        version: 24.19.2
-      '@vitest/coverage-v8':
-        specifier: ^5.0.5
-        version: 5.0.5(@vitest/browser@5.0.5)(vitest@5.0.5)
-      typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
-      vitest:
-        specifier: ^5.0.5
-        version: 5.0.5(@types/node@24.19.2)(@vitest/browser-playwright@5.0.5)(@vitest/coverage-v8@5.0.5)(@vitest/ui@5.0.5)(jsdom@30.1.3)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
-
   apps/desktop:
     dependencies:
       electron-squirrel-startup:

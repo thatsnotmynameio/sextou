@@ -1,9 +1,0 @@
-{
-  "extends": "../../tsconfig.json",
-  "compilerOptions": {
-    // Node runs src/mutation-floor-cli.ts with its type stripping, which needs
-    // the .ts extension on its imports.
-    "allowImportingTsExtensions": true
-  },
-  "include": ["src/**/*", "*.ts"]
-}

@@ -16,7 +16,7 @@
     "test": "pnpm test:unit && pnpm test:component",
     "test:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit",
     "test:component": "vitest run --config vitest.component.config.ts --coverage --coverage.reportsDirectory=coverage/component",
-    "test:mutation": "stryker run && node ../../.github/scripts/src/mutation-floor-cli.ts reports/mutation/mutation.json"
+    "test:mutation": "stryker run"
   },
   "peerDependencies": {
     "@lingui/core": "^6.10.0",

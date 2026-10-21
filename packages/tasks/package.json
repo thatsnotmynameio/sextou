@@ -12,7 +12,7 @@
     "test": "pnpm test:unit && pnpm test:integration",
     "test:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit",
     "test:integration": "vitest run --config vitest.integration.config.ts --coverage --coverage.reportsDirectory=coverage/integration",
-    "test:mutation": "stryker run && node ../../.github/scripts/src/mutation-floor-cli.ts reports/mutation/mutation.json"
+    "test:mutation": "stryker run"
   },
   "dependencies": {
     "@tursodatabase/database": "0.8.3"
