@@ -1,5 +1,5 @@
 import { screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { expect, test } from 'vitest';
 import { HomeIcon, InboxIcon, QueueIcon, ReviewsIcon } from '../Icon/Icon';
 import { renderWithI18n } from '../test/render';
 import { Sidebar, type SidebarProps } from './Sidebar';
@@ -19,28 +19,26 @@ const props: SidebarProps = {
   ],
 };
 
-describe('Sidebar', () => {
-  it('is the "Main navigation" landmark with the header, items and sections in order', () => {
-    renderWithI18n(<Sidebar {...props} />);
-    const nav = screen.getByRole('navigation', { name: 'Main navigation' });
-    expect(
-      within(nav).getByRole('button', { name: 'Switch workspace' }),
-    ).toBeInTheDocument();
-    expect(
-      within(nav)
-        .getAllByRole('link')
-        .map((link) => link.textContent),
-    ).toEqual(['Home', 'Inbox4', 'Reviews3', 'Queue']);
-    expect(within(nav).getByText('Organization')).toBeInTheDocument();
-    const current = nav.querySelectorAll('[aria-current="page"]');
-    expect(current).toHaveLength(1);
-    expect(current[0]).toHaveTextContent('Queue');
-  });
+test('Sidebar is the "Main navigation" landmark with the header, items and sections in order', () => {
+  renderWithI18n(<Sidebar {...props} />);
+  const nav = screen.getByRole('navigation', { name: 'Main navigation' });
+  expect(
+    within(nav).getByRole('button', { name: 'Switch workspace' }),
+  ).toBeInTheDocument();
+  expect(
+    within(nav)
+      .getAllByRole('link')
+      .map((link) => link.textContent),
+  ).toEqual(['Home', 'Inbox4', 'Reviews3', 'Queue']);
+  expect(within(nav).getByText('Organization')).toBeInTheDocument();
+  const current = nav.querySelectorAll('[aria-current="page"]');
+  expect(current).toHaveLength(1);
+  expect(current[0]).toHaveTextContent('Queue');
+});
 
-  it('renders only the header and the top items when there are no sections', () => {
-    renderWithI18n(<Sidebar {...props} sections={[]} />);
-    const nav = screen.getByRole('navigation');
-    expect(nav.children).toHaveLength(2);
-    expect(within(nav).getAllByRole('link')).toHaveLength(3);
-  });
+test('Sidebar renders only the header and the top items when there are no sections', () => {
+  renderWithI18n(<Sidebar {...props} sections={[]} />);
+  const nav = screen.getByRole('navigation');
+  expect(nav.children).toHaveLength(2);
+  expect(within(nav).getAllByRole('link')).toHaveLength(3);
 });

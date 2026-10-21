@@ -1,7 +1,7 @@
-import { expect, it } from 'vitest';
+import { expect, test } from 'vitest';
 import { errorPageURL } from './error-page';
 
-it('links "Try again" back to the web app', () => {
+test('links "Try again" back to the web app', () => {
   const url = errorPageURL('https://app.example');
   const prefix = 'data:text/html;charset=utf-8,';
 
