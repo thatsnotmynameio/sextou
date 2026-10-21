@@ -26,10 +26,6 @@ const freeing: ReadonlySet<unknown> = new Set<Status>([
   Status.skipped,
 ]);
 
-export function isFinal(value: unknown): value is FinalStatus {
-  return (finalStatuses as readonly unknown[]).includes(value);
-}
-
 // Whether a blocker in this state keeps the tasks it blocks waiting.
 export function holds(status: unknown) {
   return !freeing.has(status);
