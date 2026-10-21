@@ -6,20 +6,23 @@ import type { DatabaseSync } from 'node:sqlite';
 export const steps = [
   // open_blockers counts the task's blockers that are still open, so a ready
   // task is one row of task_ready, which no other index covers: with a second
-  // candidate, SQLite can pick the wrong one. The index orders by priority,
-  // then by rowid, which is the order the tasks were created in.
-  // link_blocker finds the tasks a closing task blocks.
+  // candidate, SQLite can pick the wrong one. The index orders by assignee,
+  // then by priority, then by rowid, which is the order the tasks were
+  // created in. link_blocker finds the tasks a closing task blocks.
   `CREATE TABLE task (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     kind TEXT NOT NULL,
     priority INTEGER NOT NULL CHECK (priority BETWEEN 0 AND 4),
     parent_id TEXT REFERENCES task (id),
+    assignee TEXT NOT NULL,
+    description TEXT,
+    source_path TEXT,
     status TEXT NOT NULL CHECK (status IN ('open', 'closed')),
     open_blockers INTEGER NOT NULL DEFAULT 0 CHECK (open_blockers >= 0),
     time_created INTEGER NOT NULL
   );
-  CREATE INDEX task_ready ON task (priority)
+  CREATE INDEX task_ready ON task (assignee, priority)
     WHERE status = 'open' AND open_blockers = 0;
   CREATE TABLE link (
     task_id TEXT NOT NULL REFERENCES task (id),

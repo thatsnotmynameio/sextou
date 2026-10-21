@@ -70,7 +70,7 @@ function openedTasks(): Tasks {
 // A closed task graph throws on any operation.
 function tasksOpen() {
   try {
-    openedTasks().listReady(1);
+    openedTasks().listReady({ assignees: ['dev'], limit: 1 });
     return true;
   } catch {
     return false;

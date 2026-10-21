@@ -24,6 +24,13 @@ export interface Task {
   // 0 is the most urgent, 4 the least.
   priority: number;
   parentId: string | null;
+  // Who may take the task: any name the caller uses, never checked.
+  assignee: string;
+  // What the task asks for.
+  description: string | null;
+  // A URL or a file path where the task's longer text lives. Stored as given
+  // and never read.
+  sourcePath: string | null;
   // A closed task never reopens.
   status: 'open' | 'closed';
   // Milliseconds since the epoch.
@@ -36,6 +43,10 @@ export interface NewTask {
   priority: number;
   // Set only here: a parent organizes and never blocks.
   parentId?: string;
+  assignee: string;
+  // Blank is stored as null, as is a blank source path.
+  description?: string;
+  sourcePath?: string;
 }
 
 // The task is blocked by the blocker.
@@ -66,11 +77,12 @@ export interface Graph {
   closeTask: (
     id: string,
   ) => { ok: true } | Refused<'invalid' | 'not_found' | 'open_blockers'>;
-  // The open tasks with no open blocker, most urgent first, then oldest, at
-  // most limit of them.
-  listReady: (
-    limit: number,
-  ) => { ok: true; tasks: Task[] } | Refused<'invalid'>;
+  // The open tasks with no open blocker whose assignee is one of assignees,
+  // matched exactly, most urgent first, then oldest, at most limit of them.
+  listReady: (query: {
+    assignees: string[];
+    limit: number;
+  }) => { ok: true; tasks: Task[] } | Refused<'invalid'>;
 }
 
 function refuse<R extends Reason>(reason: R): Refused<R> {
@@ -86,13 +98,29 @@ function trimmed(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+// Text the caller may leave out, with its spaces trimmed: null when it is
+// absent or blank, undefined when it isn't a string.
+function optional(value: unknown) {
+  if (value === undefined) return null;
+  if (typeof value !== 'string') return undefined;
+  return value.trim() || null;
+}
+
+// A nullable text column as a string, or null.
+function nullable(value: SQLOutputValue) {
+  return value === null ? null : String(value);
+}
+
 function toTask(row: Record<string, SQLOutputValue>): Task {
   return {
     id: String(row.id),
     title: String(row.title),
     kind: String(row.kind),
     priority: Number(row.priority),
-    parentId: row.parent_id === null ? null : String(row.parent_id),
+    parentId: nullable(row.parent_id),
+    assignee: String(row.assignee),
+    description: nullable(row.description),
+    sourcePath: nullable(row.source_path),
     status: row.status === 'closed' ? 'closed' : 'open',
     timeCreated: Number(row.time_created),
   };
@@ -106,7 +134,7 @@ export function createGraph(client: DatabaseSync): Graph {
     'SELECT status, open_blockers FROM task WHERE id = ?',
   );
   const insertTask = client.prepare(
-    "INSERT INTO task (id, title, kind, priority, parent_id, status, time_created) VALUES (?, ?, ?, ?, ?, 'open', ?)",
+    "INSERT INTO task (id, title, kind, priority, parent_id, assignee, description, source_path, status, time_created) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)",
   );
   const findLink = client.prepare(
     'SELECT 1 FROM link WHERE task_id = ? AND blocker_id = ?',
@@ -142,9 +170,10 @@ export function createGraph(client: DatabaseSync): Graph {
   const unblockDependents = client.prepare(
     'UPDATE task SET open_blockers = open_blockers - 1 WHERE id IN (SELECT task_id FROM link WHERE blocker_id = ?)',
   );
-  // The WHERE matches task_ready's, so SQLite reads that index in order.
+  // The WHERE matches task_ready's, so SQLite searches that index once per
+  // assignee in the JSON array, then sorts only the rows it found.
   const ready = client.prepare(
-    "SELECT id, title, kind, priority, parent_id, status, time_created FROM task WHERE status = 'open' AND open_blockers = 0 ORDER BY priority, rowid LIMIT ?",
+    "SELECT id, title, kind, priority, parent_id, assignee, description, source_path, status, time_created FROM task WHERE assignee IN (SELECT value FROM json_each(?)) AND status = 'open' AND open_blockers = 0 ORDER BY priority, rowid LIMIT ?",
   );
 
   // Runs fn in an immediate transaction, which takes the write lock first, so
@@ -163,16 +192,30 @@ export function createGraph(client: DatabaseSync): Graph {
   }
 
   return {
-    createTask: ({ title, kind, priority, parentId }) => {
+    createTask: ({
+      title,
+      kind,
+      priority,
+      parentId,
+      assignee,
+      description,
+      sourcePath,
+    }) => {
       const cleanTitle = trimmed(title);
       const cleanKind = trimmed(kind);
+      const cleanAssignee = trimmed(assignee);
+      const cleanDescription = optional(description);
+      const cleanSourcePath = optional(sourcePath);
       if (
         cleanTitle === '' ||
         cleanKind === '' ||
         !Number.isInteger(priority) ||
         priority < 0 ||
         priority > 4 ||
-        (parentId !== undefined && !isId(parentId))
+        (parentId !== undefined && !isId(parentId)) ||
+        cleanAssignee === '' ||
+        cleanDescription === undefined ||
+        cleanSourcePath === undefined
       ) {
         return refuse('invalid');
       }
@@ -186,6 +229,9 @@ export function createGraph(client: DatabaseSync): Graph {
           kind: cleanKind,
           priority,
           parentId: parentId ?? null,
+          assignee: cleanAssignee,
+          description: cleanDescription,
+          sourcePath: cleanSourcePath,
           status: 'open',
           timeCreated: Date.now(),
         };
@@ -195,6 +241,9 @@ export function createGraph(client: DatabaseSync): Graph {
           task.kind,
           task.priority,
           task.parentId,
+          task.assignee,
+          task.description,
+          task.sourcePath,
           task.timeCreated,
         );
         return { ok: true, task };
@@ -254,9 +303,20 @@ export function createGraph(client: DatabaseSync): Graph {
     },
 
     // One statement reads one snapshot, so it takes no lock.
-    listReady: (limit) => {
-      if (!Number.isInteger(limit) || limit < 1) return refuse('invalid');
-      return { ok: true, tasks: ready.all(limit).map(toTask) };
+    listReady: ({ assignees, limit }) => {
+      const names = Array.isArray(assignees) ? assignees.map(trimmed) : [];
+      if (
+        names.length === 0 ||
+        names.includes('') ||
+        !Number.isInteger(limit) ||
+        limit < 1
+      ) {
+        return refuse('invalid');
+      }
+      return {
+        ok: true,
+        tasks: ready.all(JSON.stringify(names), limit).map(toTask),
+      };
     },
   };
 }

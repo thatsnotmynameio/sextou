@@ -76,4 +76,19 @@ describe('the shipped steps', () => {
     expect(tables()).toEqual(['link', 'task']);
     expect(version()).toBe(steps.length);
   });
+
+  it('require an assignee on a task and leave its description and source path optional', () => {
+    migrate(client, steps);
+    expect(
+      client
+        .prepare(
+          "SELECT name, \"notnull\" FROM pragma_table_info('task') WHERE name IN ('assignee', 'description', 'source_path') ORDER BY name",
+        )
+        .all(),
+    ).toEqual([
+      { name: 'assignee', notnull: 1 },
+      { name: 'description', notnull: 0 },
+      { name: 'source_path', notnull: 0 },
+    ]);
+  });
 });
