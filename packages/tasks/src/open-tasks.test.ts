@@ -78,14 +78,14 @@ describe('openTasks in memory', () => {
   it('opens a migrated, empty graph', () => {
     open(':memory:');
     expect(tables(connection())).toEqual([
-      'execution',
-      'link',
-      'status_change',
-      'task',
+      'task_executions',
+      'task_links',
+      'task_status_changes',
+      'tasks',
     ]);
     expect(pragma('user_version')).toBe(steps.length);
     expect(
-      connection().prepare('SELECT count(*) AS n FROM task').get(),
+      connection().prepare('SELECT count(*) AS n FROM tasks').get(),
     ).toEqual({ n: 0 });
   });
 
@@ -103,10 +103,10 @@ describe('openTasks on a file', () => {
     open(path).close();
     inspect(path, (client) => {
       expect(tables(client)).toEqual([
-        'execution',
-        'link',
-        'status_change',
-        'task',
+        'task_executions',
+        'task_links',
+        'task_status_changes',
+        'tasks',
       ]);
       expect(client.prepare('PRAGMA user_version').get()).toEqual({
         user_version: steps.length,

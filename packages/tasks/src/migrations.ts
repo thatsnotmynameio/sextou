@@ -9,20 +9,20 @@ export const steps = [
   // open, running or failed. A ready task is then one row of task_ready, which
   // no other index covers: with a second candidate, SQLite can pick the wrong
   // one. The index orders by assignee, then by priority, then by rowid, which
-  // is the order the tasks were created in. link_blocker finds the tasks a
-  // finishing task blocks.
+  // is the order the tasks were created in. task_link_blocker finds the tasks
+  // a finishing task blocks.
   //
-  // status_change records each change of a task's status, its creation
+  // task_status_changes records each change of a task's status, its creation
   // first; its own key keeps changes in the same millisecond in order.
-  // execution records who runs a started task and where its log and result
-  // are; its start and end are the changes into and out of running. Nothing
-  // reads either yet, so neither has an index beyond its key.
-  `CREATE TABLE task (
+  // task_executions records who runs a started task and where its log and
+  // result are; its start and end are the changes into and out of running.
+  // Nothing reads either yet, so neither has an index beyond its key.
+  `CREATE TABLE tasks (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     kind TEXT NOT NULL,
     priority INTEGER NOT NULL CHECK (priority BETWEEN 0 AND 4),
-    parent_id TEXT REFERENCES task (id),
+    parent_id TEXT REFERENCES tasks (id),
     assignee TEXT NOT NULL,
     description TEXT,
     source_path TEXT,
@@ -30,17 +30,17 @@ export const steps = [
       CHECK (status IN (${statusList})),
     holding_blockers INTEGER NOT NULL DEFAULT 0 CHECK (holding_blockers >= 0)
   );
-  CREATE INDEX task_ready ON task (assignee, priority)
+  CREATE INDEX task_ready ON tasks (assignee, priority)
     WHERE status = '${Status.open}' AND holding_blockers = 0;
-  CREATE TABLE link (
-    task_id TEXT NOT NULL REFERENCES task (id),
-    blocker_id TEXT NOT NULL REFERENCES task (id),
+  CREATE TABLE task_links (
+    task_id TEXT NOT NULL REFERENCES tasks (id),
+    blocker_id TEXT NOT NULL REFERENCES tasks (id),
     PRIMARY KEY (task_id, blocker_id)
   ) WITHOUT ROWID;
-  CREATE INDEX link_blocker ON link (blocker_id);
-  CREATE TABLE status_change (
+  CREATE INDEX task_link_blocker ON task_links (blocker_id);
+  CREATE TABLE task_status_changes (
     id INTEGER PRIMARY KEY,
-    task_id TEXT NOT NULL REFERENCES task (id),
+    task_id TEXT NOT NULL REFERENCES tasks (id),
     from_status TEXT
       CHECK (from_status IN (${statusList})),
     to_status TEXT NOT NULL
@@ -49,8 +49,8 @@ export const steps = [
     reason TEXT,
     time_changed INTEGER NOT NULL
   );
-  CREATE TABLE execution (
-    task_id TEXT PRIMARY KEY REFERENCES task (id),
+  CREATE TABLE task_executions (
+    task_id TEXT PRIMARY KEY REFERENCES tasks (id),
     actor TEXT NOT NULL,
     log_path TEXT,
     result_path TEXT

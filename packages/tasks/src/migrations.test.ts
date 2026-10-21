@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { migrate, steps } from './migrations';
+import { Status } from './status';
 
 const first = 'CREATE TABLE a (x)';
 const second = 'CREATE TABLE b (x); CREATE INDEX b_x ON b (x)';
@@ -71,9 +72,14 @@ describe('migrate', () => {
 });
 
 describe('the shipped steps', () => {
-  it('create the task, link, status change and execution tables', () => {
+  it('create the tasks, task links, task status changes and task executions tables', () => {
     migrate(client, steps);
-    expect(tables()).toEqual(['execution', 'link', 'status_change', 'task']);
+    expect(tables()).toEqual([
+      'task_executions',
+      'task_links',
+      'task_status_changes',
+      'tasks',
+    ]);
     expect(version()).toBe(steps.length);
   });
 
@@ -82,7 +88,7 @@ describe('the shipped steps', () => {
     expect(
       client
         .prepare(
-          "SELECT name, \"notnull\" FROM pragma_table_info('task') WHERE name IN ('assignee', 'description', 'source_path') ORDER BY name",
+          "SELECT name, \"notnull\" FROM pragma_table_info('tasks') WHERE name IN ('assignee', 'description', 'source_path') ORDER BY name",
         )
         .all(),
     ).toEqual([
@@ -90,5 +96,69 @@ describe('the shipped steps', () => {
       { name: 'description', notnull: 0 },
       { name: 'source_path', notnull: 0 },
     ]);
+  });
+
+  describe('status checks', () => {
+    // A name that is not one of the states.
+    const unknown = 'closed';
+
+    function insertTask(id: string, status: string) {
+      client
+        .prepare(
+          "INSERT INTO tasks (id, title, kind, priority, assignee, status) VALUES (?, 'T', 'step', 0, 'bot', ?)",
+        )
+        .run(id, status);
+    }
+
+    function insertChange(from: string | null, to: string) {
+      client
+        .prepare(
+          "INSERT INTO task_status_changes (task_id, from_status, to_status, changed_by, time_changed) VALUES ('tsk_a', ?, ?, 'bot', 0)",
+        )
+        .run(from, to);
+    }
+
+    beforeEach(() => {
+      migrate(client, steps);
+    });
+
+    it.each(Object.values(Status))(
+      'accept %s on a task and on both sides of a change',
+      (status) => {
+        insertTask('tsk_a', status);
+        insertChange(status, status);
+        expect(
+          client
+            .prepare(
+              'SELECT tasks.status, from_status, to_status FROM tasks JOIN task_status_changes ON task_id = tasks.id',
+            )
+            .get(),
+        ).toEqual({ status, from_status: status, to_status: status });
+      },
+    );
+
+    it('accept no status before a change, as at creation', () => {
+      insertTask('tsk_a', Status.open);
+      insertChange(null, Status.open);
+      expect(
+        client.prepare('SELECT from_status FROM task_status_changes').get(),
+      ).toEqual({ from_status: null });
+    });
+
+    it('refuse a status that is not a state, on a task and on either side of a change', () => {
+      expect(() => insertTask('tsk_a', unknown)).toThrow(
+        /CHECK constraint failed/,
+      );
+      insertTask('tsk_a', Status.open);
+      expect(() => insertChange(unknown, Status.open)).toThrow(
+        /CHECK constraint failed/,
+      );
+      expect(() => insertChange(Status.open, unknown)).toThrow(
+        /CHECK constraint failed/,
+      );
+      expect(
+        client.prepare('SELECT count(*) AS n FROM task_status_changes').get(),
+      ).toEqual({ n: 0 });
+    });
   });
 });

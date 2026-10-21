@@ -180,28 +180,28 @@ function toTask(row: Record<string, SQLOutputValue>): Task {
 // transaction, so no task past open is ever held by a blocker.
 export function createGraph(client: DatabaseSync): Graph {
   const find = client.prepare(
-    'SELECT status, holding_blockers FROM task WHERE id = ?',
+    'SELECT status, holding_blockers FROM tasks WHERE id = ?',
   );
   const insertTask = client.prepare(
-    `INSERT INTO task (id, title, kind, priority, parent_id, assignee, description, source_path, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '${Status.open}')`,
+    `INSERT INTO tasks (id, title, kind, priority, parent_id, assignee, description, source_path, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '${Status.open}')`,
   );
   const insertChange = client.prepare(
-    'INSERT INTO status_change (task_id, from_status, to_status, changed_by, reason, time_changed) VALUES (?, ?, ?, ?, ?, ?)',
+    'INSERT INTO task_status_changes (task_id, from_status, to_status, changed_by, reason, time_changed) VALUES (?, ?, ?, ?, ?, ?)',
   );
   const insertExecution = client.prepare(
-    'INSERT INTO execution (task_id, actor, log_path) VALUES (?, ?, ?)',
+    'INSERT INTO task_executions (task_id, actor, log_path) VALUES (?, ?, ?)',
   );
   const setResult = client.prepare(
-    'UPDATE execution SET result_path = ? WHERE task_id = ?',
+    'UPDATE task_executions SET result_path = ? WHERE task_id = ?',
   );
   const findLink = client.prepare(
-    'SELECT 1 FROM link WHERE task_id = ? AND blocker_id = ?',
+    'SELECT 1 FROM task_links WHERE task_id = ? AND blocker_id = ?',
   );
   const insertLink = client.prepare(
-    'INSERT INTO link (task_id, blocker_id) VALUES (?, ?)',
+    'INSERT INTO task_links (task_id, blocker_id) VALUES (?, ?)',
   );
   const deleteLink = client.prepare(
-    'DELETE FROM link WHERE task_id = ? AND blocker_id = ?',
+    'DELETE FROM task_links WHERE task_id = ? AND blocker_id = ?',
   );
   // Whether the second task is reachable from the first through open
   // blockers. A task past open has only succeeded or skipped blockers, so a
@@ -210,26 +210,26 @@ export function createGraph(client: DatabaseSync): Graph {
     `WITH RECURSIVE reached (id) AS (
       SELECT ?
       UNION
-      SELECT link.blocker_id FROM reached
-      JOIN link ON link.task_id = reached.id
-      JOIN task ON task.id = link.blocker_id AND task.status = '${Status.open}'
+      SELECT task_links.blocker_id FROM reached
+      JOIN task_links ON task_links.task_id = reached.id
+      JOIN tasks ON tasks.id = task_links.blocker_id AND tasks.status = '${Status.open}'
     )
     SELECT 1 FROM reached WHERE id = ? LIMIT 1`,
   );
   const addBlocker = client.prepare(
-    'UPDATE task SET holding_blockers = holding_blockers + 1 WHERE id = ?',
+    'UPDATE tasks SET holding_blockers = holding_blockers + 1 WHERE id = ?',
   );
   const removeBlocker = client.prepare(
-    'UPDATE task SET holding_blockers = holding_blockers - 1 WHERE id = ?',
+    'UPDATE tasks SET holding_blockers = holding_blockers - 1 WHERE id = ?',
   );
-  const setStatus = client.prepare('UPDATE task SET status = ? WHERE id = ?');
+  const setStatus = client.prepare('UPDATE tasks SET status = ? WHERE id = ?');
   const unblockDependents = client.prepare(
-    'UPDATE task SET holding_blockers = holding_blockers - 1 WHERE id IN (SELECT task_id FROM link WHERE blocker_id = ?)',
+    'UPDATE tasks SET holding_blockers = holding_blockers - 1 WHERE id IN (SELECT task_id FROM task_links WHERE blocker_id = ?)',
   );
   // The WHERE matches task_ready's, so SQLite searches that index once per
   // assignee in the JSON array, then sorts only the rows it found.
   const ready = client.prepare(
-    `SELECT id, title, kind, priority, parent_id, assignee, description, source_path, status FROM task WHERE assignee IN (SELECT value FROM json_each(?)) AND status = '${Status.open}' AND holding_blockers = 0 ORDER BY priority, rowid LIMIT ?`,
+    `SELECT id, title, kind, priority, parent_id, assignee, description, source_path, status FROM tasks WHERE assignee IN (SELECT value FROM json_each(?)) AND status = '${Status.open}' AND holding_blockers = 0 ORDER BY priority, rowid LIMIT ?`,
   );
 
   // Runs fn in an immediate transaction, which takes the write lock first, so
