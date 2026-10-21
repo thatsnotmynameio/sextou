@@ -9,8 +9,6 @@ import type { CoverageOptions } from 'vitest/node';
 // in-memory cases alone don't reach the floor, so they sit in its integration
 // test beside the cases on a file.
 export const integrationOnly = ['src/database.ts', 'src/migration-files.ts'];
-// Files both suites answer for, each reaching the floor in each.
-export const alsoIntegration: string[] = [];
 
 // Each suite must reach this in every file it answers for, on its own.
 export const coverage = {

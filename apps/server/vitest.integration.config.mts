@@ -1,9 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import {
-  alsoIntegration,
-  coverage,
-  integrationOnly,
-} from './vitest.config.mjs';
+import { coverage, integrationOnly } from './vitest.config.mjs';
 
 // The integration suite: *.integration.test.ts in Node, with the real sextou
 // packages, files in a temporary directory and servers on localhost. It
@@ -15,7 +11,7 @@ export default defineConfig({
     include: ['src/**/*.integration.test.ts'],
     coverage: {
       ...coverage,
-      include: [...integrationOnly, ...alsoIntegration],
+      include: integrationOnly,
     },
   },
 });

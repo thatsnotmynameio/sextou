@@ -14,8 +14,6 @@ export const integrationOnly = [
   'src/modules/health/health.routes.ts',
   'src/server.ts',
 ];
-// Files both suites answer for, each reaching the floor in each.
-export const alsoIntegration: string[] = [];
 
 // Each suite must reach this in every file it answers for, on its own.
 export const coverage = {
