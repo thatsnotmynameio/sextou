@@ -18,8 +18,9 @@ export const steps = [
   // result are; its start and end are the changes into and out of running.
   // Nothing reads either yet, so neither has an index beyond its key.
   //
-  // task_links and task_executions are rowid tables: Turso has WITHOUT ROWID only as an
-  // experiment, with no DELETE, UPDATE, foreign key or second index.
+  // task_links and task_executions are rowid tables: Turso has WITHOUT ROWID
+  // only as an experiment, with no DELETE, UPDATE, foreign key or second
+  // index.
   `CREATE TABLE tasks (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
