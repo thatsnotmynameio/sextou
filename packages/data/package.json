@@ -10,8 +10,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "migration": "node scripts/migration.ts",
-    "test": "pnpm test:unit",
-    "test:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit"
+    "test": "pnpm test:unit && pnpm test:integration",
+    "test:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit",
+    "test:integration": "vitest run --config vitest.integration.config.ts --coverage --coverage.reportsDirectory=coverage/integration"
   },
   "dependencies": {
     "@tursodatabase/database": "0.8.3",

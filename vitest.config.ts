@@ -5,10 +5,12 @@ export default {
     projects: [
       'apps/desktop',
       'apps/server',
+      'apps/server/vitest.integration.config.mts',
       'apps/web',
       'packages/contract',
       'packages/core',
       'packages/data',
+      'packages/data/vitest.integration.config.ts',
       'packages/tasks',
       'packages/tasks/vitest.integration.config.ts',
       'packages/ui',
