@@ -1,4 +1,4 @@
-import type { Database, Transaction } from '@tursodatabase/database';
+import type { Database } from '@tursodatabase/database';
 import { Status, statusList } from './status';
 
 // The schema, one step per release that changed it. A database records how
@@ -66,7 +66,7 @@ export const steps = [
 export async function migrate(client: Database, shipped: string[] = steps) {
   // Turso rolls the transaction back when the callback throws.
   await client
-    .transactionAsync(async (txn: Transaction) => {
+    .transactionAsync(async (txn) => {
       const version = Number(
         (await txn.get('PRAGMA user_version'))?.user_version,
       );

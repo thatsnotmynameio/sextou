@@ -33,13 +33,14 @@ export async function migrateDatabase(
       const pending = migrations.filter(
         (migration) => !applied.has(migration.id),
       );
-      const record = await txn.prepare(
-        'INSERT INTO migration (id, time_completed) VALUES (?, ?)',
-      );
       for (const { id, statements } of pending) {
         try {
           for (const statement of statements) await txn.exec(statement);
-          await record.run(id, Date.now());
+          await txn.run(
+            'INSERT INTO migration (id, time_completed) VALUES (?, ?)',
+            id,
+            Date.now(),
+          );
         } catch (error) {
           throw new Error(
             `Migration ${id} failed: ${(error as Error).message}`,

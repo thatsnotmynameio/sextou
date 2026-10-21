@@ -230,7 +230,7 @@ export function createGraph(client: Database): Graph {
   ): Promise<T> {
     try {
       return await client
-        .transactionAsync(async (txn: Transaction) => {
+        .transactionAsync(async (txn) => {
           const result = await fn(txn);
           if (!result.ok) throw new Refusal(result);
           return result;
