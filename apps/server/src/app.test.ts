@@ -7,7 +7,7 @@ const app = createApp({
   version: '1.2.3',
   startedAt,
   now: () => startedAt,
-  pingDatabase: () => true,
+  pingDatabase: async () => true,
 });
 
 describe('createApp', () => {
@@ -26,7 +26,7 @@ describe('createApp', () => {
       version: '1.2.3',
       startedAt,
       now: () => startedAt,
-      pingDatabase: () => false,
+      pingDatabase: async () => false,
     });
     const response = await down.request('/health');
     expect(response.status).toBe(503);

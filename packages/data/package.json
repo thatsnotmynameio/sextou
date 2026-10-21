@@ -14,6 +14,7 @@
     "test:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit"
   },
   "dependencies": {
+    "@tursodatabase/database": "0.8.3",
     "drizzle-orm": "1.0.0-rc.4"
   },
   "devDependencies": {

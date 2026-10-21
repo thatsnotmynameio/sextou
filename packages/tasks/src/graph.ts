@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { DatabaseSync, SQLOutputValue } from 'node:sqlite';
+import type { Database, Transaction } from '@tursodatabase/database';
 import { type FinalStatus, holds, isFinal, Status } from './status';
 
 // Why an operation changed nothing.
@@ -60,20 +60,21 @@ export interface Link {
 }
 
 // Every operation that writes runs in one transaction: a refusal writes
-// nothing, and an error from SQLite or the file system is thrown. Each change
-// of a task's status is recorded in that transaction, with when it happened
-// and who made it: any name the caller uses, never checked.
+// nothing, and an error from Turso or the file system rejects. Each change of
+// a task's status is recorded in that transaction, with when it happened and
+// who made it: any name the caller uses, never checked.
 export interface Graph {
   createTask: (
     task: NewTask,
-  ) =>
+  ) => Promise<
     | { ok: true; task: Task }
-    | Refused<typeof Reason.invalid | typeof Reason.notFound>;
+    | Refused<typeof Reason.invalid | typeof Reason.notFound>
+  >;
   // Refuses a link that would close a cycle, or whose task isn't open. A pair
   // already linked succeeds and changes nothing.
   link: (
     link: Link,
-  ) =>
+  ) => Promise<
     | { ok: true }
     | Refused<
         | typeof Reason.invalid
@@ -81,16 +82,18 @@ export interface Graph {
         | typeof Reason.sameTask
         | typeof Reason.notOpen
         | typeof Reason.cycle
-      >;
+      >
+  >;
   // Refuses a task that isn't open. A pair not linked succeeds and changes
   // nothing.
   unlink: (
     link: Link,
-  ) =>
+  ) => Promise<
     | { ok: true }
     | Refused<
         typeof Reason.invalid | typeof Reason.notFound | typeof Reason.notOpen
-      >;
+      >
+  >;
   // Moves a ready task to running and records its execution. Refuses a task
   // that isn't open, or that a blocker still holds.
   startTask: (start: {
@@ -100,14 +103,15 @@ export interface Graph {
     actor: string;
     // Where the run's log is. Stored as given and never read; blank is null.
     logPath?: string;
-  }) =>
+  }) => Promise<
     | { ok: true }
     | Refused<
         | typeof Reason.invalid
         | typeof Reason.notFound
         | typeof Reason.notOpen
         | typeof Reason.blocked
-      >;
+      >
+  >;
   // Moves a running task to a final state. The one who finishes it need not
   // be the one who started it.
   finishTask: (finish: {
@@ -119,19 +123,60 @@ export interface Graph {
     // Where the run's result is, recorded on its execution. Stored as given
     // and never read; blank is null.
     resultPath?: string;
-  }) =>
+  }) => Promise<
     | { ok: true }
     | Refused<
         | typeof Reason.invalid
         | typeof Reason.notFound
         | typeof Reason.notRunning
-      >;
+      >
+  >;
   // The open tasks no blocker holds whose assignee is one of assignees,
   // matched exactly, most urgent first, then oldest, at most limit of them.
   listReady: (query: {
     assignees: string[];
     limit: number;
-  }) => { ok: true; tasks: Task[] } | Refused<typeof Reason.invalid>;
+  }) => Promise<{ ok: true; tasks: Task[] } | Refused<typeof Reason.invalid>>;
+}
+
+// The statements the writes run. Each is prepared on its write's transaction:
+// one prepared on the connection would wait for the lock the transaction
+// holds.
+const find = 'SELECT status, holding_blockers FROM tasks WHERE id = ?';
+const insertTask = `INSERT INTO tasks (id, title, kind, priority, parent_id, assignee, description, source_path, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '${Status.open}')`;
+const insertChange =
+  'INSERT INTO task_status_changes (task_id, from_status, to_status, changed_by, reason, time_changed) VALUES (?, ?, ?, ?, ?, ?)';
+const insertExecution =
+  'INSERT INTO task_executions (task_id, actor, log_path) VALUES (?, ?, ?)';
+const setResult =
+  'UPDATE task_executions SET result_path = ? WHERE task_id = ?';
+const findLink =
+  'SELECT 1 FROM task_links WHERE task_id = ? AND blocker_id = ?';
+const insertLink = 'INSERT INTO task_links (task_id, blocker_id) VALUES (?, ?)';
+const deleteLink =
+  'DELETE FROM task_links WHERE task_id = ? AND blocker_id = ?';
+// Whether the second task is reachable from the first through open blockers.
+// A task past open has only succeeded or skipped blockers, so a path to an
+// open task never runs through one.
+const reaches = `WITH RECURSIVE reached (id) AS (
+  SELECT ?
+  UNION
+  SELECT task_links.blocker_id FROM reached
+  JOIN task_links ON task_links.task_id = reached.id
+  JOIN tasks ON tasks.id = task_links.blocker_id AND tasks.status = '${Status.open}'
+)
+SELECT 1 FROM reached WHERE id = ? LIMIT 1`;
+const addBlocker =
+  'UPDATE tasks SET holding_blockers = holding_blockers + 1 WHERE id = ?';
+const removeBlocker =
+  'UPDATE tasks SET holding_blockers = holding_blockers - 1 WHERE id = ?';
+const setStatus = 'UPDATE tasks SET status = ? WHERE id = ?';
+const unblockDependents =
+  'UPDATE tasks SET holding_blockers = holding_blockers - 1 WHERE id IN (SELECT task_id FROM task_links WHERE blocker_id = ?)';
+
+// Thrown out of a write's transaction, so that a refusal rolls it back.
+class Refusal {
+  constructor(readonly result: unknown) {}
 }
 
 function refuse<R extends Reason>(reason: R): Refused<R> {
@@ -156,11 +201,11 @@ function optional(value: unknown) {
 }
 
 // A nullable text column as a string, or null.
-function nullable(value: SQLOutputValue) {
+function nullable(value: unknown) {
   return value === null ? null : String(value);
 }
 
-function toTask(row: Record<string, SQLOutputValue>): Task {
+function toTask(row: Record<string, unknown>): Task {
   return {
     id: String(row.id),
     title: String(row.title),
@@ -178,88 +223,42 @@ function toTask(row: Record<string, SQLOutputValue>): Task {
 // The graph's operations over a migrated connection. Readiness is kept in
 // each task's holding_blockers, which every write moves in the same
 // transaction, so no task past open is ever held by a blocker.
-export function createGraph(client: DatabaseSync): Graph {
-  const find = client.prepare(
-    'SELECT status, holding_blockers FROM tasks WHERE id = ?',
-  );
-  const insertTask = client.prepare(
-    `INSERT INTO tasks (id, title, kind, priority, parent_id, assignee, description, source_path, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '${Status.open}')`,
-  );
-  const insertChange = client.prepare(
-    'INSERT INTO task_status_changes (task_id, from_status, to_status, changed_by, reason, time_changed) VALUES (?, ?, ?, ?, ?, ?)',
-  );
-  const insertExecution = client.prepare(
-    'INSERT INTO task_executions (task_id, actor, log_path) VALUES (?, ?, ?)',
-  );
-  const setResult = client.prepare(
-    'UPDATE task_executions SET result_path = ? WHERE task_id = ?',
-  );
-  const findLink = client.prepare(
-    'SELECT 1 FROM task_links WHERE task_id = ? AND blocker_id = ?',
-  );
-  const insertLink = client.prepare(
-    'INSERT INTO task_links (task_id, blocker_id) VALUES (?, ?)',
-  );
-  const deleteLink = client.prepare(
-    'DELETE FROM task_links WHERE task_id = ? AND blocker_id = ?',
-  );
-  // Whether the second task is reachable from the first through open
-  // blockers. A task past open has only succeeded or skipped blockers, so a
-  // path to an open task never runs through one.
-  const reaches = client.prepare(
-    `WITH RECURSIVE reached (id) AS (
-      SELECT ?
-      UNION
-      SELECT task_links.blocker_id FROM reached
-      JOIN task_links ON task_links.task_id = reached.id
-      JOIN tasks ON tasks.id = task_links.blocker_id AND tasks.status = '${Status.open}'
-    )
-    SELECT 1 FROM reached WHERE id = ? LIMIT 1`,
-  );
-  const addBlocker = client.prepare(
-    'UPDATE tasks SET holding_blockers = holding_blockers + 1 WHERE id = ?',
-  );
-  const removeBlocker = client.prepare(
-    'UPDATE tasks SET holding_blockers = holding_blockers - 1 WHERE id = ?',
-  );
-  const setStatus = client.prepare('UPDATE tasks SET status = ? WHERE id = ?');
-  const unblockDependents = client.prepare(
-    'UPDATE tasks SET holding_blockers = holding_blockers - 1 WHERE id IN (SELECT task_id FROM task_links WHERE blocker_id = ?)',
-  );
-  // The WHERE matches task_ready's, so SQLite searches that index once per
-  // assignee in the JSON array, then sorts only the rows it found.
-  const ready = client.prepare(
-    `SELECT id, title, kind, priority, parent_id, assignee, description, source_path, status FROM tasks WHERE assignee IN (SELECT value FROM json_each(?)) AND status = '${Status.open}' AND holding_blockers = 0 ORDER BY priority, rowid LIMIT ?`,
-  );
-
+export function createGraph(client: Database): Graph {
   // Runs fn in an immediate transaction, which takes the write lock first, so
-  // its checks and its writes see the same graph. Commits only a success.
-  function write<T extends { ok: boolean }>(fn: () => T): T {
-    client.exec('BEGIN IMMEDIATE');
+  // its checks and its writes see the same graph. Turso holds the connection
+  // until the transaction ends: another operation waits for it. A refusal is
+  // thrown out of the transaction, so only a success commits.
+  async function write<T extends { ok: boolean }>(
+    fn: (txn: Transaction) => Promise<T>,
+  ): Promise<T> {
     try {
-      const result = fn();
-      client.exec(result.ok ? 'COMMIT' : 'ROLLBACK');
-      return result;
+      return await client
+        .transactionAsync(async (txn) => {
+          const result = await fn(txn);
+          if (!result.ok) throw new Refusal(result);
+          return result;
+        })
+        .immediate();
     } catch (error) {
-      // SQLite rolls back by itself on some errors, a full disk among them.
-      if (client.isTransaction) client.exec('ROLLBACK');
+      if (error instanceof Refusal) return error.result as T;
       throw error;
     }
   }
 
   // Records a change of a task's status, now, inside the caller's write.
-  function recordChange(
+  async function recordChange(
+    txn: Transaction,
     id: string,
     from: Status | null,
     to: Status,
     changedBy: string,
     reason: string | null = null,
   ) {
-    insertChange.run(id, from, to, changedBy, reason, Date.now());
+    await txn.run(insertChange, id, from, to, changedBy, reason, Date.now());
   }
 
   return {
-    createTask: ({
+    createTask: async ({
       title,
       kind,
       priority,
@@ -289,8 +288,11 @@ export function createGraph(client: DatabaseSync): Graph {
       ) {
         return refuse(Reason.invalid);
       }
-      return write(() => {
-        if (parentId !== undefined && find.get(parentId) === undefined) {
+      return write(async (txn) => {
+        if (
+          parentId !== undefined &&
+          (await txn.get(find, parentId)) === undefined
+        ) {
           return refuse(Reason.notFound);
         }
         const task: Task = {
@@ -304,7 +306,8 @@ export function createGraph(client: DatabaseSync): Graph {
           sourcePath: cleanSourcePath,
           status: Status.open,
         };
-        insertTask.run(
+        await txn.run(
+          insertTask,
           task.id,
           task.title,
           task.kind,
@@ -314,51 +317,55 @@ export function createGraph(client: DatabaseSync): Graph {
           task.description,
           task.sourcePath,
         );
-        recordChange(task.id, null, Status.open, cleanCreatedBy);
+        await recordChange(txn, task.id, null, Status.open, cleanCreatedBy);
         return { ok: true, task };
       });
     },
 
-    link: ({ taskId, blockerId }) => {
+    link: async ({ taskId, blockerId }) => {
       if (!isId(taskId) || !isId(blockerId)) return refuse(Reason.invalid);
-      return write(() => {
-        const task = find.get(taskId);
-        const blocker = find.get(blockerId);
+      return write(async (txn) => {
+        const task = await txn.get(find, taskId);
+        const blocker = await txn.get(find, blockerId);
         if (task === undefined || blocker === undefined) {
           return refuse(Reason.notFound);
         }
         if (taskId === blockerId) return refuse(Reason.sameTask);
-        if (findLink.get(taskId, blockerId) !== undefined) return { ok: true };
+        if ((await txn.get(findLink, taskId, blockerId)) !== undefined) {
+          return { ok: true };
+        }
         if (task.status !== Status.open) return refuse(Reason.notOpen);
         // A blocker past open reaches no open task.
         if (
           blocker.status === Status.open &&
-          reaches.get(blockerId, taskId) !== undefined
+          (await txn.get(reaches, blockerId, taskId)) !== undefined
         ) {
           return refuse(Reason.cycle);
         }
-        if (holds(blocker.status)) addBlocker.run(taskId);
-        insertLink.run(taskId, blockerId);
+        if (holds(blocker.status)) await txn.run(addBlocker, taskId);
+        await txn.run(insertLink, taskId, blockerId);
         return { ok: true };
       });
     },
 
-    unlink: ({ taskId, blockerId }) => {
+    unlink: async ({ taskId, blockerId }) => {
       if (!isId(taskId) || !isId(blockerId)) return refuse(Reason.invalid);
-      return write(() => {
-        const task = find.get(taskId);
-        const blocker = find.get(blockerId);
+      return write(async (txn) => {
+        const task = await txn.get(find, taskId);
+        const blocker = await txn.get(find, blockerId);
         if (task === undefined || blocker === undefined) {
           return refuse(Reason.notFound);
         }
         if (task.status !== Status.open) return refuse(Reason.notOpen);
-        const { changes } = deleteLink.run(taskId, blockerId);
-        if (changes > 0 && holds(blocker.status)) removeBlocker.run(taskId);
+        const { changes } = await txn.run(deleteLink, taskId, blockerId);
+        if (changes > 0 && holds(blocker.status)) {
+          await txn.run(removeBlocker, taskId);
+        }
         return { ok: true };
       });
     },
 
-    startTask: ({ id, changedBy, actor, logPath }) => {
+    startTask: async ({ id, changedBy, actor, logPath }) => {
       const cleanChangedBy = trimmed(changedBy);
       const cleanActor = trimmed(actor);
       const cleanLogPath = optional(logPath);
@@ -370,19 +377,25 @@ export function createGraph(client: DatabaseSync): Graph {
       ) {
         return refuse(Reason.invalid);
       }
-      return write(() => {
-        const task = find.get(id);
+      return write(async (txn) => {
+        const task = await txn.get(find, id);
         if (task === undefined) return refuse(Reason.notFound);
         if (task.status !== Status.open) return refuse(Reason.notOpen);
         if (Number(task.holding_blockers) > 0) return refuse(Reason.blocked);
-        setStatus.run(Status.running, id);
-        recordChange(id, Status.open, Status.running, cleanChangedBy);
-        insertExecution.run(id, cleanActor, cleanLogPath);
+        await txn.run(setStatus, Status.running, id);
+        await recordChange(
+          txn,
+          id,
+          Status.open,
+          Status.running,
+          cleanChangedBy,
+        );
+        await txn.run(insertExecution, id, cleanActor, cleanLogPath);
         return { ok: true };
       });
     },
 
-    finishTask: ({ id, changedBy, status, reason, resultPath }) => {
+    finishTask: async ({ id, changedBy, status, reason, resultPath }) => {
       const cleanChangedBy = trimmed(changedBy);
       const cleanReason = optional(reason);
       const cleanResultPath = optional(resultPath);
@@ -395,22 +408,29 @@ export function createGraph(client: DatabaseSync): Graph {
       ) {
         return refuse(Reason.invalid);
       }
-      return write(() => {
-        const task = find.get(id);
+      return write(async (txn) => {
+        const task = await txn.get(find, id);
         if (task === undefined) return refuse(Reason.notFound);
         if (task.status !== Status.running) return refuse(Reason.notRunning);
-        setStatus.run(status, id);
-        recordChange(id, Status.running, status, cleanChangedBy, cleanReason);
+        await txn.run(setStatus, status, id);
+        await recordChange(
+          txn,
+          id,
+          Status.running,
+          status,
+          cleanChangedBy,
+          cleanReason,
+        );
         // A running task has its execution, from its start.
-        setResult.run(cleanResultPath, id);
+        await txn.run(setResult, cleanResultPath, id);
         // Every task it blocks is open: no task past open is held.
-        if (!holds(status)) unblockDependents.run(id);
+        if (!holds(status)) await txn.run(unblockDependents, id);
         return { ok: true };
       });
     },
 
-    // One statement reads one snapshot, so it takes no lock.
-    listReady: ({ assignees, limit }) => {
+    // Waits for a write in progress, so it reads the graph between writes.
+    listReady: async ({ assignees, limit }) => {
       const names = Array.isArray(assignees) ? assignees.map(trimmed) : [];
       if (
         names.length === 0 ||
@@ -420,10 +440,15 @@ export function createGraph(client: DatabaseSync): Graph {
       ) {
         return refuse(Reason.invalid);
       }
-      return {
-        ok: true,
-        tasks: ready.all(JSON.stringify(names), limit).map(toTask),
-      };
+      // The WHERE matches task_ready's, so Turso searches that index once per
+      // assignee, then sorts only the rows it found. It scans the whole index
+      // for assignees read from a JSON array, hence one parameter each.
+      const rows = await client.all(
+        `SELECT id, title, kind, priority, parent_id, assignee, description, source_path, status FROM tasks WHERE assignee IN (${names.map(() => '?').join(', ')}) AND status = '${Status.open}' AND holding_blockers = 0 ORDER BY priority, rowid LIMIT ?`,
+        ...names,
+        limit,
+      );
+      return { ok: true, tasks: rows.map(toTask) };
     },
   };
 }

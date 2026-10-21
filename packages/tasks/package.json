@@ -12,6 +12,9 @@
     "test": "pnpm test:unit",
     "test:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit"
   },
+  "dependencies": {
+    "@tursodatabase/database": "0.8.3"
+  },
   "devDependencies": {
     "@types/node": "^24.19.2",
     "@vitest/coverage-v8": "^5.0.5",

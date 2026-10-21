@@ -1,13 +1,14 @@
-import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from 'node:fs';
+import { chmodSync, closeSync, mkdirSync, openSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-// Creates the folder and the file for their owner only, and makes an existing
-// file and its WAL sidecars owner-only too. SQLite gives new sidecars the main
-// file's mode, so the file must be owner-only before SQLite opens it.
+// Creates the folder, the file and its WAL sidecar for their owner only, and
+// makes existing ones owner-only too. Turso creates a missing sidecar with the
+// umask's mode and keeps it after closing, so the sidecar must exist,
+// owner-only, before Turso opens the file.
 export function restrictToOwner(path: string) {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  closeSync(openSync(path, 'a', 0o600));
-  for (const file of [path, `${path}-wal`, `${path}-shm`]) {
-    if (existsSync(file)) chmodSync(file, 0o600);
+  for (const file of [path, `${path}-wal`]) {
+    closeSync(openSync(file, 'a', 0o600));
+    chmodSync(file, 0o600);
   }
 }

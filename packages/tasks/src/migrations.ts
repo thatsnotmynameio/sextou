@@ -1,4 +1,4 @@
-import type { DatabaseSync } from 'node:sqlite';
+import type { Database } from '@tursodatabase/database';
 import { Status, statusList } from './status';
 
 // The schema, one step per release that changed it. A database records how
@@ -17,6 +17,10 @@ export const steps = [
   // task_executions records who runs a started task and where its log and
   // result are; its start and end are the changes into and out of running.
   // Nothing reads either yet, so neither has an index beyond its key.
+  //
+  // task_links and task_executions are rowid tables: Turso has WITHOUT ROWID
+  // only as an experiment, with no DELETE, UPDATE, foreign key or second
+  // index.
   `CREATE TABLE tasks (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
@@ -36,7 +40,7 @@ export const steps = [
     task_id TEXT NOT NULL REFERENCES tasks (id),
     blocker_id TEXT NOT NULL REFERENCES tasks (id),
     PRIMARY KEY (task_id, blocker_id)
-  ) WITHOUT ROWID;
+  );
   CREATE INDEX task_link_blocker ON task_links (blocker_id);
   CREATE TABLE task_status_changes (
     id INTEGER PRIMARY KEY,
@@ -54,38 +58,36 @@ export const steps = [
     actor TEXT NOT NULL,
     log_path TEXT,
     result_path TEXT
-  ) WITHOUT ROWID;`,
+  );`,
 ];
 
 // Applies the steps the database lacks, in order, in one transaction. Throws,
 // with the database left as it was, when one fails or when the database has
 // more steps than this version ships, because a newer version wrote it.
-export function migrate(client: DatabaseSync, shipped: string[] = steps) {
-  client.exec('BEGIN IMMEDIATE');
-  try {
-    const version = Number(
-      client.prepare('PRAGMA user_version').get()?.user_version,
-    );
-    if (version > shipped.length) {
-      throw new Error(
-        `This tasks database was written by a newer version (schema ${version}, this one knows ${shipped.length})`,
+export async function migrate(client: Database, shipped: string[] = steps) {
+  // Turso rolls the transaction back when the callback throws.
+  await client
+    .transactionAsync(async (txn) => {
+      const version = Number(
+        (await txn.get('PRAGMA user_version'))?.user_version,
       );
-    }
-    for (let step = version; step < shipped.length; step++) {
-      try {
-        client.exec(shipped[step]);
-      } catch (error) {
+      if (version > shipped.length) {
         throw new Error(
-          `Tasks migration ${step + 1} failed: ${(error as Error).message}`,
-          { cause: error },
+          `This tasks database was written by a newer version (schema ${version}, this one knows ${shipped.length})`,
         );
       }
-    }
-    // A pragma takes no bound parameter; the count is a number.
-    client.exec(`PRAGMA user_version = ${shipped.length}`);
-    client.exec('COMMIT');
-  } catch (error) {
-    client.exec('ROLLBACK');
-    throw error;
-  }
+      for (let step = version; step < shipped.length; step++) {
+        try {
+          await txn.exec(shipped[step]);
+        } catch (error) {
+          throw new Error(
+            `Tasks migration ${step + 1} failed: ${(error as Error).message}`,
+            { cause: error },
+          );
+        }
+      }
+      // A pragma takes no bound parameter; the count is a number.
+      await txn.exec(`PRAGMA user_version = ${shipped.length}`);
+    })
+    .immediate();
 }

@@ -14,7 +14,7 @@ The desktop app loads the hosted web app by URL, so a web deploy reaches desktop
 | `apps/server`       | `@sextou/server`: the HTTP server, its own process, which exposes the core                                     |
 | `packages/core`     | `@sextou/core`: the domain, with no HTTP                                                                       |
 | `packages/contract` | `@sextou/contract`: the API's schemas, for the server and the web app                                          |
-| `packages/data`     | `@sextou/data`: the SQLite database, through Node's `node:sqlite` and drizzle                                  |
+| `packages/data`     | `@sextou/data`: the SQLite database, through Turso and drizzle                                                 |
 | `packages/tasks`    | `@sextou/tasks`: the task graph, in a SQLite file whose path the server passes                                 |
 
 The server, the core and the contract group their code by feature under `src/modules/<feature>/`. The server imports the core, the contract, the data package and the tasks package; the core, the data package and the tasks package import no other sextou package.
@@ -46,4 +46,4 @@ After the database, the server opens the default organization's task graph, and 
 | `sextou.db`        | The database, unless `--database` puts it elsewhere |
 | `default.tasks.db` | The default organization's tasks and their links    |
 
-Each file can have SQLite's `-wal` and `-shm` sidecars next to it.
+Each file has a `-wal` sidecar next to it, which Turso keeps after the server stops. The bundle runs with Node and Turso's installed package for its platform: Linux x64 and arm64 with glibc, macOS on Apple silicon, Windows x64.
