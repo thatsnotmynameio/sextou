@@ -4,6 +4,9 @@
   "categories": {
     "correctness": "warn"
   },
+  "rules": {
+    "typescript/no-import-type-side-effects": "error"
+  },
   "overrides": [
     {
       "files": ["packages/ui/**"],

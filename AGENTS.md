@@ -116,7 +116,7 @@ A feature is a module of the server and a module of the web app under the same n
     - Code that reaches the disk, a listening port or a child process: integration, its file listed in `integrationOnly` with the reason.
     - A page: unit, rendering `createAppRouter({ serverUrl, requestTimeoutMs, history: createMemoryHistory(…) })` in a `RouterProvider`, with `fetch` stubbed (`vi.stubGlobal`) for each way the request can end.
     - A page against the real server: integration, with the server started as a child process, as `health-page.integration.test.tsx` does.
-11. **Imports.** Lint enforces three rules, in `.ts` and `.tsx` files alike: a module reaches another module only through its `index.ts`, in the server and in the web app; the web app imports from the server only types, written as a whole `import type` statement from `@sextou/server/router`; and nothing in `apps/web` or `packages/ui` imports `electron`.
+11. **Imports.** Lint enforces three rules, in `.ts` and `.tsx` files alike: a module reaches another module only through its `index.ts`, in the server and in the web app; the web app imports from the server only types, written as a whole `import type` statement from `@sextou/server/router` (lint refuses `import { type … }` everywhere, since it can leave a side-effect import behind); and nothing in `apps/web` or `packages/ui` imports `electron`.
 
 ## Desktop security
 
