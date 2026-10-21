@@ -9,7 +9,8 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "pnpm test:unit",
-    "test:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit"
+    "test:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit",
+    "test:mutation": "stryker run && node ../../.github/scripts/src/mutation-floor-cli.ts reports/mutation/mutation.json"
   },
   "dependencies": {
     "@lingui/core": "^6.10.0",
@@ -21,6 +22,8 @@
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
+    "@stryker-mutator/core": "10.0.0",
+    "@stryker-mutator/vitest-runner": "10.0.0",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",

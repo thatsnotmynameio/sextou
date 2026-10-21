@@ -1,0 +1,19 @@
+{
+  "$schema": "../../node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "testRunner": "vitest",
+  "vitest_comment": "related is off: the drift test reaches src/schema.ts through drizzle-kit, not an import, so Vitest would not count it as a test of that file.",
+  "vitest": {
+    "configFile": "vitest.mutation.config.ts",
+    "related": false
+  },
+  "mutate": [
+    "src/**/*.ts",
+    "!src/**/*.test.ts",
+    "!src/**/*.d.ts",
+    "!src/index.ts",
+    "!src/migration.gen.ts"
+  ],
+  "reporters": ["clear-text", "progress", "html", "json"],
+  "tsconfigFile_comment": "Stryker rewrites tsconfig.json in its sandbox through TypeScript 6's API, which TypeScript 7 doesn't have (stryker-js#6111). Naming a file that doesn't exist skips the rewrite; the sandbox's copy still reaches the root's options through this package's tsconfig.json.",
+  "tsconfigFile": "none.json"
+}

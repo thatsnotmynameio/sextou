@@ -6,7 +6,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./theme.css": "./src/theme.css"
+    "./theme.css": "./src/theme.css",
+    "./lingui-macros": "./lingui-macros.ts"
   },
   "scripts": {
     "storybook": "storybook dev -p 6006",
@@ -14,7 +15,8 @@
     "typecheck": "tsc --noEmit",
     "test": "pnpm test:unit && pnpm test:component",
     "test:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit",
-    "test:component": "vitest run --config vitest.component.config.ts --coverage --coverage.reportsDirectory=coverage/component"
+    "test:component": "vitest run --config vitest.component.config.ts --coverage --coverage.reportsDirectory=coverage/component",
+    "test:mutation": "stryker run && node ../../.github/scripts/src/mutation-floor-cli.ts reports/mutation/mutation.json"
   },
   "peerDependencies": {
     "@lingui/core": "^6.10.0",
@@ -32,6 +34,8 @@
     "@lingui/react": "^6.10.0",
     "@storybook/addon-vitest": "^10.6.2",
     "@storybook/react-vite": "^10.6.2",
+    "@stryker-mutator/core": "10.0.0",
+    "@stryker-mutator/vitest-runner": "10.0.0",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",

@@ -155,3 +155,7 @@ storybook-static/
 
 # Compound Engineering scratch space
 .context/compound-engineering/
+
+# StrykerJS: its reports and the sandboxes it runs mutants in
+reports/
+.stryker-tmp/

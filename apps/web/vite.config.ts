@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import { linguiMacros } from '../../packages/ui/lingui-macros';
+import { linguiMacros } from '@sextou/ui/lingui-macros';
 import { contentSecurityPolicy } from './content-security-policy';
 
 // https://vitejs.dev/config
