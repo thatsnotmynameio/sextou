@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { DatabaseSync, SQLOutputValue } from 'node:sqlite';
+import { type FinalStatus, holds, isFinal, type Status } from './status';
 
 // Why an operation changed nothing.
 export type Reason =
@@ -15,10 +16,6 @@ export interface Refused<R extends Reason> {
   ok: false;
   reason: R;
 }
-
-// How a task ended. A task in one never changes state again. succeeded and
-// skipped free the tasks it blocks; failed keeps them waiting.
-export type FinalStatus = 'succeeded' | 'failed' | 'skipped';
 
 export interface Task {
   // tsk_ and 32 hex digits. Not a sort key.
@@ -36,8 +33,7 @@ export interface Task {
   // A URL or a file path where the task's longer text lives. Stored as given
   // and never read.
   sourcePath: string | null;
-  // open, then running, then a final state; running never returns to open.
-  status: 'open' | 'running' | FinalStatus;
+  status: Status;
 }
 
 export interface NewTask {
@@ -133,15 +129,6 @@ function optional(value: unknown) {
   return value.trim() || null;
 }
 
-function isFinal(value: unknown): value is FinalStatus {
-  return value === 'succeeded' || value === 'failed' || value === 'skipped';
-}
-
-// Whether a blocker in this state keeps the tasks it blocks waiting.
-function holds(status: SQLOutputValue) {
-  return status !== 'succeeded' && status !== 'skipped';
-}
-
 // A nullable text column as a string, or null.
 function nullable(value: SQLOutputValue) {
   return value === null ? null : String(value);
@@ -158,7 +145,7 @@ function toTask(row: Record<string, SQLOutputValue>): Task {
     description: nullable(row.description),
     sourcePath: nullable(row.source_path),
     // The table's check keeps it one of the five.
-    status: String(row.status) as Task['status'],
+    status: String(row.status) as Status,
   };
 }
 
@@ -237,8 +224,8 @@ export function createGraph(client: DatabaseSync): Graph {
   // Records a change of a task's status, now, inside the caller's write.
   function recordChange(
     id: string,
-    from: Task['status'] | null,
-    to: Task['status'],
+    from: Status | null,
+    to: Status,
     changedBy: string,
     reason: string | null = null,
   ) {

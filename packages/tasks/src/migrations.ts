@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { statusList } from './status';
 
 // The schema, one step per release that changed it. A database records how
 // many steps it has in user_version. Never edit or remove a merged step: a
@@ -26,7 +27,7 @@ export const steps = [
     description TEXT,
     source_path TEXT,
     status TEXT NOT NULL
-      CHECK (status IN ('open', 'running', 'succeeded', 'failed', 'skipped')),
+      CHECK (status IN (${statusList})),
     holding_blockers INTEGER NOT NULL DEFAULT 0 CHECK (holding_blockers >= 0)
   );
   CREATE INDEX task_ready ON task (assignee, priority)
@@ -41,9 +42,9 @@ export const steps = [
     id INTEGER PRIMARY KEY,
     task_id TEXT NOT NULL REFERENCES task (id),
     from_status TEXT
-      CHECK (from_status IN ('open', 'running', 'succeeded', 'failed', 'skipped')),
+      CHECK (from_status IN (${statusList})),
     to_status TEXT NOT NULL
-      CHECK (to_status IN ('open', 'running', 'succeeded', 'failed', 'skipped')),
+      CHECK (to_status IN (${statusList})),
     changed_by TEXT NOT NULL,
     reason TEXT,
     time_changed INTEGER NOT NULL

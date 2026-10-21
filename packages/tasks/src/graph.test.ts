@@ -8,10 +8,8 @@ import {
   vi,
   type MockInstance,
 } from 'vitest';
-import type { FinalStatus, Task } from './graph';
 import { openTasks, type Tasks } from './open-tasks';
-
-type Status = Task['status'];
+import { type FinalStatus, finalStatuses, type Status } from './status';
 
 let tasks: Tasks;
 let prepare: MockInstance<DatabaseSync['prepare']>;
@@ -586,7 +584,7 @@ describe('finishTask', () => {
   });
 
   // Covers AE5.
-  it.each<FinalStatus>(['succeeded', 'failed', 'skipped'])(
+  it.each(finalStatuses)(
     'refuses to finish an open task as %s, as not_running',
     (to) => {
       const a = create('A');
@@ -601,7 +599,7 @@ describe('finishTask', () => {
     const b = create('B');
     link(b, a);
     moveTo(a, 'succeeded');
-    for (const to of ['succeeded', 'failed', 'skipped'] as const) {
+    for (const to of finalStatuses) {
       expect(finish(a, to)).toEqual({ ok: false, reason: 'not_running' });
     }
     expect(status(a)).toBe('succeeded');
@@ -969,7 +967,7 @@ describe('the graph after random operations', () => {
         const candidates = running.all().map((row) => String(row.id));
         finish(
           next() < 0.8 && candidates.length > 0 ? pick(candidates) : pick(ids),
-          pick<FinalStatus>(['succeeded', 'failed', 'skipped']),
+          pick([...finalStatuses]),
         );
       }
     }
@@ -1012,7 +1010,7 @@ describe('the graph after random operations', () => {
     expect(unrecorded).toEqual([]);
     // The run exercised links, starts and every finish, not only refusals.
     expect(links().length).toBeGreaterThan(20);
-    for (const to of ['succeeded', 'failed', 'skipped']) {
+    for (const to of finalStatuses) {
       expect(counts[to]).toBeGreaterThan(2);
     }
   });
