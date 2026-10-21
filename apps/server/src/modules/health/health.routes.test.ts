@@ -8,7 +8,7 @@ const options = {
   version: '1.2.3',
   startedAt,
   now: () => startedAt,
-  pingDatabase: () => true,
+  pingDatabase: async () => true,
 };
 
 describe('GET /health', () => {
@@ -32,7 +32,10 @@ describe('GET /health', () => {
   });
 
   it('answers 503 when the database does not answer', async () => {
-    const routes = healthRoutes({ ...options, pingDatabase: () => false });
+    const routes = healthRoutes({
+      ...options,
+      pingDatabase: async () => false,
+    });
     const response = await routes.request('/');
     expect(response.status).toBe(503);
     expect(healthResponseSchema.parse(await response.json())).toEqual({
@@ -43,16 +46,19 @@ describe('GET /health', () => {
   });
 
   it('answers 503 once a real database is closed', async () => {
-    const database = openDatabase(':memory:');
+    const database = await openDatabase(':memory:');
     const routes = healthRoutes({ ...options, pingDatabase: database.ping });
     expect((await routes.request('/')).status).toBe(200);
-    database.close();
+    await database.close();
     expect((await routes.request('/')).status).toBe(503);
   });
 
   it('asks the database again on each request', async () => {
     let answers = false;
-    const routes = healthRoutes({ ...options, pingDatabase: () => answers });
+    const routes = healthRoutes({
+      ...options,
+      pingDatabase: async () => answers,
+    });
     expect((await routes.request('/')).status).toBe(503);
     answers = true;
     const response = await routes.request('/');

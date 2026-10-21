@@ -59,22 +59,26 @@ function args(...rest: string[]) {
   ]);
 }
 
-function openedDatabase(): Database {
-  return vi.mocked(openDatabase).mock.results[0].value as Database;
+function openedDatabase(): Promise<Database> {
+  return vi.mocked(openDatabase).mock.results[0].value;
 }
 
-function openedTasks(): Tasks {
-  return vi.mocked(openTasks).mock.results[0].value as Tasks;
+function openedTasks(): Promise<Tasks> {
+  return vi.mocked(openTasks).mock.results[0].value;
 }
 
-// A closed task graph throws on any operation.
-function tasksOpen() {
+// A closed task graph rejects any operation.
+async function tasksOpen() {
   try {
-    openedTasks().listReady({ assignees: ['dev'], limit: 1 });
+    await (await openedTasks()).listReady({ assignees: ['dev'], limit: 1 });
     return true;
   } catch {
     return false;
   }
+}
+
+async function databaseAnswers() {
+  return (await openedDatabase()).ping();
 }
 
 // The handler main registered for a signal.
@@ -101,12 +105,12 @@ beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
 });
 
-afterEach(() => {
-  for (const result of vi.mocked(openDatabase).mock.results) {
-    if (result.type === 'return') result.value.close();
+afterEach(async () => {
+  for (const result of vi.mocked(openDatabase).mock.settledResults) {
+    if (result.type === 'fulfilled') await result.value.close();
   }
-  for (const result of vi.mocked(openTasks).mock.results) {
-    if (result.type === 'return') result.value.close();
+  for (const result of vi.mocked(openTasks).mock.settledResults) {
+    if (result.type === 'fulfilled') await result.value.close();
   }
   process.exitCode = undefined;
   vi.unstubAllEnvs();
@@ -203,7 +207,7 @@ it.runIf(process.platform === 'linux')(
       expect.arrayContaining(['sextou.db', 'default.tasks.db']),
     );
     for (const file of files) {
-      expect(file).toMatch(/^(sextou|default\.tasks)\.db(-wal|-shm)?$/);
+      expect(file).toMatch(/^(sextou|default\.tasks)\.db(-wal)?$/);
     }
   },
 );
@@ -224,7 +228,7 @@ describe('when the task graph cannot be opened', () => {
     expect(console.error).toHaveBeenCalledWith(
       `Could not open the task graph at ${tasks}: This tasks database was written by a newer version (schema 99, this one knows 1)`,
     );
-    expect(openedDatabase().ping()).toBe(false);
+    expect(await databaseAnswers()).toBe(false);
     expect(on).not.toHaveBeenCalled();
   });
 });
@@ -257,8 +261,8 @@ it('closes the task graph and the database and rethrows when listening fails', a
 
   await expect(import('./main')).rejects.toBe(error);
 
-  expect(tasksOpen()).toBe(false);
-  expect(openedDatabase().ping()).toBe(false);
+  expect(await tasksOpen()).toBe(false);
+  expect(await databaseAnswers()).toBe(false);
   expect(on).not.toHaveBeenCalled();
 });
 
@@ -269,26 +273,37 @@ describe.each(['SIGTERM', 'SIGINT'])('on %s', (signal) => {
     vi.mocked(startServer).mockResolvedValueOnce({
       host: '127.0.0.1',
       port: 54321,
-      close: () => {
-        openAtServerClose = [tasksOpen(), openedDatabase().ping()];
-        return Promise.resolve();
+      close: async () => {
+        openAtServerClose = [await tasksOpen(), await databaseAnswers()];
       },
     });
+    const closed: string[] = [];
+    let closedAtExit: string[] | undefined;
     exit.mockImplementation(((code: number) => {
-      expect(tasksOpen()).toBe(false);
-      expect(openedDatabase().ping()).toBe(false);
+      closedAtExit = [...closed];
       expect(code).toBe(0);
     }) as never);
     args('--database', ':memory:');
     await import('./main');
-    const close = openedTasks().close;
-    vi.spyOn(openedTasks(), 'close').mockImplementation(() => {
-      databaseAnsweredAtTasksClose = openedDatabase().ping();
-      close();
+    const tasks = await openedTasks();
+    const database = await openedDatabase();
+    const closeTasks = tasks.close;
+    const closeDatabase = database.close;
+    vi.spyOn(tasks, 'close').mockImplementation(async () => {
+      databaseAnsweredAtTasksClose = await database.ping();
+      await closeTasks();
+      closed.push('tasks');
+    });
+    vi.spyOn(database, 'close').mockImplementation(async () => {
+      await closeDatabase();
+      closed.push('database');
     });
 
     await handler(signal)();
 
+    expect(closedAtExit).toEqual(['tasks', 'database']);
+    expect(await tasksOpen()).toBe(false);
+    expect(await databaseAnswers()).toBe(false);
     expect(openAtServerClose).toEqual([true, true]);
     expect(databaseAnsweredAtTasksClose).toBe(true);
     expect(exit).toHaveBeenCalledWith(0);

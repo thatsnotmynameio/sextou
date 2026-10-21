@@ -6,8 +6,8 @@ export interface HealthRoutesOptions {
   version: string;
   startedAt: Date;
   now: () => Date;
-  // Whether the database answers a query; never throws.
-  pingDatabase: () => boolean;
+  // Whether the database answers a query; never rejects.
+  pingDatabase: () => Promise<boolean>;
 }
 
 // GET /: the server's version, uptime and database status, computed by the
@@ -18,12 +18,12 @@ export function healthRoutes({
   now,
   pingDatabase,
 }: HealthRoutesOptions) {
-  return new Hono().get('/', (c) => {
+  return new Hono().get('/', async (c) => {
     const health = getHealth({
       version,
       startedAt,
       now: now(),
-      databaseAnswers: pingDatabase(),
+      databaseAnswers: await pingDatabase(),
     });
     return c.json<HealthResponse>(health, health.database === 'up' ? 200 : 503);
   });

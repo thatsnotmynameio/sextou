@@ -15,10 +15,10 @@ const config = loadConfig(process.env, process.argv.slice(2), {
 });
 
 // The database opens before the server listens: without it, no feature
-// works. SQLite's own message doesn't name the file, so this one does.
+// works. Turso's own message doesn't always name the file, so this one does.
 let database: Database | undefined;
 try {
-  database = openDatabase(config.database);
+  database = await openDatabase(config.database);
 } catch (error) {
   console.error(
     `Could not open the database at ${config.database}: ${(error as Error).message}`,
@@ -31,12 +31,12 @@ try {
 let tasks: Tasks | undefined;
 if (database) {
   try {
-    tasks = openTasks(config.tasks);
+    tasks = await openTasks(config.tasks);
   } catch (error) {
     console.error(
       `Could not open the task graph at ${config.tasks}: ${(error as Error).message}`,
     );
-    database.close();
+    await database.close();
     process.exitCode = 1;
   }
 }
@@ -50,11 +50,13 @@ async function serve(database: Database, tasks: Tasks) {
     now: () => new Date(),
     pingDatabase: database.ping,
   });
-  const server = await startServer(app, config).catch((error: unknown) => {
-    tasks.close();
-    database.close();
-    throw error;
-  });
+  const server = await startServer(app, config).catch(
+    async (error: unknown) => {
+      await tasks.close();
+      await database.close();
+      throw error;
+    },
+  );
   // A URL needs an IPv6 address in brackets.
   const urlHost = server.host.includes(':') ? `[${server.host}]` : server.host;
   console.log(`listening on http://${urlHost}:${server.port}`);
@@ -65,8 +67,8 @@ async function serve(database: Database, tasks: Tasks) {
     process.off('SIGINT', shutdown);
     process.off('SIGTERM', shutdown);
     await server.close();
-    tasks.close();
-    database.close();
+    await tasks.close();
+    await database.close();
     process.exit(0);
   };
   process.on('SIGINT', shutdown);

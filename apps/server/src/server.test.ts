@@ -7,7 +7,7 @@ const app = createApp({
   version: '1.2.3',
   startedAt: new Date(),
   now: () => new Date(),
-  pingDatabase: () => true,
+  pingDatabase: async () => true,
 });
 
 const running: RunningServer[] = [];
