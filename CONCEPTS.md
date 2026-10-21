@@ -8,7 +8,7 @@
 
 The unit sextou does work for: it groups a set of workspaces and owns exactly one task graph, in a database file of its own.
 
-The server names each organization's file; the task graph itself knows nothing of organizations. Today only the default organization exists, in `default.tasks.db`; creating, listing and naming organizations is not a feature yet.
+The server will name each organization's file; the task graph itself knows nothing of organizations. The server doesn't open a task graph yet, and creating, listing and naming organizations is not a feature yet.
 
 ### Workspace
 
@@ -20,4 +20,4 @@ An organization's work items and the `blocked_by` links between them, kept per o
 
 ### Data directory
 
-The one folder where a sextou server keeps everything it owns on a machine: its own database and each organization's task graph. It is private to the user who runs the server, and moving it moves all of them.
+The one folder where a sextou server keeps what it owns on the machine it runs on: today its database, and each organization's task graph once the server opens them. Moving it moves all of them.
