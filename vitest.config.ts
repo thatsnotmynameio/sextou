@@ -10,6 +10,7 @@ export default {
       'packages/core',
       'packages/data',
       'packages/tasks',
+      'packages/tasks/vitest.integration.config.ts',
       'packages/ui',
     ],
   },

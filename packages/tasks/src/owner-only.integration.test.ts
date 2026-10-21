@@ -8,7 +8,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, test } from 'vitest';
 import { restrictToOwner } from './owner-only';
 
 let dir: string;
@@ -26,8 +26,9 @@ afterEach(() => {
 });
 
 // File modes mean nothing on Windows, where the profile's permissions apply.
-describe.skipIf(process.platform === 'win32')('restrictToOwner', () => {
-  it('creates a missing folder, an empty file and its sidecar for their owner only', () => {
+test.skipIf(process.platform === 'win32')(
+  'restrictToOwner creates a missing folder, an empty file and its sidecar for their owner only',
+  () => {
     const path = join(dir, 'missing', 'graph.db');
     restrictToOwner(path);
     expect(mode(join(dir, 'missing'))).toBe(0o700);
@@ -35,10 +36,13 @@ describe.skipIf(process.platform === 'win32')('restrictToOwner', () => {
       expect(mode(file)).toBe(0o600);
       expect(readFileSync(file, 'utf8')).toBe('');
     }
-  });
+  },
+);
 
-  // A crash leaves the sidecar behind, with whatever mode it had.
-  it('makes an existing file and its sidecar owner-only, keeping their bytes', () => {
+// A crash leaves the sidecar behind, with whatever mode it had.
+test.skipIf(process.platform === 'win32')(
+  'restrictToOwner makes an existing file and its sidecar owner-only, keeping their bytes',
+  () => {
     const path = join(dir, 'graph.db');
     for (const file of [path, `${path}-wal`]) {
       writeFileSync(file, 'kept');
@@ -49,12 +53,15 @@ describe.skipIf(process.platform === 'win32')('restrictToOwner', () => {
       expect(mode(file)).toBe(0o600);
       expect(readFileSync(file, 'utf8')).toBe('kept');
     }
-  });
+  },
+);
 
-  it('throws when the folder is a regular file', () => {
+test.skipIf(process.platform === 'win32')(
+  'restrictToOwner throws when the folder is a regular file',
+  () => {
     writeFileSync(join(dir, 'file'), '');
     expect(() => restrictToOwner(join(dir, 'file', 'graph.db'))).toThrow(
       'EEXIST',
     );
-  });
-});
+  },
+);
