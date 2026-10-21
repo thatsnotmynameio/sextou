@@ -119,12 +119,18 @@ function parseOrigin(value: string, name: string): string {
   return url.origin;
 }
 
-// Only digits, at least 1 millisecond.
+// Only digits, from 1 millisecond to the longest delay setTimeout takes: a
+// longer one fires after 1 ms, which would report the database down.
 function parseTimeout(value: string, name: string): number {
-  if (!/^\d+$/.test(value) || Number(value) === 0) {
-    throw invalid(name, value, 'a whole number of milliseconds above 0');
+  const ms = Number(value);
+  if (!/^\d+$/.test(value) || ms === 0 || ms > 2147483647) {
+    throw invalid(
+      name,
+      value,
+      'a whole number of milliseconds from 1 to 2147483647',
+    );
   }
-  return Number(value);
+  return ms;
 }
 
 function parseBoolean(value: string, name: string): boolean {

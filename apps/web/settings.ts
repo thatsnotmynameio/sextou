@@ -48,12 +48,18 @@ function parseUrl(value: string, name: string): string {
   return url.href.replace(/\/+$/, '');
 }
 
-// Only digits, at least 1 millisecond.
+// Only digits, from 1 millisecond to the longest delay a timer takes, the
+// same bound as the server's database timeout.
 function parseTimeout(value: string, name: string): number {
-  if (!/^\d+$/.test(value) || Number(value) === 0) {
-    throw invalid(name, value, 'a whole number of milliseconds above 0');
+  const ms = Number(value);
+  if (!/^\d+$/.test(value) || ms === 0 || ms > 2147483647) {
+    throw invalid(
+      name,
+      value,
+      'a whole number of milliseconds from 1 to 2147483647',
+    );
   }
-  return Number(value);
+  return ms;
 }
 
 // Only digits, from 1 to 65535.

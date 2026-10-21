@@ -141,7 +141,14 @@ test.each(['', 'localhost:5173', 'file:///index.html', 'ftp://app.example'])(
   },
 );
 
-test.each(['', '0', 'abc', '1.5', '-1', '1e3'])(
+// The longest delay setTimeout takes; a longer one fires after 1 ms.
+test('loadConfig accepts a database timeout of 2147483647', () => {
+  expect(
+    load({ SEXTOU_SERVER_DATABASE_TIMEOUT_MS: '2147483647' }).databaseTimeoutMs,
+  ).toBe(2147483647);
+});
+
+test.each(['', '0', 'abc', '1.5', '-1', '1e3', '2147483648'])(
   'loadConfig rejects database timeout %j',
   (timeout) => {
     expect(() => load({ SEXTOU_SERVER_DATABASE_TIMEOUT_MS: timeout })).toThrow(

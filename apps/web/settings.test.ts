@@ -40,7 +40,15 @@ test.each(['', '127.0.0.1:4310', 'file:///server', 'ws://127.0.0.1:4310'])(
   },
 );
 
-test.each(['', '0', 'abc', '1.5', '-1', '1e3'])(
+// The longest delay a timer takes; a longer one fires at once.
+test('readSettings accepts a request timeout of 2147483647', () => {
+  expect(
+    readSettings({ SEXTOU_WEB_REQUEST_TIMEOUT_MS: '2147483647' })
+      .requestTimeoutMs,
+  ).toBe(2147483647);
+});
+
+test.each(['', '0', 'abc', '1.5', '-1', '1e3', '2147483648'])(
   'readSettings rejects request timeout %j',
   (timeout) => {
     expect(() =>

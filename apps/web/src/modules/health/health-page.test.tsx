@@ -80,6 +80,31 @@ test.each([
   },
 );
 
+// Covers AE3 through the client's own timeout: this fetch answers only once
+// its signal aborts, as a server that never answers does. Real timers: fake
+// ones don't fire AbortSignal.timeout.
+test('the health page says the server can’t be reached once the request timeout passes', async () => {
+  vi.stubGlobal(
+    'fetch',
+    (_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(init.signal?.reason),
+        );
+      }),
+  );
+  const router = createAppRouter({
+    serverUrl,
+    requestTimeoutMs: 20,
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  });
+  render(<RouterProvider router={router} />);
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'The server can’t be reached.',
+  );
+});
+
 test('the health page says the server can’t be reached when something else answers', async () => {
   renderHome(
     async () =>

@@ -56,7 +56,7 @@ apps/server/
   .env.example                 every variable the server reads, with its default
   src/
     main.ts                    reads the config, creates the database, listens, shuts down
-    config.ts                  the one file that reads process.env
+    config.ts                  every setting, parsed from the environment main.ts passes
     data-directory.ts          the data directory's default on each platform
     database.ts                drizzle on Turso, and the ping health asks
     timeout.ts                 withTimeout, for a call that has no timeout of its own
@@ -88,7 +88,7 @@ apps/web/
         health-page.tsx        the page
 ```
 
-- `apps/server/src/`, at the top: what every feature shares. The process (`main.ts`, `config.ts`, `server.ts`), the HTTP app (`app.ts`, `trpc.ts`, `router.ts`) and the resources procedures reach through the context (`database.ts`, `timeout.ts`). Only `main.ts` and `config.ts` hold Node code: the web app's typecheck follows `AppRouter` into `router.ts`, `trpc.ts` and the modules, so nothing they import may need Node's types.
+- `apps/server/src/`, at the top: what every feature shares. The process (`main.ts`, `config.ts`, `server.ts`), the HTTP app (`app.ts`, `trpc.ts`, `router.ts`) and the resources procedures reach through the context (`database.ts`, `timeout.ts`). `main.ts`, `config.ts`, `data-directory.ts`, `server.ts` and `database.ts` may use Node; the web app's typecheck follows `AppRouter` into `router.ts`, `trpc.ts` and the modules, so nothing they import may need Node's types.
 - `apps/server/src/modules/<feature>/`: one feature's procedures and their schemas.
 - `apps/web/`, beside `vite.config.ts`: the build's own code, which runs in Node when Vite does and never reaches the bundle.
 - `apps/web/src/`, at the top: what every page shares, the client and the router.
