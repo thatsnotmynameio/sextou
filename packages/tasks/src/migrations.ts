@@ -10,6 +10,12 @@ export const steps = [
   // one. The index orders by assignee, then by priority, then by rowid, which
   // is the order the tasks were created in. link_blocker finds the tasks a
   // finishing task blocks.
+  //
+  // status_change records each change of a task's status, its creation
+  // first; its own key keeps changes in the same millisecond in order.
+  // execution records who runs a started task and where its log and result
+  // are; its start and end are the changes into and out of running. Nothing
+  // reads either yet, so neither has an index beyond its key.
   `CREATE TABLE task (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
@@ -21,8 +27,7 @@ export const steps = [
     source_path TEXT,
     status TEXT NOT NULL
       CHECK (status IN ('open', 'running', 'succeeded', 'failed', 'skipped')),
-    holding_blockers INTEGER NOT NULL DEFAULT 0 CHECK (holding_blockers >= 0),
-    time_created INTEGER NOT NULL
+    holding_blockers INTEGER NOT NULL DEFAULT 0 CHECK (holding_blockers >= 0)
   );
   CREATE INDEX task_ready ON task (assignee, priority)
     WHERE status = 'open' AND holding_blockers = 0;
@@ -31,7 +36,24 @@ export const steps = [
     blocker_id TEXT NOT NULL REFERENCES task (id),
     PRIMARY KEY (task_id, blocker_id)
   ) WITHOUT ROWID;
-  CREATE INDEX link_blocker ON link (blocker_id);`,
+  CREATE INDEX link_blocker ON link (blocker_id);
+  CREATE TABLE status_change (
+    id INTEGER PRIMARY KEY,
+    task_id TEXT NOT NULL REFERENCES task (id),
+    from_status TEXT
+      CHECK (from_status IN ('open', 'running', 'succeeded', 'failed', 'skipped')),
+    to_status TEXT NOT NULL
+      CHECK (to_status IN ('open', 'running', 'succeeded', 'failed', 'skipped')),
+    changed_by TEXT NOT NULL,
+    reason TEXT,
+    time_changed INTEGER NOT NULL
+  );
+  CREATE TABLE execution (
+    task_id TEXT PRIMARY KEY REFERENCES task (id),
+    actor TEXT NOT NULL,
+    log_path TEXT,
+    result_path TEXT
+  ) WITHOUT ROWID;`,
 ];
 
 // Applies the steps the database lacks, in order, in one transaction. Throws,

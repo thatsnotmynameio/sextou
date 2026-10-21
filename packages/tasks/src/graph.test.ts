@@ -56,9 +56,28 @@ function create(
     priority,
     parentId,
     assignee,
+    createdBy: 'planner',
   });
   if (!result.ok) throw new Error(`create ${title}: ${result.reason}`);
   return result.task.id;
+}
+
+// The task's state changes, oldest first.
+function history(id: string) {
+  return connection()
+    .prepare(
+      'SELECT from_status, to_status, changed_by, reason, time_changed FROM status_change WHERE task_id = ? ORDER BY id',
+    )
+    .all(id);
+}
+
+// The task's execution, as a list of at most one row.
+function execution(id: string) {
+  return connection()
+    .prepare(
+      'SELECT actor, log_path, result_path FROM execution WHERE task_id = ?',
+    )
+    .all(id);
 }
 
 function link(taskId: string, blockerId: string) {
@@ -70,11 +89,11 @@ function unlink(taskId: string, blockerId: string) {
 }
 
 function start(id: string) {
-  return tasks.startTask({ id });
+  return tasks.startTask({ id, changedBy: 'orchestrator', actor: 'bot-dev-1' });
 }
 
 function finish(id: string, status: FinalStatus) {
-  return tasks.finishTask({ id, status });
+  return tasks.finishTask({ id, changedBy: 'bot-dev-1', status });
 }
 
 // Starts a ready open task and, for a final state, finishes it.
@@ -101,13 +120,14 @@ afterEach(() => {
 });
 
 describe('createTask', () => {
-  it('creates an open task that is ready', () => {
+  it('creates an open task that is ready, recording who created it and when', () => {
     vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
     const result = tasks.createTask({
       title: '  Write the parser ',
       kind: ' task ',
       priority: 2,
       assignee: '  dev ',
+      createdBy: ' planner ',
     });
     expect(result).toEqual({
       ok: true,
@@ -121,10 +141,18 @@ describe('createTask', () => {
         description: null,
         sourcePath: null,
         status: 'open',
-        timeCreated: 1_700_000_000_000,
       },
     });
     expect(ready()).toEqual(['Write the parser']);
+    expect(history(result.ok ? result.task.id : '')).toEqual([
+      {
+        from_status: null,
+        to_status: 'open',
+        changed_by: 'planner',
+        reason: null,
+        time_changed: 1_700_000_000_000,
+      },
+    ]);
   });
 
   it('keeps the description and source path, trimmed at the ends only', () => {
@@ -133,6 +161,7 @@ describe('createTask', () => {
       kind: 'task',
       priority: 2,
       assignee: 'dev',
+      createdBy: 'planner',
       description: '\n  Parse the input.\n\nThen print it.  ',
       sourcePath: ' https://github.com/o/r/issues/1 ',
     });
@@ -160,6 +189,7 @@ describe('createTask', () => {
       kind: 'task',
       priority: 2,
       assignee: 'dev',
+      createdBy: 'planner',
       sourcePath: './notes/task.md',
     });
     expect(result).toMatchObject({
@@ -174,6 +204,7 @@ describe('createTask', () => {
       kind: 'task',
       priority: 2,
       assignee: 'dev',
+      createdBy: 'planner',
       description: '   ',
     });
     const blankSource = tasks.createTask({
@@ -181,6 +212,7 @@ describe('createTask', () => {
       kind: 'task',
       priority: 2,
       assignee: 'dev',
+      createdBy: 'planner',
       sourcePath: ' ',
     });
     expect(blankDescription).toMatchObject({
@@ -206,12 +238,24 @@ describe('createTask', () => {
     { title: 'A', kind: 'task', priority: 2, assignee: 7 },
     { title: 'A', kind: 'task', priority: 2, assignee: 'dev', description: 42 },
     { title: 'A', kind: 'task', priority: 2, assignee: 'dev', sourcePath: 42 },
+    { title: 'A', kind: 'task', priority: 2, assignee: 'dev', createdBy: '' },
+    { title: 'A', kind: 'task', priority: 2, assignee: 'dev', createdBy: ' ' },
+    { title: 'A', kind: 'task', priority: 2, assignee: 'dev', createdBy: 7 },
+    {
+      title: 'A',
+      kind: 'task',
+      priority: 2,
+      assignee: 'dev',
+      createdBy: undefined,
+    },
   ])('refuses %j as invalid, writing nothing', (input) => {
-    expect(tasks.createTask(input as never)).toEqual({
-      ok: false,
-      reason: 'invalid',
-    });
+    expect(
+      tasks.createTask({ createdBy: 'planner', ...input } as never),
+    ).toEqual({ ok: false, reason: 'invalid' });
     expect(rows()).toBe(0);
+    expect(connection().prepare('SELECT * FROM status_change').all()).toEqual(
+      [],
+    );
   });
 
   it('refuses a missing parent as not_found, writing nothing', () => {
@@ -222,6 +266,7 @@ describe('createTask', () => {
         priority: 2,
         parentId: 'tsk_missing',
         assignee: 'dev',
+        createdBy: 'planner',
       }),
     ).toEqual({ ok: false, reason: 'not_found' });
     expect(ready()).toEqual([]);
@@ -236,6 +281,7 @@ describe('createTask', () => {
       priority: 2,
       parentId: parent,
       assignee: 'dev',
+      createdBy: 'planner',
     });
     expect(result).toMatchObject({ ok: true, task: { parentId: parent } });
   });
@@ -246,6 +292,7 @@ describe('createTask', () => {
       kind: 'initiative',
       priority: 0,
       assignee: 'dev',
+      createdBy: 'planner',
     });
     expect(result).toMatchObject({ ok: true, task: { kind: 'initiative' } });
   });
@@ -449,6 +496,8 @@ describe('startTask', () => {
       moveTo(a, to);
       expect(start(b)).toEqual({ ok: false, reason: 'blocked' });
       expect(status(b)).toBe('open');
+      expect(history(b)).toHaveLength(1);
+      expect(execution(b)).toEqual([]);
     },
   );
 
@@ -458,6 +507,8 @@ describe('startTask', () => {
     expect(start(a)).toEqual({ ok: true });
     expect(start(a)).toEqual({ ok: false, reason: 'not_open' });
     expect(status(a)).toBe('running');
+    expect(history(a)).toHaveLength(2);
+    expect(execution(a)).toHaveLength(1);
   });
 
   it.each<Status>(['succeeded', 'failed', 'skipped'])(
@@ -469,6 +520,27 @@ describe('startTask', () => {
       expect(status(a)).toBe(to);
     },
   );
+
+  it.each([
+    { changedBy: '', actor: 'bot' },
+    { changedBy: ' ', actor: 'bot' },
+    { changedBy: 7, actor: 'bot' },
+    { actor: 'bot' },
+    { changedBy: 'orchestrator', actor: '' },
+    { changedBy: 'orchestrator', actor: ' ' },
+    { changedBy: 'orchestrator', actor: 7 },
+    { changedBy: 'orchestrator' },
+    { changedBy: 'orchestrator', actor: 'bot', logPath: 7 },
+  ])('refuses %j as invalid, writing nothing', (input) => {
+    const a = create('A');
+    expect(tasks.startTask({ id: a, ...input } as never)).toEqual({
+      ok: false,
+      reason: 'invalid',
+    });
+    expect(status(a)).toBe('open');
+    expect(history(a)).toHaveLength(1);
+    expect(execution(a)).toEqual([]);
+  });
 
   it('refuses a missing task as not_found and a non-string id as invalid', () => {
     expect(start('tsk_missing')).toEqual({ ok: false, reason: 'not_found' });
@@ -546,6 +618,26 @@ describe('finishTask', () => {
     },
   );
 
+  it.each([
+    { changedBy: '' },
+    { changedBy: ' ' },
+    { changedBy: 7 },
+    {},
+    { changedBy: 'bot-dev-1', reason: 7 },
+    { changedBy: 'bot-dev-1', resultPath: 7 },
+  ])('refuses %j as invalid, writing nothing', (input) => {
+    const a = create('A');
+    start(a);
+    expect(
+      tasks.finishTask({ id: a, status: 'succeeded', ...input } as never),
+    ).toEqual({ ok: false, reason: 'invalid' });
+    expect(status(a)).toBe('running');
+    expect(history(a)).toHaveLength(2);
+    expect(execution(a)).toEqual([
+      { actor: 'bot-dev-1', log_path: null, result_path: null },
+    ]);
+  });
+
   it('refuses a missing task as not_found and a non-string id as invalid', () => {
     expect(finish('tsk_missing', 'succeeded')).toEqual({
       ok: false,
@@ -577,6 +669,7 @@ describe('listReady', () => {
       kind: 'task',
       priority: 2,
       assignee: 'dev',
+      createdBy: 'planner',
       description: 'Parse the input.',
       sourcePath: './notes/task.md',
     });
@@ -656,6 +749,143 @@ describe('listReady', () => {
   });
 });
 
+describe('the history and the execution', () => {
+  // Covers AE6.
+  it('records every change from creation, in order', () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+    const a = create('A');
+    now.mockReturnValue(1_700_000_001_000);
+    start(a);
+    now.mockReturnValue(1_700_000_002_000);
+    finish(a, 'succeeded');
+    expect(history(a)).toEqual([
+      {
+        from_status: null,
+        to_status: 'open',
+        changed_by: 'planner',
+        reason: null,
+        time_changed: 1_700_000_000_000,
+      },
+      {
+        from_status: 'open',
+        to_status: 'running',
+        changed_by: 'orchestrator',
+        reason: null,
+        time_changed: 1_700_000_001_000,
+      },
+      {
+        from_status: 'running',
+        to_status: 'succeeded',
+        changed_by: 'bot-dev-1',
+        reason: null,
+        time_changed: 1_700_000_002_000,
+      },
+    ]);
+  });
+
+  // Covers AE8.
+  it('keeps who ran the task apart from who moved it, with its paths and the reason', () => {
+    const now = vi.spyOn(Date, 'now');
+    const a = create('A');
+    now.mockReturnValue(1_700_000_001_000);
+    tasks.startTask({
+      id: a,
+      changedBy: 'orchestrator',
+      actor: 'bot-dev-1',
+      logPath: 'logs/run-1.txt',
+    });
+    now.mockReturnValue(1_700_000_009_000);
+    tasks.finishTask({
+      id: a,
+      changedBy: 'bot-dev-2',
+      status: 'failed',
+      reason: 'tests failed',
+      resultPath: 'out/run-1',
+    });
+    expect(execution(a)).toEqual([
+      {
+        actor: 'bot-dev-1',
+        log_path: 'logs/run-1.txt',
+        result_path: 'out/run-1',
+      },
+    ]);
+    // The execution started and ended with these two changes.
+    expect(history(a).slice(1)).toEqual([
+      {
+        from_status: 'open',
+        to_status: 'running',
+        changed_by: 'orchestrator',
+        reason: null,
+        time_changed: 1_700_000_001_000,
+      },
+      {
+        from_status: 'running',
+        to_status: 'failed',
+        changed_by: 'bot-dev-2',
+        reason: 'tests failed',
+        time_changed: 1_700_000_009_000,
+      },
+    ]);
+  });
+
+  it('stores no log or result path when none is given', () => {
+    const a = create('A');
+    moveTo(a, 'skipped');
+    expect(execution(a)).toEqual([
+      { actor: 'bot-dev-1', log_path: null, result_path: null },
+    ]);
+  });
+
+  it('trims the names, the paths and the reason, and stores a blank one as null', () => {
+    const a = create('A');
+    const b = create('B');
+    tasks.startTask({
+      id: a,
+      changedBy: ' orchestrator ',
+      actor: ' bot-dev-1 ',
+      logPath: ' logs/run-1.txt ',
+    });
+    tasks.finishTask({
+      id: a,
+      changedBy: ' bot-dev-2 ',
+      status: 'skipped',
+      reason: ' not needed ',
+      resultPath: ' out/run-1 ',
+    });
+    tasks.startTask({
+      id: b,
+      changedBy: 'orchestrator',
+      actor: 'bot-dev-1',
+      logPath: '  ',
+    });
+    tasks.finishTask({
+      id: b,
+      changedBy: 'bot-dev-1',
+      status: 'succeeded',
+      reason: ' ',
+      resultPath: ' ',
+    });
+    expect(execution(a)).toEqual([
+      {
+        actor: 'bot-dev-1',
+        log_path: 'logs/run-1.txt',
+        result_path: 'out/run-1',
+      },
+    ]);
+    expect(
+      history(a).map(({ changed_by, reason }) => ({ changed_by, reason })),
+    ).toEqual([
+      { changed_by: 'planner', reason: null },
+      { changed_by: 'orchestrator', reason: null },
+      { changed_by: 'bot-dev-2', reason: 'not needed' },
+    ]);
+    expect(execution(b)).toEqual([
+      { actor: 'bot-dev-1', log_path: null, result_path: null },
+    ]);
+    expect(history(b)[2]).toMatchObject({ reason: null });
+  });
+});
+
 describe('an error from SQLite', () => {
   it('is thrown, and the write it interrupted leaves nothing behind', () => {
     const a = create('A');
@@ -670,6 +900,18 @@ describe('an error from SQLite', () => {
     expect(connection().isTransaction).toBe(false);
     expect(ready()).toEqual(['A', 'B']);
   });
+
+  it('is thrown from a start, which leaves the task open with no new change', () => {
+    const a = create('A');
+    // Fails the execution's insert, after the status and the change.
+    connection().exec(
+      "CREATE TRIGGER fail BEFORE INSERT ON execution BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END",
+    );
+    expect(() => start(a)).toThrow('disk I/O error');
+    expect(status(a)).toBe('open');
+    expect(history(a)).toHaveLength(1);
+    expect(connection().isTransaction).toBe(false);
+  });
 });
 
 describe('the graph after random operations', () => {
@@ -681,7 +923,7 @@ describe('the graph after random operations', () => {
     };
   }
 
-  it('keeps every counter equal to the holding blockers, and no task past open held by one', () => {
+  it('keeps every counter equal to the holding blockers, no task past open held by one, and every change recorded', () => {
     const next = random(42);
     const pick = <T>(items: T[]) => items[Math.floor(next() * items.length)];
     const running = connection().prepare(
@@ -728,8 +970,20 @@ describe('the graph after random operations', () => {
         .all()
         .map((row) => [row.status, row.n]),
     );
+    // A task whose last change doesn't end in its state, or whose executions
+    // don't match it: one once started, none before.
+    const unrecorded = connection()
+      .prepare(
+        `SELECT task.id FROM task WHERE task.status IS NOT (
+          SELECT to_status FROM status_change WHERE task_id = task.id
+          ORDER BY id DESC LIMIT 1)
+        OR (SELECT count(*) FROM execution WHERE task_id = task.id)
+          <> (task.status <> 'open')`,
+      )
+      .all();
     expect(drift).toEqual([]);
     expect(heldPastOpen).toEqual([]);
+    expect(unrecorded).toEqual([]);
     // The run exercised links, starts and every finish, not only refusals.
     expect(links().length).toBeGreaterThan(20);
     for (const to of ['succeeded', 'failed', 'skipped']) {

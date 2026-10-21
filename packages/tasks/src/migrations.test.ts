@@ -71,9 +71,9 @@ describe('migrate', () => {
 });
 
 describe('the shipped steps', () => {
-  it('create the task and link tables', () => {
+  it('create the task, link, status change and execution tables', () => {
     migrate(client, steps);
-    expect(tables()).toEqual(['link', 'task']);
+    expect(tables()).toEqual(['execution', 'link', 'status_change', 'task']);
     expect(version()).toBe(steps.length);
   });
 

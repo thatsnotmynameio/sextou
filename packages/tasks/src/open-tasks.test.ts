@@ -77,7 +77,12 @@ afterEach(() => {
 describe('openTasks in memory', () => {
   it('opens a migrated, empty graph', () => {
     open(':memory:');
-    expect(tables(connection())).toEqual(['link', 'task']);
+    expect(tables(connection())).toEqual([
+      'execution',
+      'link',
+      'status_change',
+      'task',
+    ]);
     expect(pragma('user_version')).toBe(steps.length);
     expect(
       connection().prepare('SELECT count(*) AS n FROM task').get(),
@@ -97,7 +102,12 @@ describe('openTasks on a file', () => {
     const path = join(dir, 'graph.db');
     open(path).close();
     inspect(path, (client) => {
-      expect(tables(client)).toEqual(['link', 'task']);
+      expect(tables(client)).toEqual([
+        'execution',
+        'link',
+        'status_change',
+        'task',
+      ]);
       expect(client.prepare('PRAGMA user_version').get()).toEqual({
         user_version: steps.length,
       });
