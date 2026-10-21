@@ -4,7 +4,7 @@ import { defineConfig } from 'vitest/config';
 // vitest.config.ts. Every source file must reach these thresholds.
 export default defineConfig({
   test: {
-    name: 'contract',
+    name: 'contract/unit',
     environment: 'node',
     include: ['src/**/*.test.ts'],
     coverage: {

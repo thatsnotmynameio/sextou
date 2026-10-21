@@ -11,3 +11,8 @@ overrides:
   # so the org's trust policy (no-downgrade) rejects it. Babel only calls
   # intersects, lt, satisfies and valid, which 7 keeps as they were.
   semver@^6.0.0: ^7.8.5
+  # StrykerJS 10.0.0 asks for typed-rest-client ~2.3.0, whose 2.3.1 pins qs to
+  # 6.15.1: GHSA-q8mj-m7cp-5q26, GHSA-4mjr-xmp4-gh2g and GHSA-x5fp-wj9c-mxmx,
+  # all fixed by 6.16.0, a minor release of the same major. typed-rest-client 3
+  # moved to qs ^6.16.0 itself.
+  typed-rest-client>qs: ^6.16.1

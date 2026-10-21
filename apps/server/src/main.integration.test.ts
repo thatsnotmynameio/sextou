@@ -14,14 +14,22 @@ import type { Hono } from 'hono';
 import {
   afterEach,
   beforeEach,
-  describe,
   expect,
-  it,
+  test,
   vi,
   type MockInstance,
 } from 'vitest';
 import packageJson from '../package.json';
 import { startServer } from './server';
+
+// main reads the home directory from node:os, which in a worker thread
+// ignores a stubbed HOME. Each test points it at its own temporary directory,
+// so none reaches the developer's data directory.
+const home = vi.hoisted(() => ({ dir: '' }));
+vi.mock('node:os', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:os')>()),
+  homedir: () => home.dir,
+}));
 
 vi.mock('./server', () => ({
   startServer: vi.fn(() =>
@@ -90,9 +98,9 @@ beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
   dir = mkdtempSync(join(tmpdir(), 'sextou-main-'));
-  // No test may reach the developer's data directory.
-  vi.stubEnv('HOME', dir);
+  home.dir = dir;
   vi.stubEnv('XDG_DATA_HOME', undefined);
+  vi.stubEnv('LOCALAPPDATA', undefined);
   vi.stubEnv('SEXTOU_SERVER_HOST', undefined);
   vi.stubEnv('SEXTOU_SERVER_PORT', undefined);
   vi.stubEnv('SEXTOU_SERVER_DATABASE', undefined);
@@ -117,7 +125,7 @@ afterEach(async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-it('starts the server from the arguments and prints where it listens', async () => {
+test('starts the server from the arguments and prints where it listens', async () => {
   args('--port', '0', '--data-dir', dir, '--database', ':memory:');
 
   await import('./main');
@@ -145,7 +153,7 @@ it('starts the server from the arguments and prints where it listens', async () 
   );
 });
 
-it('brackets an IPv6 address in the listening URL', async () => {
+test('brackets an IPv6 address in the listening URL', async () => {
   vi.mocked(startServer).mockResolvedValueOnce({
     host: '::1',
     port: 54321,
@@ -159,7 +167,7 @@ it('brackets an IPv6 address in the listening URL', async () => {
 });
 
 // The default path is the Linux one; CI runs Linux.
-it.runIf(process.platform === 'linux')(
+test.runIf(process.platform === 'linux')(
   'creates the database in the data directory when no path is given',
   async () => {
     args();
@@ -174,7 +182,7 @@ it.runIf(process.platform === 'linux')(
   },
 );
 
-it('opens the database, then the task graph, then listens', async () => {
+test('opens the database, then the task graph, then listens', async () => {
   args('--database', ':memory:');
 
   await import('./main');
@@ -188,7 +196,7 @@ it('opens the database, then the task graph, then listens', async () => {
 });
 
 // Covers AE7. The default path is the Linux one; CI runs Linux.
-it.runIf(process.platform === 'linux')(
+test.runIf(process.platform === 'linux')(
   'starts with no git on the PATH and keeps only its two databases',
   async () => {
     vi.stubEnv('PATH', join(dir, 'empty'));
@@ -211,44 +219,40 @@ it.runIf(process.platform === 'linux')(
   },
 );
 
-describe('when the task graph cannot be opened', () => {
-  it('exits with 1 naming the path and the reason, closes the database, and never listens', async () => {
-    const tasks = join(dir, 'default.tasks.db');
-    writeFileSync(tasks, 'not a database, just some text that is long enough');
-    args('--data-dir', dir, '--database', ':memory:');
+test('when the task graph cannot be opened, exits with 1 naming the path and the reason, closes the database, and never listens', async () => {
+  const tasks = join(dir, 'default.tasks.db');
+  writeFileSync(tasks, 'not a database, just some text that is long enough');
+  args('--data-dir', dir, '--database', ':memory:');
 
-    await import('./main');
+  await import('./main');
 
-    expect(startServer).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
-    expect(console.error).toHaveBeenCalledWith(
-      `Could not open the task graph at ${tasks}: failed to open database ${tasks}: File is not a database`,
-    );
-    expect(await databaseAnswers()).toBe(false);
-    expect(on).not.toHaveBeenCalled();
-  });
+  expect(startServer).not.toHaveBeenCalled();
+  expect(process.exitCode).toBe(1);
+  expect(console.error).toHaveBeenCalledWith(
+    `Could not open the task graph at ${tasks}: failed to open database ${tasks}: File is not a database`,
+  );
+  expect(await databaseAnswers()).toBe(false);
+  expect(on).not.toHaveBeenCalled();
 });
 
-describe('when the database cannot be opened', () => {
-  it('exits with 1 and names the path and the reason, without listening', async () => {
-    writeFileSync(join(dir, 'file'), '');
-    const path = join(dir, 'file', 'sextou.db');
-    args('--database', path);
+test('when the database cannot be opened, exits with 1 and names the path and the reason, without listening', async () => {
+  writeFileSync(join(dir, 'file'), '');
+  const path = join(dir, 'file', 'sextou.db');
+  args('--database', path);
 
-    await import('./main');
+  await import('./main');
 
-    expect(startServer).not.toHaveBeenCalled();
-    expect(openTasks).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
-    // The reason is the file system's: the folder is a file.
-    expect(console.error).toHaveBeenCalledWith(
-      `Could not open the database at ${path}: EEXIST: file already exists, mkdir '${join(dir, 'file')}'`,
-    );
-    expect(on).not.toHaveBeenCalled();
-  });
+  expect(startServer).not.toHaveBeenCalled();
+  expect(openTasks).not.toHaveBeenCalled();
+  expect(process.exitCode).toBe(1);
+  // The reason is the file system's: the folder is a file.
+  expect(console.error).toHaveBeenCalledWith(
+    `Could not open the database at ${path}: EEXIST: file already exists, mkdir '${join(dir, 'file')}'`,
+  );
+  expect(on).not.toHaveBeenCalled();
 });
 
-it('closes the task graph and the database and rethrows when listening fails', async () => {
+test('closes the task graph and the database and rethrows when listening fails', async () => {
   const error = Object.assign(new Error('listen EADDRINUSE'), {
     code: 'EADDRINUSE',
   });
@@ -262,8 +266,9 @@ it('closes the task graph and the database and rethrows when listening fails', a
   expect(on).not.toHaveBeenCalled();
 });
 
-describe.each(['SIGTERM', 'SIGINT'])('on %s', (signal) => {
-  it('closes the server, then the task graph, then the database, then exits with 0', async () => {
+test.each(['SIGTERM', 'SIGINT'])(
+  'on %s, closes the server, then the task graph, then the database, then exits with 0',
+  async (signal) => {
     let openAtServerClose: boolean[] | undefined;
     let databaseAnsweredAtTasksClose: boolean | undefined;
     vi.mocked(startServer).mockResolvedValueOnce({
@@ -303,9 +308,12 @@ describe.each(['SIGTERM', 'SIGINT'])('on %s', (signal) => {
     expect(openAtServerClose).toEqual([true, true]);
     expect(databaseAnsweredAtTasksClose).toBe(true);
     expect(exit).toHaveBeenCalledWith(0);
-  });
+  },
+);
 
-  it('stops listening for both signals, so shutdown runs once', async () => {
+test.each(['SIGTERM', 'SIGINT'])(
+  'on %s, stops listening for both signals, so shutdown runs once',
+  async (signal) => {
     args('--database', ':memory:');
     await import('./main');
     const shutdown = handler(signal);
@@ -316,5 +324,5 @@ describe.each(['SIGTERM', 'SIGINT'])('on %s', (signal) => {
     expect(handler('SIGTERM')).toBe(shutdown);
     expect(off).toHaveBeenCalledWith('SIGINT', shutdown);
     expect(off).toHaveBeenCalledWith('SIGTERM', shutdown);
-  });
-});
+  },
+);

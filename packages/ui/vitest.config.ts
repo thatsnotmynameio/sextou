@@ -23,12 +23,12 @@ export const coverage: CoverageOptions = {
 };
 
 // The unit suite: *.test.tsx in jsdom, no browser. CI runs it through the
-// root vitest.config.ts. The stories run in vitest.integration.config.ts.
+// root vitest.config.ts. The stories run in vitest.component.config.ts.
 export default mergeConfig(
   viteConfig,
   defineConfig({
     test: {
-      name: 'unit',
+      name: 'ui/unit',
       environment: 'jsdom',
       include: ['src/**/*.test.tsx'],
       setupFiles: ['./vitest.setup.ts'],

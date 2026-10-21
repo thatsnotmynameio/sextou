@@ -9,13 +9,17 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "pnpm test:unit",
-    "test:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit"
+    "test": "pnpm test:unit && pnpm test:integration",
+    "test:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit",
+    "test:integration": "vitest run --config vitest.integration.config.ts --coverage --coverage.reportsDirectory=coverage/integration",
+    "test:mutation": "stryker run"
   },
   "dependencies": {
     "@tursodatabase/database": "0.8.3"
   },
   "devDependencies": {
+    "@stryker-mutator/core": "10.0.0",
+    "@stryker-mutator/vitest-runner": "10.0.0",
     "@types/node": "^24.19.2",
     "@vitest/coverage-v8": "^5.0.5",
     "typescript": "^7.0.2",

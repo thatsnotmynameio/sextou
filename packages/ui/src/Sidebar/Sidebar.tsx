@@ -16,6 +16,7 @@ export type SidebarProps = {
   sections: NavSectionProps[];
 };
 
+// Stryker disable next-line BlockStatement: emptying the body moves useLingui() out of the place Lingui's macro rewrites, so it would fail to compile, not to pass
 export function Sidebar({ workspace, items, sections }: SidebarProps) {
   const { t } = useLingui();
   return (

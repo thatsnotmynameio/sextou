@@ -15,6 +15,7 @@
     "test": "pnpm -r test",
     "test:unit": "pnpm -r test:unit",
     "test:integration": "pnpm -r test:integration",
+    "test:component": "pnpm -r test:component",
     "prepare": "husky"
   },
   "lint-staged": {
@@ -26,6 +27,7 @@
     "lint-staged": "^17.6.0",
     "oxfmt": "^0.73.0",
     "oxlint": "^1.88.0",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
   }
 }

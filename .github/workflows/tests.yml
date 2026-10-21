@@ -1,0 +1,168 @@
+# Each package's test levels and its mutation run, each as a check of its own
+# named after the package: "<package> / <level>" judges every file that level
+# answers for at 90% coverage, "<package> / mutation" judges every file of its
+# unit and integration suites: Stryker fails it below 80% of mutants
+# killed in the package. The organization's
+# typescript.yml still runs the unit and integration suites through the root
+# vitest.config.ts; this moves there later. No check here is required yet.
+#
+# Mutation runs as in StrykerJS's own CI: in full on each push to main, and
+# incrementally on a pull request, from the newest result in the Actions
+# cache, which GitHub looks up in the pull request's scope first, then in
+# main's. A Dependabot pull request never saves, so it always starts from
+# main's result.
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+# A pull request's newer run cancels the older one; each commit on main gets a
+# group of its own and is never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# The organization's pnpm policy, as its typescript.yml sets it. pnpm reads
+# this repository's exceptions from pnpm-workspace.yaml.
+env:
+  PNPM_VERSION: 12.10.1
+  pnpm_config_minimum_release_age: 1440
+  pnpm_config_minimum_release_age_strict: true
+  pnpm_config_trust_policy: no-downgrade
+  pnpm_config_trust_lockfile: false
+  pnpm_config_dangerously_allow_all_builds: false
+  pnpm_config_strict_dep_builds: false
+  pnpm_config_block_exotic_subdeps: false
+  pnpm_config_pm_on_fail: ignore
+  pnpm_config_verify_store_integrity: true
+  pnpm_config_side_effects_cache: false
+  pnpm_config_registry: https://registry.npmjs.org/
+
+jobs:
+  level:
+    name: ${{ matrix.package }} / ${{ matrix.level }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { package: desktop, level: unit, dir: apps/desktop }
+          - { package: server, level: unit, dir: apps/server }
+          - { package: server, level: integration, dir: apps/server }
+          - { package: web, level: unit, dir: apps/web }
+          - { package: contract, level: unit, dir: packages/contract }
+          - { package: core, level: unit, dir: packages/core }
+          - { package: data, level: unit, dir: packages/data }
+          - { package: data, level: integration, dir: packages/data }
+          - { package: tasks, level: unit, dir: packages/tasks }
+          - { package: tasks, level: integration, dir: packages/tasks }
+          - { package: ui, level: unit, dir: packages/ui }
+          - { package: ui, level: component, dir: packages/ui }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: pnpm store
+        run: |
+          {
+            echo "pnpm_config_store_dir=$RUNNER_TEMP/pnpm-store"
+            echo "pnpm_config_cache_dir=$RUNNER_TEMP/pnpm-cache"
+          } >> "$GITHUB_ENV"
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      # Only the component suite renders in a browser.
+      - name: Chromium
+        if: ${{ matrix.level == 'component' }}
+        run: pnpm --filter @sextou/ui exec playwright install --with-deps chromium
+      - name: Tests
+        env:
+          DIR: ${{ matrix.dir }}
+          LEVEL: ${{ matrix.level }}
+        run: pnpm --dir "$DIR" run "test:$LEVEL"
+
+  mutation:
+    name: ${{ matrix.package }} / mutation
+    runs-on: ubuntu-latest
+    # A run with no cached result mutates every file of the package.
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { package: desktop, dir: apps/desktop }
+          - { package: server, dir: apps/server }
+          - { package: web, dir: apps/web }
+          - { package: contract, dir: packages/contract }
+          - { package: core, dir: packages/core }
+          - { package: data, dir: packages/data }
+          - { package: tasks, dir: packages/tasks }
+          - { package: ui, dir: packages/ui }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: pnpm store
+        run: |
+          {
+            echo "pnpm_config_store_dir=$RUNNER_TEMP/pnpm-store"
+            echo "pnpm_config_cache_dir=$RUNNER_TEMP/pnpm-cache"
+          } >> "$GITHUB_ENV"
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Restore the last result
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ matrix.dir }}/reports/stryker-incremental.json
+          key: stryker-incremental-${{ matrix.package }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: stryker-incremental-${{ matrix.package }}-
+      # On main every mutant runs (--force) and the result is written for the
+      # pull requests after it; a pull request runs only what changed since
+      # the result it restored.
+      - name: Stryker
+        env:
+          DIR: ${{ matrix.dir }}
+          FULL: ${{ github.event_name != 'pull_request' }}
+        run: |
+          if [ "$FULL" = true ]; then
+            pnpm --dir "$DIR" exec stryker run --incremental --force
+          else
+            pnpm --dir "$DIR" exec stryker run --incremental
+          fi
+      - name: Save the result
+        if: ${{ !cancelled() && github.actor != 'dependabot[bot]' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ matrix.dir }}/reports/stryker-incremental.json
+          key: stryker-incremental-${{ matrix.package }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Upload the report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-${{ matrix.package }}
+          path: ${{ matrix.dir }}/reports/mutation/mutation.html
+          if-no-files-found: ignore

@@ -9,6 +9,7 @@ export type WorkspaceHeaderProps = {
   onNewIssue?: () => void;
 };
 
+// Stryker disable BlockStatement: emptying the body moves useLingui() out of the place Lingui's macro rewrites, so it would fail to compile, not to pass
 export function WorkspaceHeader({
   name,
   initial,
@@ -17,6 +18,7 @@ export function WorkspaceHeader({
   onNewIssue,
 }: WorkspaceHeaderProps) {
   const { t } = useLingui();
+  // Stryker restore BlockStatement
   return (
     <div className="flex items-center gap-2 px-1.5 py-0.5">
       <button
