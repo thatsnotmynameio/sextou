@@ -234,6 +234,17 @@ export function createGraph(client: DatabaseSync): Graph {
     }
   }
 
+  // Records a change of a task's status, now, inside the caller's write.
+  function recordChange(
+    id: string,
+    from: Task['status'] | null,
+    to: Task['status'],
+    changedBy: string,
+    reason: string | null = null,
+  ) {
+    insertChange.run(id, from, to, changedBy, reason, Date.now());
+  }
+
   return {
     createTask: ({
       title,
@@ -290,14 +301,7 @@ export function createGraph(client: DatabaseSync): Graph {
           task.description,
           task.sourcePath,
         );
-        insertChange.run(
-          task.id,
-          null,
-          'open',
-          cleanCreatedBy,
-          null,
-          Date.now(),
-        );
+        recordChange(task.id, null, 'open', cleanCreatedBy);
         return { ok: true, task };
       });
     },
@@ -359,14 +363,7 @@ export function createGraph(client: DatabaseSync): Graph {
         if (task.status !== 'open') return refuse('not_open');
         if (Number(task.holding_blockers) > 0) return refuse('blocked');
         setStatus.run('running', id);
-        insertChange.run(
-          id,
-          'open',
-          'running',
-          cleanChangedBy,
-          null,
-          Date.now(),
-        );
+        recordChange(id, 'open', 'running', cleanChangedBy);
         insertExecution.run(id, cleanActor, cleanLogPath);
         return { ok: true };
       });
@@ -390,14 +387,7 @@ export function createGraph(client: DatabaseSync): Graph {
         if (task === undefined) return refuse('not_found');
         if (task.status !== 'running') return refuse('not_running');
         setStatus.run(status, id);
-        insertChange.run(
-          id,
-          'running',
-          status,
-          cleanChangedBy,
-          cleanReason,
-          Date.now(),
-        );
+        recordChange(id, 'running', status, cleanChangedBy, cleanReason);
         // A running task has its execution, from its start.
         setResult.run(cleanResultPath, id);
         // Every task it blocks is open: no task past open is held.
