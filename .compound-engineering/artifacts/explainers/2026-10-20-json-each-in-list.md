@@ -7,6 +7,8 @@ subject: '@sextou/tasks, how the ready list matches several assignees with one p
 
 # A list of any length through one bound parameter
 
+> **Superseded.** This explains the ready list on `node:sqlite`. On Turso, which the task graph moved to in #47, `json_each` makes the query scan the whole `task_ready` index, so `listReady` now binds one `?` per assignee and builds the statement on each call. See `.compound-engineering/artifacts/solutions/best-practices/turso-behaves-differently-from-sqlite.md`.
+
 ## What it is
 
 SQLite binds one value per `?`, so `assignee IN (?, ?, ?)` fixes the length of the list when the statement is prepared. Instead, the caller's list goes in as one JSON array, and SQLite's `json_each` table-valued function turns it back into rows inside the query:
