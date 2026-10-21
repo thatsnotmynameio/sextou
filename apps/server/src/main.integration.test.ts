@@ -100,6 +100,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'sextou-main-'));
   home.dir = dir;
   vi.stubEnv('XDG_DATA_HOME', undefined);
+  vi.stubEnv('LOCALAPPDATA', undefined);
   vi.stubEnv('SEXTOU_SERVER_HOST', undefined);
   vi.stubEnv('SEXTOU_SERVER_PORT', undefined);
   vi.stubEnv('SEXTOU_SERVER_DATABASE', undefined);

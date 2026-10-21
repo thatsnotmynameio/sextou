@@ -24,7 +24,7 @@ permissions: {}
 # A pull request's newer run cancels the older one; each commit on main gets a
 # group of its own and is never cancelled.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # The organization's pnpm policy, as its typescript.yml sets it. pnpm reads

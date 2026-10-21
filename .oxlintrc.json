@@ -34,7 +34,13 @@
           {
             "patterns": [
               {
-                "group": ["../*/**", "!../*/index", "!../../**"],
+                "group": [
+                  "../*/**",
+                  "!../*/index",
+                  "!../../**",
+                  "../../modules/*/**",
+                  "!../../modules/*/index"
+                ],
                 "message": "A module reaches another module only through its entry point, the index.ts in its folder."
               }
             ]
@@ -50,7 +56,13 @@
           {
             "patterns": [
               {
-                "group": ["../../*/**", "!../../*/index", "!../../../**"],
+                "group": [
+                  "../../*/**",
+                  "!../../*/index",
+                  "!../../../**",
+                  "../../../modules/*/**",
+                  "!../../../modules/*/index"
+                ],
                 "message": "A module reaches another module only through its entry point, the index.ts in its folder."
               }
             ]

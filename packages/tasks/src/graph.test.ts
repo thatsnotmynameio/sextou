@@ -765,7 +765,9 @@ test('listReady trims the assignees asked for and returns a task once', async ()
   expect(await ready(100, ['dev', 'dev'])).toEqual(['A']);
 });
 
-test.each([[], undefined, 'dev', [''], ['  '], [7]])(
+// Each case sits in an array of its own: test.each spreads an array case
+// into the arguments, which would hand listReady its first item.
+test.each([[[]], [undefined], ['dev'], [['']], [['  ']], [[7]]])(
   `listReady refuses %j as the assignees as ${Reason.invalid}`,
   async (assignees) => {
     expect(await tasks.listReady({ assignees, limit: 1 } as never)).toEqual({
