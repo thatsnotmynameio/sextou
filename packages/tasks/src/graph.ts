@@ -1,14 +1,19 @@
 import { randomBytes } from 'node:crypto';
 import type { DatabaseSync, SQLOutputValue } from 'node:sqlite';
+import { type FinalStatus, holds, isFinal, Status } from './status';
 
 // Why an operation changed nothing.
-export type Reason =
-  | 'invalid'
-  | 'not_found'
-  | 'same_task'
-  | 'not_open'
-  | 'cycle'
-  | 'open_blockers';
+export const Reason = {
+  invalid: 'invalid',
+  notFound: 'not_found',
+  sameTask: 'same_task',
+  notOpen: 'not_open',
+  cycle: 'cycle',
+  blocked: 'blocked',
+  notRunning: 'not_running',
+} as const;
+
+export type Reason = (typeof Reason)[keyof typeof Reason];
 
 export interface Refused<R extends Reason> {
   ok: false;
@@ -31,10 +36,7 @@ export interface Task {
   // A URL or a file path where the task's longer text lives. Stored as given
   // and never read.
   sourcePath: string | null;
-  // A closed task never reopens.
-  status: 'open' | 'closed';
-  // Milliseconds since the epoch.
-  timeCreated: number;
+  status: Status;
 }
 
 export interface NewTask {
@@ -47,6 +49,8 @@ export interface NewTask {
   // Blank is stored as null, as is a blank source path.
   description?: string;
   sourcePath?: string;
+  // Recorded with the creation, the first change of the task's status.
+  createdBy: string;
 }
 
 // The task is blocked by the blocker.
@@ -56,33 +60,78 @@ export interface Link {
 }
 
 // Every operation that writes runs in one transaction: a refusal writes
-// nothing, and an error from SQLite or the file system is thrown.
+// nothing, and an error from SQLite or the file system is thrown. Each change
+// of a task's status is recorded in that transaction, with when it happened
+// and who made it: any name the caller uses, never checked.
 export interface Graph {
   createTask: (
     task: NewTask,
-  ) => { ok: true; task: Task } | Refused<'invalid' | 'not_found'>;
-  // Refuses a link that would close a cycle, or whose task is closed. A pair
+  ) =>
+    | { ok: true; task: Task }
+    | Refused<typeof Reason.invalid | typeof Reason.notFound>;
+  // Refuses a link that would close a cycle, or whose task isn't open. A pair
   // already linked succeeds and changes nothing.
   link: (
     link: Link,
   ) =>
     | { ok: true }
-    | Refused<'invalid' | 'not_found' | 'same_task' | 'not_open' | 'cycle'>;
-  // Refuses a closed task. A pair not linked succeeds and changes nothing.
+    | Refused<
+        | typeof Reason.invalid
+        | typeof Reason.notFound
+        | typeof Reason.sameTask
+        | typeof Reason.notOpen
+        | typeof Reason.cycle
+      >;
+  // Refuses a task that isn't open. A pair not linked succeeds and changes
+  // nothing.
   unlink: (
     link: Link,
-  ) => { ok: true } | Refused<'invalid' | 'not_found' | 'not_open'>;
-  // Refuses a task with an open blocker. A closed task succeeds and changes
-  // nothing.
-  closeTask: (
-    id: string,
-  ) => { ok: true } | Refused<'invalid' | 'not_found' | 'open_blockers'>;
-  // The open tasks with no open blocker whose assignee is one of assignees,
+  ) =>
+    | { ok: true }
+    | Refused<
+        typeof Reason.invalid | typeof Reason.notFound | typeof Reason.notOpen
+      >;
+  // Moves a ready task to running and records its execution. Refuses a task
+  // that isn't open, or that a blocker still holds.
+  startTask: (start: {
+    id: string;
+    changedBy: string;
+    // Who runs the task, kept apart from who started it.
+    actor: string;
+    // Where the run's log is. Stored as given and never read; blank is null.
+    logPath?: string;
+  }) =>
+    | { ok: true }
+    | Refused<
+        | typeof Reason.invalid
+        | typeof Reason.notFound
+        | typeof Reason.notOpen
+        | typeof Reason.blocked
+      >;
+  // Moves a running task to a final state. The one who finishes it need not
+  // be the one who started it.
+  finishTask: (finish: {
+    id: string;
+    changedBy: string;
+    status: FinalStatus;
+    // Why it ended so, recorded with the change; blank is null.
+    reason?: string;
+    // Where the run's result is, recorded on its execution. Stored as given
+    // and never read; blank is null.
+    resultPath?: string;
+  }) =>
+    | { ok: true }
+    | Refused<
+        | typeof Reason.invalid
+        | typeof Reason.notFound
+        | typeof Reason.notRunning
+      >;
+  // The open tasks no blocker holds whose assignee is one of assignees,
   // matched exactly, most urgent first, then oldest, at most limit of them.
   listReady: (query: {
     assignees: string[];
     limit: number;
-  }) => { ok: true; tasks: Task[] } | Refused<'invalid'>;
+  }) => { ok: true; tasks: Task[] } | Refused<typeof Reason.invalid>;
 }
 
 function refuse<R extends Reason>(reason: R): Refused<R> {
@@ -121,59 +170,66 @@ function toTask(row: Record<string, SQLOutputValue>): Task {
     assignee: String(row.assignee),
     description: nullable(row.description),
     sourcePath: nullable(row.source_path),
-    status: row.status === 'closed' ? 'closed' : 'open',
-    timeCreated: Number(row.time_created),
+    // The table's check keeps it one of the five.
+    status: String(row.status) as Status,
   };
 }
 
 // The graph's operations over a migrated connection. Readiness is kept in
-// each task's open_blockers, which every write moves in the same transaction,
-// so no closed task ever has an open blocker.
+// each task's holding_blockers, which every write moves in the same
+// transaction, so no task past open is ever held by a blocker.
 export function createGraph(client: DatabaseSync): Graph {
   const find = client.prepare(
-    'SELECT status, open_blockers FROM task WHERE id = ?',
+    'SELECT status, holding_blockers FROM tasks WHERE id = ?',
   );
   const insertTask = client.prepare(
-    "INSERT INTO task (id, title, kind, priority, parent_id, assignee, description, source_path, status, time_created) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)",
+    `INSERT INTO tasks (id, title, kind, priority, parent_id, assignee, description, source_path, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '${Status.open}')`,
+  );
+  const insertChange = client.prepare(
+    'INSERT INTO task_status_changes (task_id, from_status, to_status, changed_by, reason, time_changed) VALUES (?, ?, ?, ?, ?, ?)',
+  );
+  const insertExecution = client.prepare(
+    'INSERT INTO task_executions (task_id, actor, log_path) VALUES (?, ?, ?)',
+  );
+  const setResult = client.prepare(
+    'UPDATE task_executions SET result_path = ? WHERE task_id = ?',
   );
   const findLink = client.prepare(
-    'SELECT 1 FROM link WHERE task_id = ? AND blocker_id = ?',
+    'SELECT 1 FROM task_links WHERE task_id = ? AND blocker_id = ?',
   );
   const insertLink = client.prepare(
-    'INSERT INTO link (task_id, blocker_id) VALUES (?, ?)',
+    'INSERT INTO task_links (task_id, blocker_id) VALUES (?, ?)',
   );
   const deleteLink = client.prepare(
-    'DELETE FROM link WHERE task_id = ? AND blocker_id = ?',
+    'DELETE FROM task_links WHERE task_id = ? AND blocker_id = ?',
   );
   // Whether the second task is reachable from the first through open
-  // blockers. A closed task's blockers are all closed, so a path to an open
-  // task never runs through closed history.
+  // blockers. A task past open has only succeeded or skipped blockers, so a
+  // path to an open task never runs through one.
   const reaches = client.prepare(
     `WITH RECURSIVE reached (id) AS (
       SELECT ?
       UNION
-      SELECT link.blocker_id FROM reached
-      JOIN link ON link.task_id = reached.id
-      JOIN task ON task.id = link.blocker_id AND task.status = 'open'
+      SELECT task_links.blocker_id FROM reached
+      JOIN task_links ON task_links.task_id = reached.id
+      JOIN tasks ON tasks.id = task_links.blocker_id AND tasks.status = '${Status.open}'
     )
     SELECT 1 FROM reached WHERE id = ? LIMIT 1`,
   );
   const addBlocker = client.prepare(
-    'UPDATE task SET open_blockers = open_blockers + 1 WHERE id = ?',
+    'UPDATE tasks SET holding_blockers = holding_blockers + 1 WHERE id = ?',
   );
   const removeBlocker = client.prepare(
-    'UPDATE task SET open_blockers = open_blockers - 1 WHERE id = ?',
+    'UPDATE tasks SET holding_blockers = holding_blockers - 1 WHERE id = ?',
   );
-  const markClosed = client.prepare(
-    "UPDATE task SET status = 'closed' WHERE id = ?",
-  );
+  const setStatus = client.prepare('UPDATE tasks SET status = ? WHERE id = ?');
   const unblockDependents = client.prepare(
-    'UPDATE task SET open_blockers = open_blockers - 1 WHERE id IN (SELECT task_id FROM link WHERE blocker_id = ?)',
+    'UPDATE tasks SET holding_blockers = holding_blockers - 1 WHERE id IN (SELECT task_id FROM task_links WHERE blocker_id = ?)',
   );
   // The WHERE matches task_ready's, so SQLite searches that index once per
   // assignee in the JSON array, then sorts only the rows it found.
   const ready = client.prepare(
-    "SELECT id, title, kind, priority, parent_id, assignee, description, source_path, status, time_created FROM task WHERE assignee IN (SELECT value FROM json_each(?)) AND status = 'open' AND open_blockers = 0 ORDER BY priority, rowid LIMIT ?",
+    `SELECT id, title, kind, priority, parent_id, assignee, description, source_path, status FROM tasks WHERE assignee IN (SELECT value FROM json_each(?)) AND status = '${Status.open}' AND holding_blockers = 0 ORDER BY priority, rowid LIMIT ?`,
   );
 
   // Runs fn in an immediate transaction, which takes the write lock first, so
@@ -191,6 +247,17 @@ export function createGraph(client: DatabaseSync): Graph {
     }
   }
 
+  // Records a change of a task's status, now, inside the caller's write.
+  function recordChange(
+    id: string,
+    from: Status | null,
+    to: Status,
+    changedBy: string,
+    reason: string | null = null,
+  ) {
+    insertChange.run(id, from, to, changedBy, reason, Date.now());
+  }
+
   return {
     createTask: ({
       title,
@@ -200,12 +267,14 @@ export function createGraph(client: DatabaseSync): Graph {
       assignee,
       description,
       sourcePath,
+      createdBy,
     }) => {
       const cleanTitle = trimmed(title);
       const cleanKind = trimmed(kind);
       const cleanAssignee = trimmed(assignee);
       const cleanDescription = optional(description);
       const cleanSourcePath = optional(sourcePath);
+      const cleanCreatedBy = trimmed(createdBy);
       if (
         cleanTitle === '' ||
         cleanKind === '' ||
@@ -215,13 +284,14 @@ export function createGraph(client: DatabaseSync): Graph {
         (parentId !== undefined && !isId(parentId)) ||
         cleanAssignee === '' ||
         cleanDescription === undefined ||
-        cleanSourcePath === undefined
+        cleanSourcePath === undefined ||
+        cleanCreatedBy === ''
       ) {
-        return refuse('invalid');
+        return refuse(Reason.invalid);
       }
       return write(() => {
         if (parentId !== undefined && find.get(parentId) === undefined) {
-          return refuse('not_found');
+          return refuse(Reason.notFound);
         }
         const task: Task = {
           id: `tsk_${randomBytes(16).toString('hex')}`,
@@ -232,8 +302,7 @@ export function createGraph(client: DatabaseSync): Graph {
           assignee: cleanAssignee,
           description: cleanDescription,
           sourcePath: cleanSourcePath,
-          status: 'open',
-          timeCreated: Date.now(),
+          status: Status.open,
         };
         insertTask.run(
           task.id,
@@ -244,60 +313,98 @@ export function createGraph(client: DatabaseSync): Graph {
           task.assignee,
           task.description,
           task.sourcePath,
-          task.timeCreated,
         );
+        recordChange(task.id, null, Status.open, cleanCreatedBy);
         return { ok: true, task };
       });
     },
 
     link: ({ taskId, blockerId }) => {
-      if (!isId(taskId) || !isId(blockerId)) return refuse('invalid');
+      if (!isId(taskId) || !isId(blockerId)) return refuse(Reason.invalid);
       return write(() => {
         const task = find.get(taskId);
         const blocker = find.get(blockerId);
         if (task === undefined || blocker === undefined) {
-          return refuse('not_found');
+          return refuse(Reason.notFound);
         }
-        if (taskId === blockerId) return refuse('same_task');
+        if (taskId === blockerId) return refuse(Reason.sameTask);
         if (findLink.get(taskId, blockerId) !== undefined) return { ok: true };
-        if (task.status !== 'open') return refuse('not_open');
-        // A closed blocker reaches no open task and keeps no task waiting.
-        if (blocker.status === 'open') {
-          if (reaches.get(blockerId, taskId) !== undefined) {
-            return refuse('cycle');
-          }
-          addBlocker.run(taskId);
+        if (task.status !== Status.open) return refuse(Reason.notOpen);
+        // A blocker past open reaches no open task.
+        if (
+          blocker.status === Status.open &&
+          reaches.get(blockerId, taskId) !== undefined
+        ) {
+          return refuse(Reason.cycle);
         }
+        if (holds(blocker.status)) addBlocker.run(taskId);
         insertLink.run(taskId, blockerId);
         return { ok: true };
       });
     },
 
     unlink: ({ taskId, blockerId }) => {
-      if (!isId(taskId) || !isId(blockerId)) return refuse('invalid');
+      if (!isId(taskId) || !isId(blockerId)) return refuse(Reason.invalid);
       return write(() => {
         const task = find.get(taskId);
         const blocker = find.get(blockerId);
         if (task === undefined || blocker === undefined) {
-          return refuse('not_found');
+          return refuse(Reason.notFound);
         }
-        if (task.status !== 'open') return refuse('not_open');
+        if (task.status !== Status.open) return refuse(Reason.notOpen);
         const { changes } = deleteLink.run(taskId, blockerId);
-        if (changes > 0 && blocker.status === 'open') removeBlocker.run(taskId);
+        if (changes > 0 && holds(blocker.status)) removeBlocker.run(taskId);
         return { ok: true };
       });
     },
 
-    closeTask: (id) => {
-      if (!isId(id)) return refuse('invalid');
+    startTask: ({ id, changedBy, actor, logPath }) => {
+      const cleanChangedBy = trimmed(changedBy);
+      const cleanActor = trimmed(actor);
+      const cleanLogPath = optional(logPath);
+      if (
+        !isId(id) ||
+        cleanChangedBy === '' ||
+        cleanActor === '' ||
+        cleanLogPath === undefined
+      ) {
+        return refuse(Reason.invalid);
+      }
       return write(() => {
         const task = find.get(id);
-        if (task === undefined) return refuse('not_found');
-        if (task.status === 'closed') return { ok: true };
-        if (Number(task.open_blockers) > 0) return refuse('open_blockers');
-        markClosed.run(id);
-        // Every task it blocks is open: a closed one has no open blocker.
-        unblockDependents.run(id);
+        if (task === undefined) return refuse(Reason.notFound);
+        if (task.status !== Status.open) return refuse(Reason.notOpen);
+        if (Number(task.holding_blockers) > 0) return refuse(Reason.blocked);
+        setStatus.run(Status.running, id);
+        recordChange(id, Status.open, Status.running, cleanChangedBy);
+        insertExecution.run(id, cleanActor, cleanLogPath);
+        return { ok: true };
+      });
+    },
+
+    finishTask: ({ id, changedBy, status, reason, resultPath }) => {
+      const cleanChangedBy = trimmed(changedBy);
+      const cleanReason = optional(reason);
+      const cleanResultPath = optional(resultPath);
+      if (
+        !isId(id) ||
+        cleanChangedBy === '' ||
+        !isFinal(status) ||
+        cleanReason === undefined ||
+        cleanResultPath === undefined
+      ) {
+        return refuse(Reason.invalid);
+      }
+      return write(() => {
+        const task = find.get(id);
+        if (task === undefined) return refuse(Reason.notFound);
+        if (task.status !== Status.running) return refuse(Reason.notRunning);
+        setStatus.run(status, id);
+        recordChange(id, Status.running, status, cleanChangedBy, cleanReason);
+        // A running task has its execution, from its start.
+        setResult.run(cleanResultPath, id);
+        // Every task it blocks is open: no task past open is held.
+        if (!holds(status)) unblockDependents.run(id);
         return { ok: true };
       });
     },
@@ -311,7 +418,7 @@ export function createGraph(client: DatabaseSync): Graph {
         !Number.isInteger(limit) ||
         limit < 1
       ) {
-        return refuse('invalid');
+        return refuse(Reason.invalid);
       }
       return {
         ok: true,
