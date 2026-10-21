@@ -1,0 +1,87 @@
+Qualidade|SonarQube/SonarCloud|sonarsource/|sonar-project\.properties|sonarcloud|sonarqube|sonar\.projectKey
+Qualidade|Codacy|codacy
+Qualidade|DeepSource|deepsource
+Qualidade|Qlty/Code Climate|qlty|codeclimate
+Qualidade|knip|"knip":|(pnpm|npx|yarn|bun|run) knip
+Qualidade|dependency-cruiser|depcruise|dependency-cruiser
+Qualidade|golangci-lint|golangci
+Qualidade|ruff|\bruff\b
+Qualidade|mypy/pyright|\bmypy\b|pyright
+Qualidade|pre-commit|pre-commit/action|pre-commit run
+Qualidade|autofix-ci|autofix-ci/action
+Qualidade|actionlint|actionlint
+Segurança|CodeQL|github/codeql-action/(init|analyze)
+Segurança|Semgrep|semgrep (scan|ci)|semgrep/semgrep|returntocorp/semgrep|semgrep-action
+Segurança|Snyk|snyk/actions|snyk (test|monitor|code)|"snyk":
+Segurança|Socket|socket\.dev|SocketDev/|@socketsecurity
+Segurança|OSV-Scanner|osv-scanner
+Segurança|Trivy|trivy
+Segurança|Grype/Syft|anchore/(scan-action|sbom-action)|\bgrype\b|\bsyft\b
+Segurança|Dependency-Track|dependency-track
+Segurança|OWASP ZAP|zaproxy|zap-(baseline|full-scan|api-scan)
+Segurança|DefectDojo|defectdojo
+Segurança|gitleaks|gitleaks
+Segurança|TruffleHog|trufflehog
+Segurança|GitGuardian|ggshield|gitguardian
+Segurança|gosec/govulncheck|gosec|govulncheck
+Segurança|bandit/pip-audit|\bbandit\b|pip-audit
+Segurança|zizmor|zizmorcore/zizmor-action|uvx zizmor|run: zizmor|zizmor --
+Segurança|OpenSSF Scorecard|ossf/scorecard-action
+Segurança|harden-runner|step-security/harden-runner
+Segurança|dependency-review-action|actions/dependency-review-action
+Segurança|Aikido|aikido
+Segurança|Checkmarx/KICS|checkmarx|\bkics\b
+Segurança|Hadolint|hadolint
+Segurança|Provenance/assinatura|attest-build-provenance|--provenance|NPM_CONFIG_PROVENANCE|cosign|slsa-framework
+Dependências|Renovate|docs\.renovatebot\.com|"extends": \[.*config:|renovate-config
+Dependências|Dependabot|package-ecosystem
+Cobertura|Codecov|codecov/codecov-action|codecov/test-results-action|codecov\.yml|codecov/(feedback|patch)
+Cobertura|Coveralls|coverallsapp|coveralls
+Testes|Stryker|@stryker-mutator
+Testes|mutmut|mutmut
+Testes|Allure|allure-(playwright|vitest|jest|pytest|commandline|js)|allure-framework
+Testes|Gestão de casos (Qase/TestRail/Testmo/Kiwi/Tuskr)|qase\.io|"qase-|testrail|\btestmo\b|kiwitcms|tuskr
+Testes|Currents|currents\.dev|@currents/
+Testes|Cypress Cloud (--record)|--record
+Testes|BrowserStack/Sauce Labs|browserstack|saucelabs|sauce-connect
+Testes|k6|grafana/(setup-k6|k6-action|run-k6)|k6 run
+Testes|Datadog CI Visibility|datadog-ci|DataDog/junit-upload
+Testes|Trunk|trunk-io/|trunk check
+Visual|Playwright screenshots|toHaveScreenshot|snapshotPathTemplate
+Visual|Chromatic|chromaui/action|npx chromatic|"chromatic":
+Visual|Argos|@argos-ci|argos-ci/
+Visual|Percy|@percy/|percy exec
+Visual|Lost Pixel|lost-pixel
+Visual|Applitools|applitools
+A11y/Perf|axe-core|"axe-core"|"@axe-core/|"jest-axe"|"vitest-axe"
+A11y/Perf|Storybook addon-a11y|"@storybook/addon-a11y"
+A11y/Perf|Lighthouse|@lhci/|lighthouserc|treosh/lighthouse-ci-action|lighthouse
+A11y/Perf|size-limit/bundle size|size-limit|compressed-size-action|relative-ci|bundlewatch
+A11y/Perf|CodSpeed|CodSpeedHQ|@codspeed
+Produção|Sentry SDK|"@sentry/[a-z-]+"|sentry-sdk|getsentry/action-release|sentry-cli
+Produção|GlitchTip|glitchtip
+Outros|Checagem de licenças|fossa|license-checker|licensee|license-compliance|scancode|cargo-deny|go-licenses
+Outros|Revisão por IA (CodeRabbit/Greptile/Claude)|coderabbit|greptile|anthropics/claude-code-action
+Qualidade|RuboCop (Ruby)|rubocop
+Segurança|Brakeman (Rails)|brakeman
+Segurança|bundler-audit (Ruby)|bundler-audit|bundle-audit
+Cobertura|SimpleCov (Ruby)|simplecov
+Qualidade|PHPStan/Psalm (PHP)|phpstan|vimeo/psalm|psalm\.xml
+Qualidade|PHP-CS-Fixer (PHP)|php-cs-fixer
+Testes|Infection (mutação PHP)|infection/infection|infection\.json
+Qualidade|SpotBugs/Error Prone/Checkstyle/PMD (Java)|spotbugs|errorprone|error_prone|checkstyle|maven-pmd|\bpmd\b
+Cobertura|JaCoCo (Java)|jacoco
+Testes|PIT (mutação Java)|pitest
+Segurança|OWASP Dependency-Check|dependency-check-maven|org\.owasp\.dependencycheck|dependency-check-action
+Testes|Develocity / Gradle build scans|develocity|gradle-enterprise|com\.gradle\.enterprise
+Qualidade|clippy (Rust)|clippy
+Segurança|cargo-audit (Rust)|cargo-audit|rustsec/audit-check|cargo audit
+Testes|cargo-mutants (Rust)|cargo-mutants
+Testes|Fuzzing (OSS-Fuzz/ClusterFuzzLite/cargo-fuzz)|oss-fuzz|cifuzz|clusterfuzzlite|cargo-fuzz|cargo fuzz
+Qualidade|Credo/Sobelow (Elixir)|\bcredo\b|sobelow
+Cobertura|coverage.py/pytest-cov (Python)|pytest-cov|coverage run|\[tool\.coverage|\[coverage:
+Testes|tox/nox (Python)|tox\.ini|tox -e|noxfile|nox -s
+Testes|Stryker.NET|dotnet-stryker
+Cobertura|coverlet (.NET)|coverlet
+Testes|Hypothesis (property-based Python)|"hypothesis|hypothesis[>=~ ]|^hypothesis
+Testes|fast-check (property-based JS)|"fast-check"

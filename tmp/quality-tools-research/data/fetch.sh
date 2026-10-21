@@ -1,0 +1,5 @@
+#!/bin/bash
+# fetch.sh <owner/repo>: sparse clone into oss/<owner_repo> with CI + manifest + tool config files
+r=$1; d=$(echo $r | tr / _); cd "$(dirname "$0")/oss"
+[ -d $d ] || timeout 300 git clone -q --depth 1 --filter=blob:none --sparse https://github.com/$r.git $d >/dev/null 2>&1 || { echo "FAIL clone $r"; exit; }
+cd $d && timeout 600 git sparse-checkout set --no-cone '/.github/' '/*' '/.gitlab-ci.yml' '/.circleci/' '**/package.json' '**/playwright.config.*' '**/stryker.conf*' '**/.dependency-cruiser*' '**/lighthouserc*' '**/sonar-project.properties' '**/.snyk' '**/socket.yml' '**/codecov.yml' '**/.codecov.yml' '**/pyproject.toml' '**/.pre-commit-config.yaml' '**/.golangci.y*ml' '**/mypy.ini' '**/ruff.toml' '**/.semgrep*' '**/renovate.json*' '**/knip.*' '**/Gemfile' '**/.rubocop.yml' '**/composer.json' '**/phpstan.neon*' '**/psalm.xml*' '**/infection.json*' '**/pom.xml' '**/build.gradle*' '**/settings.gradle*' '**/Cargo.toml' '**/deny.toml' '**/mix.exs' '**/.credo.exs' '**/tox.ini' '**/setup.cfg' '**/noxfile.py' '**/Directory.Build.props' '**/dotnet-tools.json' '**/requirements*.txt' >/dev/null 2>&1 && echo "ok $r" || echo "FAIL checkout $r"

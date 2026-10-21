@@ -1,0 +1,540 @@
+[SonarQube/SonarCloud] backstage_backstage/.github/vale/config/vocabularies/Backstage/accept.txt: Sonarqube
+[SonarQube/SonarCloud] element-hq_element-web/.github/workflows/build_develop.yml:                   check-regexp: ^((?!SonarCloud|SonarQube|issue|board|label|Release|pre
+[SonarQube/SonarCloud] formbricks_formbricks/.github/workflows/sonarqube.yml: name: SonarQube
+[SonarQube/SonarCloud] quarkusio_quarkus/.github/workflows/ci-actions-incremental.yml:       - '.github/workflows/sonarcloud.yml'
+[SonarQube/SonarCloud] strapi_strapi/.github/workflows/tests.yml:   sonarqube:
+[Qlty/Code Climate] angular_angular/.github/actions/deploy-docs-site/main.js: var GraphQLType;
+[Qlty/Code Climate] grafana_grafana/go.sum: :3NdmfEkZlB7YI5UFw/qdFKq8XN1aiWR0YyRPWZNQltY=
+[Qlty/Code Climate] supabase_supabase/prettier.config.mjs:   sqlTypeCase: 'lower',
+[knip] PostHog_posthog/products/desktop/package.json:     "knip": "knip",
+[knip] backstage_backstage/packages/repo-tools/package.json:     "knip": "^5.42.0",
+[knip] element-hq_element-web/package.json:         "knip": "6.38.0",
+[knip] getsentry_sentry/package.json:     "knip": "knip",
+[knip] grafana_grafana/.github/workflows/frontend-lint.yml:     - name: Run knip
+[knip] langfuse_langfuse/.github/workflows/pipeline.yml:       - name: run knip
+[knip] n8n-io_n8n/.github/workflows/ci-pr-quality.yml:       - name: Run knip
+[knip] novuhq_novu/libs/automation/package.json:     "knip": "^5.11.0",
+[knip] nuxt_nuxt/package.json:     "knip": "catalog:dev",
+[knip] openstatusHQ_openstatus/package.json:     "knip": "catalog:",
+[knip] polarsource_polar/clients/package.json:     "knip": "knip",
+[knip] signalapp_Signal-Desktop/package.json:     "knip": "6.14.0",
+[knip] storybookjs_storybook/code/package.json:     "knip": "knip --config ../scripts/knip.config.t
+[knip] supabase_supabase/.github/workflows/studio-knip.yml:       - name: Run knip
+[knip] sveltejs_svelte/packages/svelte/package.json:     "knip": "pnpm dlx knip"
+[knip] triggerdotdev_trigger.dev/.github/workflows/code-quality.yml:         run: pnpm run knip
+[knip] twentyhq_twenty/.github/workflows/ci-knip.yaml:       - name: Run knip
+[knip] typescript-eslint_typescript-eslint/package.json:     "knip": "6.41.0",
+[knip] vitest-dev_vitest/.github/workflows/knip.yml:     name: Run Knip
+[knip] withastro_astro/package.json:     "lint": "biome lint && pnpm run knip && eslint --cache --concurrency=auto",
+[knip] zitadel_zitadel/packages/zitadel-client/package.json:     "knip": "^6.12.2",
+[dependency-cruiser] langfuse_langfuse/pnpm-workspace.yaml:   # dependency-cruiser reads the JS compiler API to follow Typ
+[dependency-cruiser] prisma_prisma/package.json:     "lint:deps": "depcruise --config dependency-cruiser.config.mjs packages && node scripts/lin
+[golangci-lint] Infisical_infisical/.github/workflows/run-backend-go-tests.yml:       - name: Run golangci-lint
+[golangci-lint] PostHog_posthog/.github/workflows/ci-hobby-installer.yml:             - name: Run golangci-lint
+[golangci-lint] formbricks_formbricks/.coderabbit.yaml:     golangci-lint:
+[golangci-lint] gin-gonic_gin/.github/workflows/gin.yml:       - name: Setup golangci-lint
+[golangci-lint] go-gitea_gitea/.github/actions/go-cache/action.yml: tion: Restore the go module, build, and golangci-lint caches. Save only on the cache-see
+[golangci-lint] gofiber_fiber/.cspell.json:     ".golangci.yml",
+[golangci-lint] grafana_grafana/.github/actions/change-detection/action.yml:   golangci-config:
+[golangci-lint] openmeterio_openmeter/.github/workflows/ci.yaml:       - name: Read GolangCI-Lint version
+[golangci-lint] temporalio_temporal/.github/workflows/linters.yml:   golangci:
+[golangci-lint] traefik_traefik/.github/workflows/validate.yaml:   GOLANGCI_LINT_VERSION: v2.13.2
+[ruff] PostHog_posthog/.github/scripts/check-dagster-paths.py: # ruff: noqa: T201 allow print statements
+[ruff] fastapi_fastapi/.pre-commit-config.yaml:       - id: local-ruff-check
+[ruff] formbricks_formbricks/.coderabbit.yaml:     ruff:
+[ruff] getsentry_sentry/.git-blame-ignore-revs: te from black+isort+pyupgrade+flake8 to ruff (#108010)
+[ruff] immich-app_immich/machine-learning/pyproject.toml:     "ruff>=0.0.272",
+[ruff] langfuse_langfuse/.github/workflows/sdk-api-spec.yml:           uv run ruff format langfuse/api
+[ruff] microsoft_vscode/extensions/copilot/test/requirements.txt: ruff
+[ruff] n8n-io_n8n/packages/@n8n/ai-workflow-builder.ee/evaluations/programmatic/python/pyproject.toml:     "ruff>=0.14.5",
+[ruff] nodejs_node/Makefile: RUFF ?= tools/pip/site-packages/bin/ruff
+[ruff] pallets_flask/.pre-commit-config.yaml:   - repo: https://github.com/astral-sh/ruff-pre-commit
+[ruff] polarsource_polar/.github/workflows/test_dev_cli.yaml:       - name: 🐶 Lint (ruff)
+[mypy/pyright] PostHog_posthog/.github/mypy-problem-matcher.json:             "owner": "mypy",
+[mypy/pyright] angular_angular/.github/actions/deploy-docs-site/esbuild.conf.js:  * Copyright Google LLC All Rights Reserved.
+[mypy/pyright] backstage_backstage/.clomonitor.yml: b site at https://backstage.io in the copyright footer. However, because the site is de
+[mypy/pyright] bitwarden_clients/.github/workflows/build-cli.yml:               VALUE "LegalCopyright", "Copyright Bitwarden Inc."
+[mypy/pyright] directus_directus/.github/workflows/cla-comment.yml: /community/contribution/pull-requests#copyright-license-agreement-cla) for details.
+[mypy/pyright] dotnet_aspnetcore/THIRD-PARTY-NOTICES.txt: Copyright (c) .NET Foundation and Contributors
+[mypy/pyright] electron_electron/.github/siso-patches/0002-siso-retry-transient-ERROR_INVALID_PARAMETER-when-op.patch: +// Copyright 2026 The Chromium Authors
+[mypy/pyright] element-hq_element-web/.editorconfig: #   Copyright 2024 New Vector Ltd.
+[mypy/pyright] expressjs_express/index.js:  * Copyright(c) 2009-2013 TJ Holowaychuk
+[mypy/pyright] facebook_react/compiler/apps/playground/playwright.config.js:  * Copyright (c) Meta Platforms, Inc. and affiliates
+[mypy/pyright] fastapi_fastapi/.pre-commit-config.yaml:       - id: local-mypy
+[mypy/pyright] getsentry_sentry/.github/workflows/backend.yml: n: PYTHONWARNINGS=error::RuntimeWarning mypy
+[mypy/pyright] gin-gonic_gin/auth.go: // Copyright 2014 Manu Martinez-Almeida. All rights 
+[mypy/pyright] go-gitea_gitea/BSDmakefile: # Copyright NeoSmart Technologies <https://neosmart
+[mypy/pyright] hotwired_turbo/MIT-LICENSE: Copyright (c) 37signals
+[mypy/pyright] immich-app_immich/machine-learning/pyproject.toml:     "mypy>=1.3.0",
+[mypy/pyright] keycloak_keycloak/.github/fake_fips/fake_fips.c:  * Copyright 2023 Red Hat, Inc. and/or its affiliate
+[mypy/pyright] labstack_echo/bind.go: // SPDX-FileCopyrightText: © 2015 LabStack LLC and Echo cont
+[mypy/pyright] laravel_framework/pint.json:                     "copyright",
+[mypy/pyright] mattermost_desktop/.eslintrc.json:                 " Copyright (c) 2016-present Mattermost, Inc. All R
+[mypy/pyright] mattermost_mattermost/NOTICE.txt: Copyright 2024 Atlassian Pty Ltd
+[mypy/pyright] microsoft_playwright/NOTICE: Copyright (c) Microsoft Corporation
+[mypy/pyright] microsoft_vscode/.github/actions/detect-agent-host-e2e-changes/detect.ts:  *  Copyright (c) Microsoft Corporation. All rights r
+[mypy/pyright] nodejs_node/.cpplint: ir,-build/include_what_you_use,-legal/copyright,-readability/nolint,-readability/braces
+[mypy/pyright] novuhq_novu/EE-PACKAGES-LICENSE:  property of Novu and is protected by copyright laws and international copyright treati
+[mypy/pyright] openmeterio_openmeter/api/client/python/examples/pyproject.toml: pyright = "^1.1.407"
+[mypy/pyright] oxc-project_oxc/THIRD-PARTY-LICENSE:       "Licensor" shall mean the copyright owner or entity authorized by
+[mypy/pyright] pallets_flask/.github/workflows/tests.yaml:       - name: cache mypy
+[mypy/pyright] polarsource_polar/.github/workflows/copilot-setup-steps.yml:           key: mypy-${{ runner.os }}-${{ github.sha }}
+[mypy/pyright] quarkusio_quarkus/dco.txt: Copyright (C) 2004, 2006 The Linux Foundation and
+[mypy/pyright] rails_rails/MIT-LICENSE: Copyright (c) David Heinemeier Hansson
+[mypy/pyright] remix-run_react-router/build.utils.ts:  * Copyright (c) Remix Software Inc.
+[mypy/pyright] signalapp_Signal-Desktop/.babelrc.mjs: // Copyright 2019 Signal Messenger, LLC
+[mypy/pyright] spring-projects_spring-boot/.github/actions/publish-gradle-plugin/build.gradle:  * Copyright 2012-present the original author or aut
+[mypy/pyright] symfony_symfony/.github/sa-tools/check-hardening-tests.php:  * For the full copyright and license information, please view th
+[pre-commit] getsentry_sentry/.pre-commit-config.yaml:   # pre-commit run is not the same, and something like pre
+[pre-commit] pallets_flask/.github/workflows/pre-commit.yaml:  --no-default-groups --group pre-commit pre-commit run --show-diff-on-failure --color=always -
+[autofix-ci] honojs_hono/.github/workflows/autofix.yml:         uses: autofix-ci/action@c5b2d67aa2274e7b5a18224e8171550871fc7e4
+[autofix-ci] nuxt_nuxt/.github/workflows/autofix-docs.yml:       - uses: autofix-ci/action@c5b2d67aa2274e7b5a18224e8171550871fc7e4
+[autofix-ci] openstatusHQ_openstatus/.github/workflows/lint.yml:         uses: autofix-ci/action@dd55f44df8f7cdb7a6bf74c78677eb8acd40cd0
+[autofix-ci] oxc-project_oxc/.github/workflows/autofix.yml:       - uses: autofix-ci/action@c5b2d67aa2274e7b5a18224e8171550871fc7e4
+[autofix-ci] vuejs_core/.github/workflows/autofix.yml:       - uses: autofix-ci/action@7a166d7532b277f34e16238930461bf77f9d7ed
+[actionlint] PostHog_posthog/.github/actionlint.yaml: # actionlint's strict output typing false-positives 
+[actionlint] formbricks_formbricks/.coderabbit.yaml:     actionlint:
+[actionlint] go-gitea_gitea/.github/zizmor.yml:     disable: true # actionlint rejects "$/" uses, https://github.com/r
+[actionlint] gofiber_fiber/.github/workflows/workflow-lint.yml:       - ".github/actionlint.yaml"
+[actionlint] grafana_grafana/.github/workflows/actionlint-format.txt: ormationUri": "https://github.com/rhysd/actionlint",
+[actionlint] n8n-io_n8n/lefthook.yml:     actionlint_check:
+[actionlint] nuxt_nuxt/.github/workflows/lint-workflows.yml: disabled until https://github.com/rhysd/actionlint/pull/694 is merged
+[actionlint] openmeterio_openmeter/.github/actionlint.yaml:     # actionlint predates GitHub's $/ syntax; zizmor val
+[actionlint] outline_outline/.github/actionlint.yaml: cksmith-hosted runners are not known to actionlint's built-in label list.
+[actionlint] strapi_strapi/.coderabbit.yaml:     actionlint:
+[actionlint] temporalio_temporal/.github/actionlint-matcher.json:       "owner": "actionlint",
+[actionlint] toeverything_AFFiNE/.github/workflows/build-test.yml:       - name: Setup Go (for actionlint)
+[actionlint] triggerdotdev_trigger.dev/.github/workflows/workflow-checks.yml:       - ".github/actionlint.yaml"
+[actionlint] vitest-dev_vitest/.github/actionlint.yaml:       # actionlint does not support the self-repository sy
+[CodeQL] appwrite_appwrite/.github/workflows/codeql-analysis.yml:       uses: github/codeql-action/init@e46ed2cbd01164d986452f91f178727624ae40d
+[CodeQL] backstage_backstage/.github/workflows/verify_codeql.yml:       actions: read # for github/codeql-action/init to get workflow details
+[CodeQL] directus_directus/.github/workflows/codeql-analysis.yml:         uses: github/codeql-action/init@v4
+[CodeQL] documenso_documenso/.github/workflows/codeql-analysis.yml:         uses: github/codeql-action/init@v3
+[CodeQL] drizzle-team_drizzle-orm/.github/workflows/codeql.yml:       uses: github/codeql-action/init@v3
+[CodeQL] expressjs_express/.github/workflows/codeql.yml:         uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c
+[CodeQL] getsentry_sentry-javascript/.github/workflows/codeql-analysis.yml:         uses: github/codeql-action/init@v4
+[CodeQL] getsentry_sentry/.github/workflows/codeql.yml:         uses: github/codeql-action/init@0116bc2df50751f9724a2e35ef1f24d22f90e4e
+[CodeQL] gin-gonic_gin/.github/workflows/codeql.yml:         uses: github/codeql-action/init@v4
+[CodeQL] immich-app_immich/.github/workflows/codeql-analysis.yml:         uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8
+[CodeQL] keycloak_keycloak/.github/workflows/codeql-analysis.yml:         uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c
+[CodeQL] langfuse_langfuse/.github/workflows/codeql.yml:         uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb8
+[CodeQL] logto-io_logto/.github/workflows/codeql-analysis.yml:       uses: github/codeql-action/init@v3
+[CodeQL] mastodon_mastodon/.github/workflows/codeql.yml:         uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2ae
+[CodeQL] mattermost_desktop/.github/workflows/codeql-analysis.yml:         uses: github/codeql-action/init@423a04bb2cb7cd2643007122588f1387778f14d
+[CodeQL] mattermost_mattermost/.github/workflows/codeql-analysis.yml:         uses: github/codeql-action/init@0d579ffd059c29b07949a3cce3983f0780820c9
+[CodeQL] microsoft_vscode/.github/workflows/codeql.yml:         uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c
+[CodeQL] nestjs_nest/.github/workflows/codeql-analysis.yml:       uses: github/codeql-action/init@v4.38.3
+[CodeQL] nodejs_node/.github/workflows/codeql.yml:         uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c
+[CodeQL] novuhq_novu/.github/workflows/codeql-analysis.yml:         uses: github/codeql-action/init@b8d3b6e8af63cde30bdc382c0bc28114f4346c8
+[CodeQL] nuxt_nuxt/.github/workflows/ci.yml:         uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8
+[CodeQL] openmeterio_openmeter/.github/workflows/codeql-go.yaml:         uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8
+[CodeQL] outline_outline/.github/workflows/codeql-analysis.yml:         uses: github/codeql-action/init@v3
+[CodeQL] prisma_prisma/.github/workflows/codeql-analysis.yml:         uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be
+[CodeQL] quarkusio_quarkus/.github/workflows/codeql-analysis.yml.disabled:       uses: github/codeql-action/init@7211b7c8077ea37d8641b6271f6a365a22a5fbf
+[CodeQL] toeverything_AFFiNE/.github/workflows/build-test.yml:         uses: github/codeql-action/init@v3
+[CodeQL] traefik_traefik/.github/workflows/codeql.yml:       uses: github/codeql-action/init@38e701f46e33fb233075bf4238cb1e5d68e429e
+[CodeQL] triggerdotdev_trigger.dev/.github/workflows/codeql.yml:         uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa93
+[CodeQL] zitadel_zitadel/.github/workflows/codeql.yml:       uses: github/codeql-action/init@v3
+[Semgrep] PostHog_posthog/.github/actions/semgrep-ci/action.yml: name: Semgrep scan
+[Semgrep] appwrite_appwrite/.github/workflows/ci.yml:           semgrep scan
+[Semgrep] grafana_grafana/.github/workflows/pr-resource-search-result-format.yml:       image: semgrep/semgrep:1.171.0@sha256:bdf7013b2c3634a487671158
+[Semgrep] langfuse_langfuse/.github/workflows/semgrep.yml:       image: semgrep/semgrep:1.162.0@sha256:9349edbadf90c3f3c0c3f558
+[Semgrep] oxc-project_oxc/.github/workflows/semgrep.yml:       image: semgrep/semgrep:1.180.0
+[Semgrep] prisma_prisma/.github/workflows/pr-code-security.yml:       image: semgrep/semgrep:1.147.0
+[Semgrep] vitejs_vite/.github/workflows/semgrep.yml:       image: semgrep/semgrep:1.181.0@sha256:81474464c1f07483ba0682a4
+[Semgrep] vitest-dev_vitest/.github/workflows/semgrep.yml:       image: semgrep/semgrep:1.181.0@sha256:81474464c1f07483ba0682a4
+[Semgrep] withastro_astro/.github/workflows/semgrep.yml:       image: semgrep/semgrep@sha256:40579a2e70910d891959a4868711ba03
+[Snyk] Infisical_infisical/.github/workflows/release-standalone-docker-img-postgres-offical.yml:               uses: snyk/actions/docker@9cf6ca713d71123d2d229cc3d7f145b9
+[Snyk] backstage_backstage/.github/workflows/sync_snyk-github-issues.yml:         uses: snyk/actions/node@b075801f26076be9bb50521154cafab73f
+[Snyk] calcom_cal.com/apps/api/v2/package.json:   "snyk": true
+[Snyk] langfuse_langfuse/.github/workflows/snyk-web.yml:         uses: snyk/actions/setup@9adf32b1121593767fc3c057af55b55db
+[Socket] tldraw_tldraw/socket.yml: # Socket.dev configuration. See https://docs.socket.
+[OSV-Scanner] appwrite_appwrite/.github/workflows/ci.yml:     uses: "google/osv-scanner-action/.github/workflows/osv-scanner-re
+[Trivy] Infisical_infisical/.github/actions/trivy-image-scan/action.yml: name: "Trivy image scan"
+[Trivy] appwrite_appwrite/.github/workflows/ci.yml:       - name: Run Trivy vulnerability scanner on image
+[Trivy] formbricks_formbricks/.coderabbit.yaml:     trivy:
+[Trivy] gin-gonic_gin/.github/workflows/trivy-scan.yml: name: Trivy Security Scan
+[Trivy] keycloak_keycloak/.github/workflows/scan-dependencies.yml:       - name: Trivy setup
+[Trivy] n8n-io_n8n/.github/scripts/slack/notify.mjs:  *     --text 'Trivy: 14 high vulns in nightly' \
+[Trivy] triggerdotdev_trigger.dev/.github/workflows/publish.yml:     uses: ./.github/workflows/trivy-image.yml
+[Grype/Syft] directus_directus/.github/workflows/release.yml:       - name: Install Syft
+[Grype/Syft] n8n-io_n8n/.github/scripts/attest-image-sbom.mjs:  * syft scans it (OS + npm), enrich-sbom resolv
+[Grype/Syft] openmeterio_openmeter/.github/workflows/security.yaml:           config: .syft.yaml
+[Grype/Syft] openstatusHQ_openstatus/.github/workflows/docker-publish.yml:         uses: anchore/sbom-action@v0
+[OWASP ZAP] logto-io_logto/.github/workflows/pen-tests.yml:         uses: zaproxy/action-full-scan@v0.12.0
+[gitleaks] Infisical_infisical/.infisicalignore: cli/detect/config/gitleaks.toml:gcp-api-key:567
+[gitleaks] formbricks_formbricks/.coderabbit.yaml:     gitleaks:
+[gitleaks] strapi_strapi/.coderabbit.yaml:     gitleaks:
+[gitleaks] umami-software_umami/.github/workflows/gitleaks.yml: name: Gitleaks
+[TruffleHog] formbricks_formbricks/.coderabbit.yaml:     trufflehog:
+[TruffleHog] grafana_grafana/.github/workflows/external-fr-notify.yml: ee129ea4380eda092b576ceb92a8ce29036d8 # trufflehog:ignore
+[TruffleHog] openmeterio_openmeter/.github/workflows/security.yaml:         name: Running Secret Scan using Trufflehog
+[gosec/govulncheck] gin-gonic_gin/.golangci.yml:     - gosec
+[gosec/govulncheck] go-gitea_gitea/Makefile: GOVULNCHECK_PACKAGE ?= golang.org/x/vuln/cmd/govuln
+[gosec/govulncheck] gofiber_fiber/.github/copilot-setup-steps.yml:       go install golang.org/x/vuln/cmd/govulncheck@latest
+[gosec/govulncheck] grafana_grafana/.github/workflows/govulncheck.yml: name: govulncheck
+[gosec/govulncheck] labstack_echo/.github/workflows/checks.yml:       - name: Run govulncheck
+[gosec/govulncheck] mattermost_mattermost/server/.golangci.yml:     - gosec
+[gosec/govulncheck] temporalio_temporal/.github/workflows/govulncheck.yml: name: govulncheck
+[gosec/govulncheck] traefik_traefik/.golangci.yml:     - gosec # Too strict
+[gosec/govulncheck] zitadel_zitadel/.golangci.yaml:     - gosec
+[bandit/pip-audit] nodejs_node/deps/npm/node_modules/node-gyp/gyp/pyproject.toml:   # "S",    # flake8-bandit
+[bandit/pip-audit] phoenixframework_phoenix/integration_test/mix.exs:       {:bandit, "~> 1.12"},
+[zizmor] actix_actix-web/.github/workflows/lint.yml:       - uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d48
+[zizmor] appwrite_appwrite/.github/workflows/ci.yml:         run: zizmor --format github .github
+[zizmor] django_django/.github/workflows/linters.yml:         uses: zizmorcore/zizmor-action@e639db99335bc9038abc0e066dfcd72e23d26fb
+[zizmor] element-hq_element-web/.github/workflows/static_analysis.yaml:               uses: zizmorcore/zizmor-action@85b2b9fb8e3325e7a23d7d0a9d7ba5ae0f999e3
+[zizmor] emberjs_ember.js/.github/workflows/workflow-lint.yml:         uses: zizmorcore/zizmor-action@0dce2577a4760a2749d8cfb7a84b7d5585ebcb7
+[zizmor] fastapi_fastapi/.github/workflows/zizmor.yml:         uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d48
+[zizmor] go-gitea_gitea/Makefile: 	@uv run --frozen zizmor --quiet --persona=pedantic --min-confidenc
+[zizmor] langfuse_langfuse/.github/workflows/zizmor.yml:         uses: zizmorcore/zizmor-action@6fc4b006235f201fdab3722e17240ab420d580e
+[zizmor] n8n-io_n8n/.github/workflows/sec-zizmor-reusable.yml:         uses: zizmorcore/zizmor-action@5f14fd08f7cf1cb1609c1e344975f152c7ee938
+[zizmor] nuxt_nuxt/.github/workflows/zizmor.yml:         uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d48
+[zizmor] pallets_flask/.github/workflows/zizmor.yaml:       - uses: zizmorcore/zizmor-action@6fc4b006235f201fdab3722e17240ab420d580e
+[zizmor] storybookjs_storybook/.github/workflows/zizmor.yml:         run: uvx zizmor --format=sarif . > results.sarif
+[zizmor] supabase_supabase/.github/workflows/zizmor.yml:         run: ~/.local/bin/zizmor --config zizmor.yml .github/workflows
+[zizmor] symfony_symfony/.github/workflows/zizmor.yml:         uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d48
+[zizmor] triggerdotdev_trigger.dev/.github/workflows/workflow-checks.yml:         uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c9
+[zizmor] typescript-eslint_typescript-eslint/.github/workflows/github-actions-security.yml:         uses: zizmorcore/zizmor-action@6599ee8b7a49aef6a770f63d261d214911a7ce0
+[zizmor] vitejs_vite/.github/workflows/zizmor.yml:         uses: zizmorcore/zizmor-action@85b2b9fb8e3325e7a23d7d0a9d7ba5ae0f999e3
+[zizmor] vitest-dev_vitest/.github/workflows/zizmor.yml:         uses: zizmorcore/zizmor-action@85b2b9fb8e3325e7a23d7d0a9d7ba5ae0f999e3
+[zizmor] withastro_astro/.github/workflows/zizmor.yml:         uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d48
+[OpenSSF Scorecard] backstage_backstage/.github/workflows/scorecard.yml:         uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03b
+[OpenSSF Scorecard] electron_electron/.github/workflows/scorecards.yml:         uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03b
+[OpenSSF Scorecard] expressjs_express/.github/workflows/scorecard.yml:         uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03b
+[OpenSSF Scorecard] mattermost_desktop/.github/workflows/scorecards-analysis.yml:         uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03b
+[OpenSSF Scorecard] mattermost_mattermost/.github/workflows/scorecards-analysis.yml:         uses: ossf/scorecard-action@4eaacf0543bb3f2c246792bd56e8cdeffafb205
+[OpenSSF Scorecard] nodejs_node/.github/workflows/scorecard.yml:   # cannot use ubuntu-slim here because ossf/scorecard-action is dockerized
+[OpenSSF Scorecard] nuxt_nuxt/.github/workflows/scorecards.yml:         uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78
+[OpenSSF Scorecard] openmeterio_openmeter/.github/workflows/analysis-scorecard.yaml:         uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78
+[OpenSSF Scorecard] symfony_symfony/.github/workflows/scorecards.yml:         uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03b
+[harden-runner] backstage_backstage/.github/workflows/api-breaking-changes-comment.yml:         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d2
+[harden-runner] formbricks_formbricks/.coderabbit.yaml:         - On `ubuntu-latest`, `step-security/harden-runner` must be the first step.
+[harden-runner] medusajs_medusa/.github/workflows/fix-bug-action.yml:         uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8e
+[harden-runner] nodejs_node/.github/workflows/scorecard.yml:         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a
+[harden-runner] openmeterio_openmeter/.github/workflows/analysis-scorecard.yaml:       - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d2
+[harden-runner] twentyhq_twenty/.github/workflows/ci-e2e-main.yaml:         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2
+[dependency-review-action] nocodb_nocodb/.github/workflows/dependency-review.yml:         uses: actions/dependency-review-action@v4
+[dependency-review-action] novuhq_novu/.github/workflows/on-pr.yml:         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e4
+[dependency-review-action] openmeterio_openmeter/.github/workflows/ci.yaml:         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb29
+[Aikido] n8n-io_n8n/.aikido: # Aikido scan configuration
+[Aikido] traefik_traefik/.github/workflows/template-webui.yaml:           npm i -g @aikidosec/safe-chain
+[Hadolint] PostHog_posthog/.github/workflows/container-images-ci.yml: changed Dockerfiles to hand straight to hadolint.
+[Hadolint] formbricks_formbricks/.coderabbit.yaml:     hadolint:
+[Hadolint] mastodon_mastodon/Dockerfile: # hadolint ignore=DL3008,DL3005
+[Provenance/assinatura] PostHog_posthog/.github/workflows/build-deltalite.yml:           attestations: write # actions/attest-build-provenance writes here
+[Provenance/assinatura] bitwarden_clients/.github/workflows/build-web.yml:       - name: Install Cosign
+[Provenance/assinatura] calcom_cal.com/.github/workflows/changesets.yml:           NPM_CONFIG_PROVENANCE: "true"
+[Provenance/assinatura] directus_directus/.github/workflows/release.yml:   COSIGN_REPOSITORY: docker.io/${{ github.reposi
+[Provenance/assinatura] electron_electron/.github/actions/build-electron/action.yml:       uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62
+[Provenance/assinatura] element-hq_element-web/.github/workflows/cd.yaml:             - name: Install Cosign
+[Provenance/assinatura] emberjs_ember.js/.github/workflows/non-ember-source-publish.yml:         run: NPM_CONFIG_PROVENANCE=true pnpm release-plan publish
+[Provenance/assinatura] facebook_react/.github/workflows/runtime_build_and_test.yml:       # https://github.com/actions/attest-build-provenance
+[Provenance/assinatura] formbricks_formbricks/.github/actions/build-and-push-docker/action.yml:         setup_cosign: "false"
+[Provenance/assinatura] go-gitea_gitea/.github/workflows/release-nightly.yml:       - name: Install Cosign
+[Provenance/assinatura] honojs_hono/.github/workflows/release.yml:         run: npm stage publish --provenance --access public
+[Provenance/assinatura] immich-app_immich/.github/workflows/sdk.yml:  run: pnpm --filter @immich/sdk publish --provenance --no-git-checks --tag "$NPM_TAG"
+[Provenance/assinatura] mattermost_mattermost/.github/workflows/server-ci-artifacts.yml:   COSIGN_VERSION: 2.2.0
+[Provenance/assinatura] n8n-io_n8n/.github/scripts/attest-image-sbom.mjs:  * cosign — the same mechanism as the VEX/prove
+[Provenance/assinatura] novuhq_novu/.github/workflows/prepare-enterprise-self-hosted-release.yml:             --provenance=false
+[Provenance/assinatura] openmeterio_openmeter/.github/workflows/release-aip-npm.yaml:           NPM_CONFIG_PROVENANCE: "true"
+[Provenance/assinatura] oxc-project_oxc/.github/scripts/check-npm-packages.js:     const flags = "--provenance --access public --no-git-checks";
+[Provenance/assinatura] prisma_prisma/.github/workflows/publish.yml:           NPM_CONFIG_PROVENANCE: "true"
+[Provenance/assinatura] sveltejs_svelte/.github/workflows/release.yml:           NPM_CONFIG_PROVENANCE: true
+[Provenance/assinatura] toeverything_AFFiNE/.github/workflows/release-desktop-platform.yml:       - uses: actions/attest-build-provenance@v4
+[Provenance/assinatura] triggerdotdev_trigger.dev/.github/workflows/base-images.yml:         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd
+[Provenance/assinatura] typescript-eslint_typescript-eslint/.github/workflows/release.yml:           NPM_CONFIG_PROVENANCE: true
+[Provenance/assinatura] unkeyed_unkey/.github/workflows/release.yaml:           NPM_CONFIG_PROVENANCE: "true"
+[Provenance/assinatura] vercel_next.js/.github/workflows/build_and_deploy.yml:             --provenance=false \
+[Renovate] PostHog_posthog/.github/renovate.json5:   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+[Renovate] angular_angular/renovate.json:   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+[Renovate] backstage_backstage/.github/renovate.json5:   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+[Renovate] bitwarden_clients/.github/renovate.json5:   $schema: "https://docs.renovatebot.com/renovate-schema.json",
+[Renovate] element-hq_element-web/.github/renovate.json:     "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+[Renovate] emberjs_ember.js/.github/renovate.json5:   $schema: "https://docs.renovatebot.com/renovate-schema.json",
+[Renovate] go-gitea_gitea/renovate.json5:   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+[Renovate] grafana_grafana/.github/renovate.json5:     "github>grafana/grafana-renovate-config//presets/labels",
+[Renovate] immich-app_immich/renovate.json:   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+[Renovate] logto-io_logto/renovate.json:   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+[Renovate] mastodon_mastodon/.github/renovate.json5:   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+[Renovate] nestjs_nest/renovate.json:   "extends": ["config:base", ":dependencyDashboard"],
+[Renovate] nocodb_nocodb/renovate.json:   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+[Renovate] novuhq_novu/renovate.json:   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+[Renovate] nuxt_nuxt/renovate.json:   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+[Renovate] oxc-project_oxc/.github/renovate.json:   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+[Renovate] toeverything_AFFiNE/.github/renovate.json:   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+[Renovate] typescript-eslint_typescript-eslint/.github/renovate.json5:   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+[Renovate] vitejs_vite/.github/renovate.json5:   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+[Renovate] vitest-dev_vitest/.github/renovate.json5:   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+[Renovate] vuejs_core/.github/renovate.json5:   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+[Renovate] withastro_astro/.github/renovate.json5:   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+[Dependabot] PostHog_posthog/.github/dependabot.yml:     - package-ecosystem: 'github-actions'
+[Dependabot] actix_actix-web/.github/dependabot.yml:   - package-ecosystem: github-actions
+[Dependabot] backstage_backstage/.github/dependabot.yml:   - package-ecosystem: 'npm'
+[Dependabot] documenso_documenso/.github/dependabot.yml:   - package-ecosystem: 'github-actions'
+[Dependabot] dotnet_aspnetcore/.github/dependabot.yml: - package-ecosystem: "nuget"
+[Dependabot] electron_electron/.github/dependabot.yml: ion-options-for-the-dependabot.yml-file#package-ecosystem
+[Dependabot] encode_django-rest-framework/.github/dependabot.yml: ion-options-for-the-dependabot.yml-file#package-ecosystem
+[Dependabot] expressjs_express/.github/dependabot.yml:   - package-ecosystem: github-actions
+[Dependabot] facebook_react/.github/dependabot.yml:   - package-ecosystem: "npm"
+[Dependabot] fastapi_fastapi/.github/dependabot.yml:   - package-ecosystem: "github-actions"
+[Dependabot] fastify_fastify/.github/dependabot.yml:   - package-ecosystem: "github-actions"
+[Dependabot] formbricks_formbricks/.github/dependabot.yml:   - package-ecosystem: github-actions
+[Dependabot] getsentry_sentry-javascript/.github/dependabot.yml:   - package-ecosystem: 'github-actions'
+[Dependabot] getsentry_sentry/.github/dependabot.yml:   - package-ecosystem: npm
+[Dependabot] gin-gonic_gin/.github/dependabot.yml:   - package-ecosystem: gomod
+[Dependabot] gofiber_fiber/.github/dependabot.yml:   - package-ecosystem: "gomod"
+[Dependabot] hoppscotch_hoppscotch/.github/dependabot.yml: - package-ecosystem: npm
+[Dependabot] keycloak_keycloak/.github/dependabot.yml:   - package-ecosystem: github-actions
+[Dependabot] langfuse_langfuse/.github/dependabot.yml:   - package-ecosystem: npm
+[Dependabot] laravel_framework/.github/dependabot.yml:   - package-ecosystem: "github-actions"
+[Dependabot] mattermost_desktop/.github/dependabot.yaml:   - package-ecosystem: "github-actions"
+[Dependabot] mattermost_mattermost/.github/dependabot.yml:   - package-ecosystem: "github-actions"
+[Dependabot] medusajs_medusa/.github/dependabot.yml:   - package-ecosystem: "npm"
+[Dependabot] microsoft_playwright/.github/dependabot.yml:   - package-ecosystem: "github-actions"
+[Dependabot] microsoft_vscode/.github/dependabot.yml:   - package-ecosystem: "github-actions"
+[Dependabot] nestjs_nest/.github/dependabot.yml: - package-ecosystem: npm
+[Dependabot] nodejs_node/.github/dependabot.yml:   - package-ecosystem: github-actions
+[Dependabot] openmeterio_openmeter/.github/dependabot.yaml:   - package-ecosystem: gomod
+[Dependabot] outline_outline/.github/dependabot.yml:   - package-ecosystem: "npm" # See documentation for possible
+[Dependabot] phoenixframework_phoenix/.github/dependabot.yml:   - package-ecosystem: "github-actions"
+[Dependabot] plausible_analytics/.github/dependabot.yml:   - package-ecosystem: "mix"
+[Dependabot] polarsource_polar/.github/dependabot.yml:   - package-ecosystem: "github-actions" # See documentation f
+[Dependabot] prisma_prisma/.github/dependabot.yml:   - package-ecosystem: npm
+[Dependabot] quarkusio_quarkus/.github/dependabot.yml:   - package-ecosystem: maven
+[Dependabot] remix-run_react-router/.github/dependabot.yml:   - package-ecosystem: github-actions
+[Dependabot] signalapp_Signal-Desktop/.github/dependabot.yml: - package-ecosystem: github-actions
+[Dependabot] spring-projects_spring-boot/.github/dependabot.yml:   - package-ecosystem: "github-actions"
+[Dependabot] storybookjs_storybook/dependabot.yml:   - package-ecosystem: "npm"
+[Dependabot] strapi_strapi/.github/dependabot.yml:   - package-ecosystem: npm
+[Dependabot] supabase_supabase/.github/dependabot.yml:   - package-ecosystem: 'github-actions'
+[Dependabot] symfony_symfony/.github/dependabot.yml:     - package-ecosystem: 'github-actions'
+[Dependabot] tokio-rs_axum/.github/dependabot.yml:   - package-ecosystem: "github-actions"
+[Dependabot] twentyhq_twenty/.github/dependabot.yml:   - package-ecosystem: "npm"
+[Dependabot] unkeyed_unkey/.github/dependabot.yml:   - package-ecosystem: "npm"
+[Dependabot] zitadel_zitadel/.github/dependabot.yml: - package-ecosystem: npm
+[Codecov] bitwarden_clients/.github/workflows/test.yml:         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72
+[Codecov] encode_django-rest-framework/.github/workflows/main.yml:       uses: codecov/codecov-action@v7.1.1
+[Codecov] getsentry_sentry/CHANGES: - (infra) Remove codecov.yml by @rbro112 in [#105717](https://github
+[Codecov] gin-gonic_gin/.github/workflows/gin.yml:         uses: codecov/codecov-action@v7
+[Codecov] gofiber_fiber/.github/workflows/test.yml:         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a
+[Codecov] honojs_hono/.github/workflows/ci.yml:       - uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72
+[Codecov] labstack_echo/.github/workflows/ci.yml:   # https://github.com/codecov/codecov-action/commit/fb8b3582c8e4def4969c97caa2f19720
+[Codecov] logto-io_logto/.github/workflows/main.yml:         uses: codecov/codecov-action@v4
+[Codecov] mastodon_mastodon/.github/workflows/test-ruby.yml:         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72
+[Codecov] mattermost_mattermost/.github/workflows/server-test-template.yml:         uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3d
+[Codecov] n8n-io_n8n/.github/workflows/ci-python.yml:         uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3d
+[Codecov] nodejs_node/.github/workflows/build-tarball.yml:       - codecov.yml
+[Codecov] nuxt_nuxt/.github/workflows/ci.yml:       - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a
+[Codecov] oxc-project_oxc/.github/workflows/codecov.yml:       - ".github/workflows/codecov.yml"
+[Codecov] supabase_supabase/.github/workflows/pg-meta-tests.yml:         uses: codecov/codecov-action@ab904c41d6ece82784817410c45d8b8c0268445
+[Codecov] temporalio_temporal/.github/actions/post-test-reporting/action.yml:       uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f835
+[Codecov] toeverything_AFFiNE/.github/workflows/build-test.yml:         uses: codecov/codecov-action@v5
+[Codecov] typescript-eslint_typescript-eslint/.github/workflows/ci.yml:         uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3d
+[Codecov] zitadel_zitadel/.github/workflows/lint_test_build.yml:         uses: codecov/codecov-action@v4.3.0
+[Coveralls] expressjs_express/.github/workflows/ci.yml:         uses: coverallsapp/github-action@8d6379e14d29928660c4ba802
+[Coveralls] nestjs_nest/package.json:     "coveralls": "3.1.1",
+[Coveralls] nodejs_node/deps/npm/node_modules/debug/package.json: :coverage": "cat ./coverage/lcov.info | coveralls"
+[Coveralls] plausible_analytics/mix.exs:         tool: ExCoveralls
+[Coveralls] solidjs_solid/.github/workflows/main-ci.yml:   - name: Coveralls
+[Coveralls] supabase_supabase/.github/workflows/studio-unit-tests.yml:   coveralls:
+[Coveralls] vercel_next.js/package.json:     "coveralls": "3.0.3",
+[Stryker] n8n-io_n8n/knip.ts: 				'@stryker-mutator/core',
+[Currents] n8n-io_n8n/.github/workflows/test-e2e-reusable.yml:               "https://api.currents.dev/v1/runs/cancel-ci/github" \
+[BrowserStack/Sauce Labs] dotnet_aspnetcore/package.json:     "saucelabs": ">=7.2.0",
+[BrowserStack/Sauce Labs] emberjs_ember.js/.github/actions/browserstack-setup/action.yml: name: Set BrowserStack credentials
+[BrowserStack/Sauce Labs] rails_rails/actioncable/package.json:     "@web/test-runner-saucelabs": "^0.13.0",
+[k6] appwrite_appwrite/.github/workflows/ci.yml:             uses: grafana/setup-k6-action@db07bd9765aac508ef18982e52ab937f
+[k6] calcom_cal.com/.github/workflows/performance-tests.yml:         uses: grafana/setup-k6-action@v1
+[k6] n8n-io_n8n/knip.ts: 			// The k6 runtime provides its own modules; only @typ
+[k6] plausible_analytics/Makefile: 	k6 run test/load/script.js  
+[Datadog CI Visibility] electron_electron/.github/workflows/pipeline-segment-electron-test.yml: t DATADOG_PATH=`node script/yarn.js bin datadog-ci`
+[Datadog CI Visibility] vercel_next.js/.github/actions/setup-datadog-ci/action.yml: description: 'Installs the datadog-ci binary and sets $DATADOG_CI_PATH'
+[Trunk] PostHog_posthog/.github/actions/trunk-quarantine-gate/action.yml:           uses: trunk-io/analytics-uploader@385f1ccdf345b4532dc4b
+[Trunk] strapi_strapi/.github/workflows/tests.yml:         uses: trunk-io/analytics-uploader@385f1ccdf345b4532dc4b
+[Playwright screenshots] PostHog_posthog/playwright/playwright.config.ts:         toHaveScreenshot: {
+[Playwright screenshots] element-hq_element-web/apps/desktop/playwright.config.ts:     snapshotPathTemplate: "{snapshotDir}/{testFilePath}/{arg}-{p
+[Playwright screenshots] facebook_react/compiler/apps/playground/playwright.config.js:   snapshotPathTemplate: '{testDir}/__snapshots__/{testFilePath
+[Playwright screenshots] mattermost_mattermost/e2e-tests/playwright/playwright.config.ts:         toHaveScreenshot: {
+[Playwright screenshots] microsoft_playwright/tests/android/playwright.config.ts:   snapshotPathTemplate: '{testDir}/{testFileDir}/{testFileName
+[Playwright screenshots] tldraw_tldraw/apps/examples/e2e/playwright.config.ts: 		toHaveScreenshot: {
+[Playwright screenshots] twentyhq_twenty/packages/twenty-e2e-testing/playwright.config.ts:   snapshotPathTemplate: '{testDir}/__screenshots__/{testFilePa
+[Chromatic] Infisical_infisical/.github/workflows/publish-storybook-chromatic.yml:         uses: chromaui/action@2a0b63f30233c48591844a46d451b9cf6812818
+[Chromatic] backstage_backstage/.github/workflows/verify_chromatic.yml:         uses: chromaui/action@8e6c25f2af5570e4a0ed34674569c345d545ac4
+[Chromatic] bitwarden_clients/.github/workflows/chromatic.yml:         uses: chromaui/action@94713c544284a14195de3b50ef24301579f1877
+[Chromatic] formbricks_formbricks/.github/workflows/chromatic.yml:         uses: chromaui/action@db3ceb5efb0cd7447d63c2d8cce7da732ce8932
+[Chromatic] mastodon_mastodon/.github/workflows/chromatic.yml:         uses: chromaui/action@98132da0fca2211fb41b3af7b49ce8517600785
+[Chromatic] n8n-io_n8n/.github/workflows/release-chromatic.yml:         uses: chromaui/action@14cfaef73576e69f95f47f60058063f46ca3871
+[Chromatic] storybookjs_storybook/code/package.json:     "chromatic": "^18.0.1",
+[Argos] twentyhq_twenty/packages/twenty-front/package.json:     "@argos-ci/storybook": "6.2.3",
+[Percy] mattermost_mattermost/e2e-tests/playwright/lib/package.json:     "@percy/cli": "1.32.6",
+[axe-core] element-hq_element-web/packages/playwright-common/package.json:         "@axe-core/playwright": "^4.10.1",
+[axe-core] formbricks_formbricks/package.json:     "@axe-core/playwright": "4.11.3",
+[axe-core] grafana_grafana/package.json:     "@axe-core/playwright": "^4.11.1",
+[axe-core] keycloak_keycloak/js/apps/admin-ui/package.json:     "@axe-core/playwright": "^4.11.0",
+[axe-core] mattermost_mattermost/e2e-tests/playwright/lib/package.json:     "@axe-core/playwright": "4.13.0",
+[axe-core] microsoft_vscode/test/automation/package.json:     "axe-core": "^4.10.2",
+[axe-core] n8n-io_n8n/packages/quality/testing/playwright/package.json:     "@axe-core/playwright": "^4.13.0",
+[axe-core] storybookjs_storybook/code/addons/a11y/package.json:     "axe-core": "^4.2.0"
+[axe-core] supabase_supabase/e2e/docs/package.json:     "@axe-core/playwright": "^4.12.1",
+[axe-core] tldraw_tldraw/apps/dotcom/client/package.json: 		"axe-core": "^4.10.3",
+[Storybook addon-a11y] Infisical_infisical/frontend/package.json:     "@storybook/addon-a11y": "~10.3.6",
+[Storybook addon-a11y] PostHog_posthog/common/storybook/package.json:         "@storybook/addon-a11y": "^10.4.3",
+[Storybook addon-a11y] backstage_backstage/package.json:     "@storybook/addon-a11y": "^10.4.0",
+[Storybook addon-a11y] bitwarden_clients/.github/renovate.json5:         "@storybook/addon-a11y",
+[Storybook addon-a11y] element-hq_element-web/packages/shared-components/package.json:         "@storybook/addon-a11y": "10.5.5",
+[Storybook addon-a11y] formbricks_formbricks/apps/storybook/package.json:     "@storybook/addon-a11y": "10.3.6",
+[Storybook addon-a11y] grafana_grafana/packages/grafana-ui/package.json:     "@storybook/addon-a11y": "10.3.6",
+[Storybook addon-a11y] langfuse_langfuse/web/package.json:     "@storybook/addon-a11y": "10.5.10",
+[Storybook addon-a11y] mastodon_mastodon/package.json:     "@storybook/addon-a11y": "10.6.1",
+[Storybook addon-a11y] n8n-io_n8n/packages/frontend/@n8n/storybook/package.json:     "@storybook/addon-a11y": "catalog:storybook",
+[Storybook addon-a11y] signalapp_Signal-Desktop/package.json:     "@storybook/addon-a11y": "8.4.4",
+[Storybook addon-a11y] storybookjs_storybook/agent-eval/evals/812-first-story-empty-project/package.json:     "@storybook/addon-a11y": "workspace:*",
+[Storybook addon-a11y] twentyhq_twenty/packages/twenty-ui/package.json:     "@storybook/addon-a11y": "^10.4.6",
+[Storybook addon-a11y] vercel_next.js/packages/next/package.json:     "@storybook/addon-a11y": "8.6.0",
+[Lighthouse] backstage_backstage/.github/workflows/verify_accessibility-noop.yml:       - 'lighthouserc.js'
+[Lighthouse] facebook_react/scripts/bench/package.json:     "lighthouse": "^3.2.1",
+[Lighthouse] getsentry_sentry-javascript/.github/workflows/lighthouse.yml: name: 'Nightly: Lighthouse'
+[Lighthouse] vercel_next.js/turbopack/crates/turbopack-tracing/tests/node-file-trace/package.json:     "lighthouse": "^12.3.0",
+[size-limit/bundle size] PostHog_posthog/.github/workflows/ci-frontend.yml:     # Vendored replacement for preactjs/compressed-size-action: build the PR branch,
+[size-limit/bundle size] excalidraw_excalidraw/.github/workflows/size-limit.yml:       - uses: andresz1/size-limit-action@e7493a72a44b113341c0cf6186ab49c1
+[size-limit/bundle size] getsentry_sentry-javascript/.github/workflows/build.yml:         uses: ./dev-packages/size-limit-gh-action
+[size-limit/bundle size] n8n-io_n8n/.github/scripts/quality/check-pr-size.mjs:  or above) can override by commenting `/size-limit-override`
+[size-limit/bundle size] novuhq_novu/packages/js/package.json: ts/copy-package-json.sh && node scripts/size-limit.mjs && node scripts/bundle-graph.mjs &&
+[size-limit/bundle size] outline_outline/.github/workflows/ci.yml:         uses: relative-ci/agent-action@38328454d6a23942175eba485f
+[size-limit/bundle size] prisma_prisma/.github/workflows/bundle-size.yml:       # merge_group: the size-limit action requires a PR context to post a
+[size-limit/bundle size] tldraw_tldraw/apps/analytics-worker/package.json: orker-bundle.ts --entry src/worker.ts --size-limit-bytes 350000",
+[size-limit/bundle size] twentyhq_twenty/packages/twenty-ui/package.json:     "@size-limit/preset-small-lib": "^12.1.0",
+[CodSpeed] fastapi_fastapi/.github/workflows/test.yml:         uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad5
+[CodSpeed] n8n-io_n8n/.github/workflows/ci-master.yml:   # @codspeed/vitest-plugin does not support Vitest 5
+[CodSpeed] nuxt_nuxt/.github/workflows/ci.yml:     # TODO: re-enable when `@codspeed/vitest-plugin` supports vitest 5 (peer 
+[CodSpeed] oxc-project_oxc/.github/workflows/benchmark.yml:         uses: CodSpeedHQ/action@c4fd08a3a159bd0cc208da1e0edf32b8
+[CodSpeed] polarsource_polar/.github/workflows/benchmark_sdk.yaml:         uses: CodSpeedHQ/action@v5
+[CodSpeed] vercel_next.js/.github/workflows/turbopack-benchmark.yml:         uses: CodSpeedHQ/action@1c8ae4843586d3ba879736b7f6b7b0c9
+[CodSpeed] withastro_astro/.github/renovate.json5:       "groupName": "@codspeed",
+[Sentry SDK] appwrite_appwrite/apps/console/package.json:     "@sentry/bun": "10.55.0",
+[Sentry SDK] calcom_cal.com/apps/api/v2/package.json:     "@sentry/nestjs": "9.46.0",
+[Sentry SDK] electron_electron/package.json:     "@sentry/cli": "3.6.2",
+[Sentry SDK] element-hq_element-web/apps/desktop/package.json:         "@sentry/electron": "^7.0.0",
+[Sentry SDK] excalidraw_excalidraw/.github/workflows/sentry-production.yml:           export SENTRY_RELEASE=$(sentry-cli releases propose-version)
+[Sentry SDK] fastapi_fastapi/pyproject.toml:     "sentry-sdk>=2.70.0",
+[Sentry SDK] formbricks_formbricks/apps/web/package.json:     "@sentry/nextjs": "10.43.0",
+[Sentry SDK] getsentry_sentry-javascript/.oxlintrc.base.json:       "specifier": "@sentry/eslint-plugin-sdk"
+[Sentry SDK] getsentry_sentry/.github/workflows/frontend-snapshots-upload.yml:       - name: Install sentry-cli
+[Sentry SDK] langfuse_langfuse/.github/workflows/_deploy_ecs_service.yml:         uses: getsentry/action-release@ff07929a6537bac57790c3451cf4d364aca3852
+[Sentry SDK] mattermost_desktop/package.json:     "@sentry/electron": "7.11.0",
+[Sentry SDK] mattermost_mattermost/.github/workflows/sentry.yaml:         uses: getsentry/action-release@dab6548b3c03c4717878099e43782cf5be65428
+[Sentry SDK] n8n-io_n8n/packages/@n8n/errors/package.json:     "@sentry/node": "catalog:sentry",
+[Sentry SDK] nocodb_nocodb/packages/nc-gui/package.json:     "@sentry/vue": "^9.2.0",
+[Sentry SDK] novuhq_novu/.github/workflows/deploy.yml:         uses: getsentry/action-release@5657c9e888b4e2cc85f4d29143ea4131fde4a73
+[Sentry SDK] openstatusHQ_openstatus/apps/dashboard/package.json:     "@sentry/nextjs": "catalog:",
+[Sentry SDK] outline_outline/package.json:     "@sentry/node": "^10.76.2",
+[Sentry SDK] polarsource_polar/.github/workflows/deploy-environment.yml:       - uses: getsentry/action-release@v3.7.1
+[Sentry SDK] storybookjs_storybook/.github/workflows/publish.yml:         uses: getsentry/action-release@5657c9e888b4e2cc85f4d29143ea4131fde4a73
+[Sentry SDK] strapi_strapi/packages/plugins/sentry/package.json:     "@sentry/node": "7.112.2",
+[Sentry SDK] supabase_supabase/apps/docs/package.json:     "@sentry/nextjs": "catalog:",
+[Sentry SDK] tldraw_tldraw/apps/dotcom/client/package.json: 		"@sentry/integrations": "^7.120.3",
+[Sentry SDK] toeverything_AFFiNE/.github/actions/setup-sentry/action.yml:       run: brew install getsentry/tools/sentry-cli
+[Sentry SDK] triggerdotdev_trigger.dev/apps/webapp/package.json:     "@sentry/remix": "9.46.0",
+[Sentry SDK] twentyhq_twenty/packages/twenty-front/package.json:     "@sentry/react": "^10.51.0",
+[Sentry SDK] unkeyed_unkey/web/apps/dashboard/package.json:     "@sentry/nextjs": "10.53.1",
+[Sentry SDK] vercel_next.js/examples/with-sentry/package.json:     "@sentry/nextjs": "^7.60.1",
+[Checagem de licenças] actix_actix-web/.github/workflows/lint.yml:         uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e0
+[Checagem de licenças] backstage_backstage/.github/workflows/verify_fossa.yml: name: Verify FOSSA
+[Checagem de licenças] bitwarden_clients/.github/workflows/lint.yml:   # rather than per OS because cargo-deny resolves the lockfile for all targets.
+[Checagem de licenças] dotnet_aspnetcore/Directory.Build.props:     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+[Checagem de licenças] getsentry_sentry-javascript/.github/workflows/enforce-license-compliance.yml:   enforce-license-compliance:
+[Checagem de licenças] getsentry_sentry/.github/codeowners-coverage-baseline.txt: .fossa.yml
+[Checagem de licenças] go-gitea_gitea/.dockerignore: /.go-licenses
+[Checagem de licenças] langfuse_langfuse/.github/workflows/licencecheck.yml:         uses: pilosus/action-pip-license-checker@e909b0226ff49d3235c99c4585bc617f49fff16
+[Checagem de licenças] mattermost_mattermost/NOTICE.txt: License.  Each licensee is addressed as "you".  "Licensees" and
+[Checagem de licenças] microsoft_vscode/ThirdPartyNotices.txt: ning and/or copying this work, you (the licensee) agree that you have read, understood, 
+[Checagem de licenças] n8n-io_n8n/.github/scripts/package.json: gen -t pnpm --no-install-deps --profile license-compliance --spec-version 1.6 -o ../../sbom-source
+[Checagem de licenças] nodejs_node/deps/npm/package.json:     "licenses": "npx licensee --production --errors-only",
+[Checagem de licenças] openmeterio_openmeter/.github/workflows/fossa.yaml: name: FOSSA
+[Checagem de licenças] oxc-project_oxc/.github/workflows/deny.yml:           tools: cargo-deny
+[Checagem de licenças] tokio-rs_axum/.github/workflows/CI.yml:     name: cargo-deny check
+[Revisão por IA (CodeRabbit/Greptile/Claude)] PostHog_posthog/.coderabbit.yaml: # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+[Revisão por IA (CodeRabbit/Greptile/Claude)] bitwarden_clients/.github/workflows/sdlc-sdk-update-evaluate.yml:         uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510
+[Revisão por IA (CodeRabbit/Greptile/Claude)] directus_directus/.github/workflows/claude.yml:         uses: anthropics/claude-code-action@v1
+[Revisão por IA (CodeRabbit/Greptile/Claude)] formbricks_formbricks/.coderabbit.yaml: # CodeRabbit configuration — see https://docs.code
+[Revisão por IA (CodeRabbit/Greptile/Claude)] getsentry_sentry-javascript/.github/workflows/auto-fix-issue.yml:         uses: anthropics/claude-code-action@8ce9314fa9a404564fa7e954cd84f25bcba2b82
+[Revisão por IA (CodeRabbit/Greptile/Claude)] langfuse_langfuse/.github/workflows/model-price-audit.yml:         uses: anthropics/claude-code-action@4036a180cf690f49529f5d8c79c998855287f59
+[Revisão por IA (CodeRabbit/Greptile/Claude)] mattermost_desktop/.coderabbit.yaml: # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+[Revisão por IA (CodeRabbit/Greptile/Claude)] mattermost_mattermost/.github/workflows/claude.yml:  Keep persist-credentials default while anthropics/claude-code-action#1236 is open
+[Revisão por IA (CodeRabbit/Greptile/Claude)] medusajs_medusa/.github/workflows/review-pr-action.yml:         uses: anthropics/claude-code-action@b76a0776ae74036e77cd11018083743453d7ad3
+[Revisão por IA (CodeRabbit/Greptile/Claude)] n8n-io_n8n/.poutine.yml:       - pkg:githubactions/anthropics/claude-code-action
+[Revisão por IA (CodeRabbit/Greptile/Claude)] openstatusHQ_openstatus/.github/workflows/claude-code-review.yml:         uses: anthropics/claude-code-action@v1
+[Revisão por IA (CodeRabbit/Greptile/Claude)] prisma_prisma/.coderabbit.yml: # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+[Revisão por IA (CodeRabbit/Greptile/Claude)] storybookjs_storybook/.github/workflows/claude-code-review.yml:         uses: anthropics/claude-code-action@a92e7c70a4da9793dc164451d829089dc057a46
+[Revisão por IA (CodeRabbit/Greptile/Claude)] strapi_strapi/.coderabbit.yaml: # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+[Revisão por IA (CodeRabbit/Greptile/Claude)] supabase_supabase/.coderabbit.yaml: # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+[Revisão por IA (CodeRabbit/Greptile/Claude)] sveltejs_kit/.github/workflows/ci.yml:       - '.coderabbit.yml'
+[Revisão por IA (CodeRabbit/Greptile/Claude)] temporalio_temporal/.github/workflows/claude-review-teams.yml:         uses: anthropics/claude-code-action@v1
+[Revisão por IA (CodeRabbit/Greptile/Claude)] tldraw_tldraw/.github/workflows/issue-triage.yml:         uses: anthropics/claude-code-action@v1
+[Revisão por IA (CodeRabbit/Greptile/Claude)] triggerdotdev_trigger.dev/.github/workflows/check-review-md.yml:         uses: anthropics/claude-code-action@fa2b2666b747000bf42767d1f332065b375e3c8
+[Revisão por IA (CodeRabbit/Greptile/Claude)] twentyhq_twenty/.github/workflows/ci-agent-skills-drift.yaml:         uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490c
+[RuboCop (Ruby)] formbricks_formbricks/.coderabbit.yaml:     rubocop:
+[RuboCop (Ruby)] mastodon_mastodon/.github/renovate.json5:       // Group all RuboCop packages with `rubocop` in the same PR
+[RuboCop (Ruby)] rails_rails/.git-blame-ignore-revs: # Arel: rubocop -a
+[Brakeman (Rails)] formbricks_formbricks/.coderabbit.yaml:     brakeman:
+[Brakeman (Rails)] mastodon_mastodon/.github/workflows/lint-ruby.yml:       - name: Run brakeman
+[Brakeman (Rails)] rails_rails/Gemfile:   gem "brakeman"
+[bundler-audit (Ruby)] mastodon_mastodon/.github/workflows/bundler-audit.yml:       - '.github/workflows/bundler-audit.yml'
+[bundler-audit (Ruby)] rails_rails/Gemfile:   gem "bundler-audit"
+[SimpleCov (Ruby)] mastodon_mastodon/.simplecov: SimpleCov.configure do
+[PHPStan/Psalm (PHP)] appwrite_appwrite/.github/workflows/ci.yml:           - name: Cache PHPStan result cache
+[PHPStan/Psalm (PHP)] formbricks_formbricks/.coderabbit.yaml:     phpstan:
+[PHPStan/Psalm (PHP)] laravel_framework/.gitattributes: phpstan.src.neon.dist export-ignore
+[PHPStan/Psalm (PHP)] symfony_symfony/.github/sa-tools/check-hardening-tests.php: // Companion to the PHPStan rules HardenedComparisonRule (timing-sa
+[PHP-CS-Fixer (PHP)] symfony_symfony/.git-blame-ignore-revs: # Apply php-cs-fixer fix --rules nullable_type_declaration_f
+[SpotBugs/Error Prone/Checkstyle/PMD (Java)] formbricks_formbricks/.coderabbit.yaml:     pmd:
+[SpotBugs/Error Prone/Checkstyle/PMD (Java)] nuxt_nuxt/.github/assets/banner.avif: 
+[SpotBugs/Error Prone/Checkstyle/PMD (Java)] quarkusio_quarkus/.github/dependabot.yml: - dependency-name: com.puppycrawl.tools:checkstyle
+[SpotBugs/Error Prone/Checkstyle/PMD (Java)] solidjs_solid/banner.png: 
+[SpotBugs/Error Prone/Checkstyle/PMD (Java)] spring-projects_spring-boot/CONTRIBUTING.adoc: * The build includes Checkstyle rules for many of our code conventions.
+[SpotBugs/Error Prone/Checkstyle/PMD (Java)] withastro_astro/.github/assets/banner.png: 
+[JaCoCo (Java)] backstage_backstage/.github/vale/config/vocabularies/Backstage/accept.txt: JaCoCo
+[JaCoCo (Java)] keycloak_keycloak/testsuite/model/pom.xml:         <jacoco.skip>true</jacoco.skip>
+[JaCoCo (Java)] quarkusio_quarkus/.github/dependabot.yml:       - dependency-name: org.jacoco:*
+[PIT (mutação Java)] electron_electron/.github/siso-patches/0003-siso-do-not-let-background-subtree-upload-poison-the.patch: Also adds reapitest.Fake.UnaryInterceptor so tests can inje
+[PIT (mutação Java)] keycloak_keycloak/services/pom.xml:                                       <apiTests>false</apiTests>
+[PIT (mutação Java)] quarkusio_quarkus/integration-tests/aesh/pom.xml: exhaust memory (OOME, e.g. AeshLauncherApiTest in CI).
+[OWASP Dependency-Check] quarkusio_quarkus/pom.xml:                     <artifactId>dependency-check-maven</artifactId>
+[Develocity / Gradle build scans] quarkusio_quarkus/.github/quarkus-github-bot.yml: develocity:
+[Develocity / Gradle build scans] spring-projects_spring-boot/.github/actions/build/action.yml:   develocity-access-key:
+[clippy (Rust)] PostHog_posthog/.github/workflows/ci-cli.yml:     clippy:
+[clippy (Rust)] actix_actix-web/.clippy.toml: emove allow-invalid when rust-lang/rust-clippy/#8581 is fixed)", allow-invalid = true 
+[clippy (Rust)] bitwarden_clients/.github/workflows/lint.yml:           - { name: clippy }
+[clippy (Rust)] formbricks_formbricks/.coderabbit.yaml:     clippy:
+[clippy (Rust)] hoppscotch_hoppscotch/devenv.nix:         "clippy"
+[clippy (Rust)] immich-app_immich/.github/workflows/test.yml:       - name: Run clippy
+[clippy (Rust)] langfuse_langfuse/.github/workflows/pipeline.yml:         run: cargo clippy --locked --all-targets -- -D warnings
+[clippy (Rust)] microsoft_vscode/.github/workflows/pr-linux-cli-test.yml:           rustup component add clippy
+[clippy (Rust)] nodejs_node/deps/crates/vendor/calendrical_calculations-v0_2/Cargo.toml: [lints.clippy]
+[clippy (Rust)] oxc-project_oxc/.github/workflows/ci.yml:       - run: rustup component add clippy
+[clippy (Rust)] toeverything_AFFiNE/.github/workflows/build-test.yml:       - name: Clippy
+[clippy (Rust)] tokio-rs_axum/.github/workflows/CI.yml:           components: clippy, rustfmt
+[clippy (Rust)] vercel_next.js/Cargo.toml: [workspace.lints.clippy]
+[Fuzzing (OSS-Fuzz/ClusterFuzzLite/cargo-fuzz)] nodejs_node/configure.py: zzers. This command should be run in an OSS-Fuzz Docker image.')
+[Fuzzing (OSS-Fuzz/ClusterFuzzLite/cargo-fuzz)] vercel_next.js/turbopack/crates/turbo-tasks-backend/fuzz/Cargo.toml: cargo-fuzz = true
+[Credo/Sobelow (Elixir)] plausible_analytics/.credo.exs: his file contains the configuration for Credo and you are probably reading
+[coverage.py/pytest-cov (Python)] PostHog_posthog/.github/coverage-core.cfg: g used only by the core (posthog/ee) PR coverage runs via --cov-config.
+[coverage.py/pytest-cov (Python)] encode_django-rest-framework/pyproject.toml:   "pytest-cov==7.*",
+[coverage.py/pytest-cov (Python)] fastapi_fastapi/pyproject.toml:     "pytest-cov>=4.0.0",
+[coverage.py/pytest-cov (Python)] formbricks_formbricks/.github/workflows/sonarqube.yml: berately don't carry tests, so skip the coverage run and
+[coverage.py/pytest-cov (Python)] getsentry_sentry/pyproject.toml:   "pytest-cov>=4.0.0",
+[coverage.py/pytest-cov (Python)] immich-app_immich/machine-learning/pyproject.toml:     "pytest-cov>=4.1.0",
+[coverage.py/pytest-cov (Python)] n8n-io_n8n/.github/workflows/test-e2e-coverage-nightly.yml:             nightly coverage run.
+[coverage.py/pytest-cov (Python)] oxc-project_oxc/.github/workflows/update_submodules.yml:         run: cargo coverage runtime
+[coverage.py/pytest-cov (Python)] pallets_flask/examples/javascript/pyproject.toml: [tool.coverage.run]
+[coverage.py/pytest-cov (Python)] polarsource_polar/server/pyproject.toml:   "pytest-cov>=5.0.0",
+[coverage.py/pytest-cov (Python)] vitest-dev_vitest/package.json: e": "CI=true pnpm --filter @vitest/test-coverage run test",
+[tox/nox (Python)] django_django/MANIFEST.in: include tox.ini
+[tox/nox (Python)] encode_django-rest-framework/.github/workflows/main.yml:         tox -e base,dist,docs
+[Hypothesis (property-based Python)] PostHog_posthog/.github/workflows/ci-backend.yml:     # Hypothesis constants cache epoch. Bump to abandon e
+[fast-check (property-based JS)] formbricks_formbricks/apps/web/package.json:     "fast-check": "4.10.2",
+[fast-check (property-based JS)] langfuse_langfuse/worker/package.json:     "fast-check": "3.23.2",
+[fast-check (property-based JS)] n8n-io_n8n/packages/@n8n/ai-utilities/package.json:     "fast-check": "catalog:",
+[fast-check (property-based JS)] nodejs_node/deps/npm/node_modules/undici/package.json:     "fast-check": "^3.17.1",
+[fast-check (property-based JS)] nuxt_nuxt/package.json:     "fast-check": "catalog:dev",

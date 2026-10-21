@@ -1,0 +1,87 @@
+Qualidade|SonarQube/SonarCloud|5| backstage_backstage element-hq_element-web formbricks_formbricks quarkusio_quarkus strapi_strapi
+Qualidade|Codacy|0|
+Qualidade|DeepSource|0|
+Qualidade|Qlty/Code Climate|3| angular_angular grafana_grafana supabase_supabase
+Qualidade|knip|21| PostHog_posthog backstage_backstage element-hq_element-web getsentry_sentry grafana_grafana langfuse_langfuse n8n-io_n8n novuhq_novu nuxt_nuxt openstatusHQ_openstatus polarsource_polar signalapp_Signal-Desktop storybookjs_storybook supabase_supabase sveltejs_svelte triggerdotdev_trigger.dev twentyhq_twenty typescript-eslint_typescript-eslint vitest-dev_vitest withastro_astro zitadel_zitadel
+Qualidade|dependency-cruiser|2| langfuse_langfuse prisma_prisma
+Qualidade|golangci-lint|10| Infisical_infisical PostHog_posthog formbricks_formbricks gin-gonic_gin go-gitea_gitea gofiber_fiber grafana_grafana openmeterio_openmeter temporalio_temporal traefik_traefik
+Qualidade|ruff|11| PostHog_posthog fastapi_fastapi formbricks_formbricks getsentry_sentry immich-app_immich langfuse_langfuse microsoft_vscode n8n-io_n8n nodejs_node pallets_flask polarsource_polar
+Qualidade|mypy/pyright|35| PostHog_posthog angular_angular backstage_backstage bitwarden_clients directus_directus dotnet_aspnetcore electron_electron element-hq_element-web expressjs_express facebook_react fastapi_fastapi getsentry_sentry gin-gonic_gin go-gitea_gitea hotwired_turbo immich-app_immich keycloak_keycloak labstack_echo laravel_framework mattermost_desktop mattermost_mattermost microsoft_playwright microsoft_vscode nodejs_node novuhq_novu openmeterio_openmeter oxc-project_oxc pallets_flask polarsource_polar quarkusio_quarkus rails_rails remix-run_react-router signalapp_Signal-Desktop spring-projects_spring-boot symfony_symfony
+Qualidade|pre-commit|2| getsentry_sentry pallets_flask
+Qualidade|autofix-ci|5| honojs_hono nuxt_nuxt openstatusHQ_openstatus oxc-project_oxc vuejs_core
+Qualidade|actionlint|14| PostHog_posthog formbricks_formbricks go-gitea_gitea gofiber_fiber grafana_grafana n8n-io_n8n nuxt_nuxt openmeterio_openmeter outline_outline strapi_strapi temporalio_temporal toeverything_AFFiNE triggerdotdev_trigger.dev vitest-dev_vitest
+Segurança|CodeQL|29| appwrite_appwrite backstage_backstage directus_directus documenso_documenso drizzle-team_drizzle-orm expressjs_express getsentry_sentry-javascript getsentry_sentry gin-gonic_gin immich-app_immich keycloak_keycloak langfuse_langfuse logto-io_logto mastodon_mastodon mattermost_desktop mattermost_mattermost microsoft_vscode nestjs_nest nodejs_node novuhq_novu nuxt_nuxt openmeterio_openmeter outline_outline prisma_prisma quarkusio_quarkus toeverything_AFFiNE traefik_traefik triggerdotdev_trigger.dev zitadel_zitadel
+Segurança|Semgrep|9| PostHog_posthog appwrite_appwrite grafana_grafana langfuse_langfuse oxc-project_oxc prisma_prisma vitejs_vite vitest-dev_vitest withastro_astro
+Segurança|Snyk|4| Infisical_infisical backstage_backstage calcom_cal.com langfuse_langfuse
+Segurança|Socket|1| tldraw_tldraw
+Segurança|OSV-Scanner|1| appwrite_appwrite
+Segurança|Trivy|7| Infisical_infisical appwrite_appwrite formbricks_formbricks gin-gonic_gin keycloak_keycloak n8n-io_n8n triggerdotdev_trigger.dev
+Segurança|Grype/Syft|4| directus_directus n8n-io_n8n openmeterio_openmeter openstatusHQ_openstatus
+Segurança|Dependency-Track|0|
+Segurança|OWASP ZAP|1| logto-io_logto
+Segurança|DefectDojo|0|
+Segurança|gitleaks|4| Infisical_infisical formbricks_formbricks strapi_strapi umami-software_umami
+Segurança|TruffleHog|3| formbricks_formbricks grafana_grafana openmeterio_openmeter
+Segurança|GitGuardian|0|
+Segurança|gosec/govulncheck|9| gin-gonic_gin go-gitea_gitea gofiber_fiber grafana_grafana labstack_echo mattermost_mattermost temporalio_temporal traefik_traefik zitadel_zitadel
+Segurança|bandit/pip-audit|2| nodejs_node phoenixframework_phoenix
+Segurança|zizmor|19| actix_actix-web appwrite_appwrite django_django element-hq_element-web emberjs_ember.js fastapi_fastapi go-gitea_gitea langfuse_langfuse n8n-io_n8n nuxt_nuxt pallets_flask storybookjs_storybook supabase_supabase symfony_symfony triggerdotdev_trigger.dev typescript-eslint_typescript-eslint vitejs_vite vitest-dev_vitest withastro_astro
+Segurança|OpenSSF Scorecard|9| backstage_backstage electron_electron expressjs_express mattermost_desktop mattermost_mattermost nodejs_node nuxt_nuxt openmeterio_openmeter symfony_symfony
+Segurança|harden-runner|6| backstage_backstage formbricks_formbricks medusajs_medusa nodejs_node openmeterio_openmeter twentyhq_twenty
+Segurança|dependency-review-action|3| nocodb_nocodb novuhq_novu openmeterio_openmeter
+Segurança|Aikido|2| n8n-io_n8n traefik_traefik
+Segurança|Checkmarx/KICS|0|
+Segurança|Hadolint|3| PostHog_posthog formbricks_formbricks mastodon_mastodon
+Segurança|Provenance/assinatura|24| PostHog_posthog bitwarden_clients calcom_cal.com directus_directus electron_electron element-hq_element-web emberjs_ember.js facebook_react formbricks_formbricks go-gitea_gitea honojs_hono immich-app_immich mattermost_mattermost n8n-io_n8n novuhq_novu openmeterio_openmeter oxc-project_oxc prisma_prisma sveltejs_svelte toeverything_AFFiNE triggerdotdev_trigger.dev typescript-eslint_typescript-eslint unkeyed_unkey vercel_next.js
+Dependências|Renovate|22| PostHog_posthog angular_angular backstage_backstage bitwarden_clients element-hq_element-web emberjs_ember.js go-gitea_gitea grafana_grafana immich-app_immich logto-io_logto mastodon_mastodon nestjs_nest nocodb_nocodb novuhq_novu nuxt_nuxt oxc-project_oxc toeverything_AFFiNE typescript-eslint_typescript-eslint vitejs_vite vitest-dev_vitest vuejs_core withastro_astro
+Dependências|Dependabot|45| PostHog_posthog actix_actix-web backstage_backstage documenso_documenso dotnet_aspnetcore electron_electron encode_django-rest-framework expressjs_express facebook_react fastapi_fastapi fastify_fastify formbricks_formbricks getsentry_sentry-javascript getsentry_sentry gin-gonic_gin gofiber_fiber hoppscotch_hoppscotch keycloak_keycloak langfuse_langfuse laravel_framework mattermost_desktop mattermost_mattermost medusajs_medusa microsoft_playwright microsoft_vscode nestjs_nest nodejs_node openmeterio_openmeter outline_outline phoenixframework_phoenix plausible_analytics polarsource_polar prisma_prisma quarkusio_quarkus remix-run_react-router signalapp_Signal-Desktop spring-projects_spring-boot storybookjs_storybook strapi_strapi supabase_supabase symfony_symfony tokio-rs_axum twentyhq_twenty unkeyed_unkey zitadel_zitadel
+Cobertura|Codecov|19| bitwarden_clients encode_django-rest-framework getsentry_sentry gin-gonic_gin gofiber_fiber honojs_hono labstack_echo logto-io_logto mastodon_mastodon mattermost_mattermost n8n-io_n8n nodejs_node nuxt_nuxt oxc-project_oxc supabase_supabase temporalio_temporal toeverything_AFFiNE typescript-eslint_typescript-eslint zitadel_zitadel
+Cobertura|Coveralls|7| expressjs_express nestjs_nest nodejs_node plausible_analytics solidjs_solid supabase_supabase vercel_next.js
+Testes|Stryker|1| n8n-io_n8n
+Testes|mutmut|0|
+Testes|Allure|0|
+Testes|Gestão de casos (Qase/TestRail/Testmo/Kiwi/Tuskr)|0|
+Testes|Currents|1| n8n-io_n8n
+Testes|Cypress Cloud (--record)|0|
+Testes|BrowserStack/Sauce Labs|3| dotnet_aspnetcore emberjs_ember.js rails_rails
+Testes|k6|4| appwrite_appwrite calcom_cal.com n8n-io_n8n plausible_analytics
+Testes|Datadog CI Visibility|2| electron_electron vercel_next.js
+Testes|Trunk|2| PostHog_posthog strapi_strapi
+Visual|Playwright screenshots|7| PostHog_posthog element-hq_element-web facebook_react mattermost_mattermost microsoft_playwright tldraw_tldraw twentyhq_twenty
+Visual|Chromatic|7| Infisical_infisical backstage_backstage bitwarden_clients formbricks_formbricks mastodon_mastodon n8n-io_n8n storybookjs_storybook
+Visual|Argos|1| twentyhq_twenty
+Visual|Percy|1| mattermost_mattermost
+Visual|Lost Pixel|0|
+Visual|Applitools|0|
+A11y/Perf|axe-core|10| element-hq_element-web formbricks_formbricks grafana_grafana keycloak_keycloak mattermost_mattermost microsoft_vscode n8n-io_n8n storybookjs_storybook supabase_supabase tldraw_tldraw
+A11y/Perf|Storybook addon-a11y|14| Infisical_infisical PostHog_posthog backstage_backstage bitwarden_clients element-hq_element-web formbricks_formbricks grafana_grafana langfuse_langfuse mastodon_mastodon n8n-io_n8n signalapp_Signal-Desktop storybookjs_storybook twentyhq_twenty vercel_next.js
+A11y/Perf|Lighthouse|4| backstage_backstage facebook_react getsentry_sentry-javascript vercel_next.js
+A11y/Perf|size-limit/bundle size|9| PostHog_posthog excalidraw_excalidraw getsentry_sentry-javascript n8n-io_n8n novuhq_novu outline_outline prisma_prisma tldraw_tldraw twentyhq_twenty
+A11y/Perf|CodSpeed|7| fastapi_fastapi n8n-io_n8n nuxt_nuxt oxc-project_oxc polarsource_polar vercel_next.js withastro_astro
+Produção|Sentry SDK|27| appwrite_appwrite calcom_cal.com electron_electron element-hq_element-web excalidraw_excalidraw fastapi_fastapi formbricks_formbricks getsentry_sentry-javascript getsentry_sentry langfuse_langfuse mattermost_desktop mattermost_mattermost n8n-io_n8n nocodb_nocodb novuhq_novu openstatusHQ_openstatus outline_outline polarsource_polar storybookjs_storybook strapi_strapi supabase_supabase tldraw_tldraw toeverything_AFFiNE triggerdotdev_trigger.dev twentyhq_twenty unkeyed_unkey vercel_next.js
+Produção|GlitchTip|0|
+Outros|Checagem de licenças|15| actix_actix-web backstage_backstage bitwarden_clients dotnet_aspnetcore getsentry_sentry-javascript getsentry_sentry go-gitea_gitea langfuse_langfuse mattermost_mattermost microsoft_vscode n8n-io_n8n nodejs_node openmeterio_openmeter oxc-project_oxc tokio-rs_axum
+Outros|Revisão por IA (CodeRabbit/Greptile/Claude)|20| PostHog_posthog bitwarden_clients directus_directus formbricks_formbricks getsentry_sentry-javascript langfuse_langfuse mattermost_desktop mattermost_mattermost medusajs_medusa n8n-io_n8n openstatusHQ_openstatus prisma_prisma storybookjs_storybook strapi_strapi supabase_supabase sveltejs_kit temporalio_temporal tldraw_tldraw triggerdotdev_trigger.dev twentyhq_twenty
+Qualidade|RuboCop (Ruby)|3| formbricks_formbricks mastodon_mastodon rails_rails
+Segurança|Brakeman (Rails)|3| formbricks_formbricks mastodon_mastodon rails_rails
+Segurança|bundler-audit (Ruby)|2| mastodon_mastodon rails_rails
+Cobertura|SimpleCov (Ruby)|1| mastodon_mastodon
+Qualidade|PHPStan/Psalm (PHP)|4| appwrite_appwrite formbricks_formbricks laravel_framework symfony_symfony
+Qualidade|PHP-CS-Fixer (PHP)|1| symfony_symfony
+Testes|Infection (mutação PHP)|0|
+Qualidade|SpotBugs/Error Prone/Checkstyle/PMD (Java)|6| formbricks_formbricks nuxt_nuxt quarkusio_quarkus solidjs_solid spring-projects_spring-boot withastro_astro
+Cobertura|JaCoCo (Java)|3| backstage_backstage keycloak_keycloak quarkusio_quarkus
+Testes|PIT (mutação Java)|3| electron_electron keycloak_keycloak quarkusio_quarkus
+Segurança|OWASP Dependency-Check|1| quarkusio_quarkus
+Testes|Develocity / Gradle build scans|2| quarkusio_quarkus spring-projects_spring-boot
+Qualidade|clippy (Rust)|13| PostHog_posthog actix_actix-web bitwarden_clients formbricks_formbricks hoppscotch_hoppscotch immich-app_immich langfuse_langfuse microsoft_vscode nodejs_node oxc-project_oxc toeverything_AFFiNE tokio-rs_axum vercel_next.js
+Segurança|cargo-audit (Rust)|0|
+Testes|cargo-mutants (Rust)|0|
+Testes|Fuzzing (OSS-Fuzz/ClusterFuzzLite/cargo-fuzz)|2| nodejs_node vercel_next.js
+Qualidade|Credo/Sobelow (Elixir)|1| plausible_analytics
+Cobertura|coverage.py/pytest-cov (Python)|11| PostHog_posthog encode_django-rest-framework fastapi_fastapi formbricks_formbricks getsentry_sentry immich-app_immich n8n-io_n8n oxc-project_oxc pallets_flask polarsource_polar vitest-dev_vitest
+Testes|tox/nox (Python)|2| django_django encode_django-rest-framework
+Testes|Stryker.NET|0|
+Cobertura|coverlet (.NET)|0|
+Testes|Hypothesis (property-based Python)|1| PostHog_posthog
+Testes|fast-check (property-based JS)|5| formbricks_formbricks langfuse_langfuse n8n-io_n8n nodejs_node nuxt_nuxt
