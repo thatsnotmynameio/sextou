@@ -169,7 +169,8 @@ describe('openTasks on a file', () => {
     await expect(open(path)).rejects.toThrow(
       `This tasks database was written by a newer version (schema 99, this one knows ${steps.length})`,
     );
-    expect(connection().open).toBe(false);
+    // inspect's connection ran the first exec; openTasks's ran the last.
+    expect((exec.mock.contexts.at(-1) as Database).open).toBe(false);
     expect(readFileSync(path).equals(before)).toBe(true);
     await inspect(path, async (client) => {
       expect(await tables(client)).toEqual(['future']);
