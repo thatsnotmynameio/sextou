@@ -14,7 +14,9 @@ function json(body: unknown, status = 200) {
 
 // The app at /, with fetch answering as `respond` says.
 function renderHome(respond: (url: string) => Promise<Response>) {
-  const fetch = vi.fn((input: RequestInfo | URL) => respond(String(input)));
+  const fetch = vi.fn((input: RequestInfo | URL) =>
+    respond(input instanceof Request ? input.url : input.toString()),
+  );
   vi.stubGlobal('fetch', fetch);
   const router = createAppRouter({
     serverUrl,

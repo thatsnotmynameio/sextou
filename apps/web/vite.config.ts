@@ -25,6 +25,12 @@ export default defineConfig(({ mode }) => {
         codeSplittingOptions: { addHmr: mode !== 'test' },
         quoteStyle: 'single',
         semicolons: true,
+        // The default header turns off every lint rule (`eslint-disable`) and
+        // the type check (`@ts-nocheck`), which CI refuses in any tracked
+        // file. Without them the file still typechecks, and lint skips it
+        // through .oxlintrc.json's ignorePatterns, since the generator
+        // always writes an `as any`.
+        routeTreeFileHeader: ['// noinspection JSUnusedGlobalSymbols'],
       }),
       react(),
       linguiMacros(),
