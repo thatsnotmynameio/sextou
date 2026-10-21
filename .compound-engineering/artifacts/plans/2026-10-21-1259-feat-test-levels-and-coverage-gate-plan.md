@@ -12,7 +12,7 @@ execution: code
 
 ## Goal Capsule
 
-- **Objective:** Every pull request on sextou shows, for each package and test level, whether each source file reaches 90% coverage, and, for each package, whether its unit and integration tests catch at least 80% of the mutants in each source file, so code that is untested, or covered by tests that check nothing, shows up before merge.
+- **Objective:** Every pull request on sextou shows, for each package and test level, whether each source file reaches 90% coverage, and, for each package, whether its unit and integration tests catch at least 80% of its mutants, so code that is untested, or covered by tests that check nothing, shows up before merge.
 - **Means:** A workflow of sextou's own runs each package's levels as separate checks, plus a StrykerJS mutation check for each package run the way Stryker's own project runs it (KTD1, KTD6, KTD10). The organization's workflow stays as it is until this moves there.
 - **Product authority:** This brainstorm's dialogue and the planning dialogue of 2026-10-21; no issue yet. Issue #54 tracks bringing `describe` back.
 - **Execution profile:** `packages/tasks` goes first and sets the pattern; `packages/data` and `apps/server` follow it (KTD12).
@@ -25,9 +25,9 @@ execution: code
 
 ### Summary
 
-Tests are organized by package, then by level: unit, integration, component and, later, e2e, each with written criteria. Each package has only the levels its code needs, and each pair of package and level runs on its own, with 90% coverage required in every file that level answers for. A workflow of sextou's own runs every pair as a check on each pull request, plus a mutation-testing check per package that requires 80% in every file of its suites that run without a browser. A lint rule keeps modules independent, and AGENTS.md says how to classify, run and write tests.
+Tests are organized by package, then by level: unit, integration, component and, later, e2e, each with written criteria. Each package has only the levels its code needs, and each pair of package and level runs on its own, with 90% coverage required in every file that level answers for. A workflow of sextou's own runs every pair as a check on each pull request, plus a mutation-testing check per package that requires 80% of its mutants killed by its suites that run without a browser. A lint rule keeps modules independent, and AGENTS.md says how to classify, run and write tests.
 
-Each suite is its own Vitest config file, so each run is the root of its own coverage and judges only the files its config lists. Tests sit at the top level of their file, with no `describe`, so StrykerJS 10.0.0 runs them under Vitest 5 unpatched. Mutation runs in full on every push to `main` and incrementally on pull requests, as in Stryker's own CI, and a script in `.github/scripts/` applies the 80% floor per file, because Stryker itself only judges the total.
+Each suite is its own Vitest config file, so each run is the root of its own coverage and judges only the files its config lists. Tests sit at the top level of their file, with no `describe`, so StrykerJS 10.0.0 runs them under Vitest 5 unpatched. Mutation runs in full on every push to `main` and incrementally on pull requests, as in Stryker's own CI, and Stryker's `thresholds.break` fails the run below 80%.
 
 ### Problem Frame
 
@@ -48,6 +48,7 @@ Coverage also can't tell a test that checks behavior from one that only runs the
 - **A workflow of sextou's own runs the hierarchy; it moves to the organization's workflow later.** (session-settled: user-directed — chosen over changing the organization's `typescript.yml` now and over using both: it applies the exact rule now and touches only sextou.) Governs R11, R12, R14.
 - **The checks are not made required in this work.** (session-settled: user-directed — chosen over a pull request to `admin`'s ruleset now: "Importante é ver ele funcional aqui"; blocking comes with the move to the organization's workflow.) Governs R13.
 - **Mutation testing gates the pull request, with StrykerJS's Vitest runner and an 80% floor.** (session-settled: user-directed — chosen over reporting only and over written rules only, and 80% over 90% and over measuring first: 80 is Stryker's own "high" mark and leaves room for equivalent mutants.) Governs R14–R17.
+- **Mutation is judged the way Stryker judges it: `thresholds.break` at 80 on the package's total score, with no floor per file.** (session-settled: user-directed — chosen during implementation over a per-file floor script: Stryker has no per-file threshold, its documentation and its own repository use `break` alone, and the script, its package and the drift test came to 520 lines for what one setting does.) Governs R14, AE4.
 - **Mutation runs the way Stryker's own project runs it: in full on every push to `main`, incrementally on pull requests.** (session-settled: user-directed — "Modelo do Stryker", chosen over a full run of a pull request's dependent packages and a weekly full run: the per-package decision was a mechanism of this plan's own, and Stryker's project does without it.) Governs R15.
 - **Tests sit at the top level of their file, with no `describe`.** (session-settled: user-directed — chosen over keeping `describe` with a pnpm patch of Stryker's runner: here `describe` mostly repeats what the file already groups, and without it the official release runs under Vitest 5.) Governs R25.
 - **Each level judges only the source files it answers for, every file belonging to at least one level.** (session-settled: user-directed — chosen over every file in every level: after the tests move to their levels, that rule forces mocks of the disk and HTTP into unit tests and copies of pure tests into integration.) Governs R10, R23.
@@ -86,7 +87,7 @@ Coverage also can't tell a test that checks behavior from one that only runs the
 
 **Mutation testing**
 
-- R14. CI runs StrykerJS with its Vitest runner on every package's unit and integration suites, as one check per package named after it (such as `tasks / mutation`), and the check fails when any mutated source file of the package scores below 80%; a mutant that changes no behavior is marked with Stryker's comment for disabling it, never by lowering the floor.
+- R14. CI runs StrykerJS with its Vitest runner on every package's unit and integration suites, as one check per package named after it (such as `tasks / mutation`), and the check fails when the package scores below 80%; a mutant that changes no behavior is marked with Stryker's comment for disabling it, never by lowering the floor.
 - R15. Every push to `main` runs all of each package's mutants; a pull request runs incrementally, reusing the results of its own last run or, failing that, of `main`'s.
 - R16. A package whose mutation score is below 80% when the gate lands gets, in this work, the tests that bring it to 80%.
 - R17. Code excluded from coverage is excluded from mutation testing too.
@@ -107,7 +108,7 @@ Coverage also can't tell a test that checks behavior from one that only runs the
 
 ### Levels per Package Today
 
-R5 and R6 applied to each of the eight packages as they stand. Every package also gets its own mutation check (R14), so the pull request shows `<package> / mutation` for all eight. The CI tooling in `.github/scripts/` follows the same rules (KTD7).
+R5 and R6 applied to each of the eight packages as they stand. Every package also gets its own mutation check (R14), so the pull request shows `<package> / mutation` for all eight.
 
 | Package             | unit                                                                        | integration                                                                                                                                                      | component               | Checks on a pull request                |
 | ------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- | --------------------------------------- |
@@ -146,7 +147,7 @@ R20's instructions cover these points, taken from Vitest's guides "Testing in Pr
 - AE2. **Covers R10.** **Given** `packages/tasks`'s `owner-only.ts`, which only the integration suite answers for, at 95% there, **then** `tasks / integration` passes and `tasks / unit` does not judge it; a file both suites answer for, at 95% in unit and 60% in integration, fails `tasks / integration`.
 - AE9. **Covers R23.** **Given** a new source file in `apps/server` that no suite of the package answers for, **then** a check of that package fails and names the file.
 - AE3. **Covers R5, R11, R12.** **Given** `packages/tasks`, which has no UI, **then** the pull request shows no `tasks / component` check and no job of it installs a browser.
-- AE4. **Covers R14.** **Given** a new file in `packages/tasks` covered at 100% by tests with no assertion, **then** the coverage checks pass and `tasks / mutation` fails and names that file, even when the rest of the package scores above 80%.
+- AE4. **Covers R14.** **Given** a new file in `packages/tasks` covered at 100% by tests with no assertion, **then** the coverage checks pass and Stryker reports that file's mutants as survived; `tasks / mutation` fails when they bring the package below 80%.
 - AE8. **Covers R15.** **Given** a pull request that changes only `packages/data`, **then** `server / mutation` runs incrementally on that pull request, and the push to `main` after it merges runs all of `apps/server`'s mutants.
 - AE5. **Covers R9.** **Given** a developer filtering a run to one module of `apps/server`, **then** the tests of that module run and the run does not fail on the coverage of the files it left out.
 - AE6. **Covers R18.** **Given** code in one module importing a file from inside another module of the same package, **then** lint fails.
@@ -222,18 +223,18 @@ R20's instructions cover these points, taken from Vitest's guides "Testing in Pr
 - KTD4. **Vitest project names are `<pkg>/unit`, `<pkg>/integration`, `ui/component`, `scripts/unit`, `scripts/integration`.** The root run needs unique names, and `packages/ui`'s current `unit` and `integration` would clash. Check names (`tasks / unit`) are the job names, not the project names. Governs R7, R11.
 - KTD5. **A module filter runs through the root config, which has no coverage.** `pnpm exec vitest run --project '<pkg>/*' <path>` from the root runs a module's unit and integration tests with no verdict on coverage; the root `package.json` declares `vitest` so the bin is its own. A path passed to a `test:<level>` script fails on every file left out, because those scripts pass `--coverage` (verified), and AGENTS.md says so. A component filter runs inside `packages/ui` with its config and no `--coverage`. Governs R9.
 - KTD6. **One workflow, `.github/workflows/tests.yml`, with two matrix jobs: one per pair of package and level, one per package for mutation.** A static matrix names every pair, and its job names are the check names (`<pkg> / <level>`, `<pkg> / mutation`). Both jobs run on pull requests, pushes to `main` and manual dispatch. Setup copies the organization's pinned steps (checkout v7.0.1 with `persist-credentials: false`, setup-node v7.1.0 from `.node-version`, pnpm/action-setup v6.1.0 with pnpm 12.10.1, the pnpm policy env, `pnpm install --frozen-lockfile`). Only a `component` row installs Chromium, with `playwright install --with-deps chromium`. Pull-request runs cancel superseded runs of the same branch; runs on `main` never cancel, as in `ci.yml`. Every expression a `run:` step uses goes through `env:`, as zizmor (`security-main.yml`) requires. Governs R11, R12, R13.
-- KTD7. **The CI tooling lives in `.github/scripts/` as a private workspace package, `@sextou/github-scripts`, with the same levels and gates as any other.** It holds the per-file mutation floor (KTD9) and the drift test (KTD11), with its own `package.json`, `tsconfig.json` and suites. Joining `pnpm-workspace.yaml` puts it under `pnpm -r`, the pre-push hook, the type check and knip; its checks are `scripts / unit`, `scripts / integration` and `scripts / mutation`. Packages run the floor by path (`node ../../.github/scripts/...`), so no package gains a dependency on it. (session-settled: user-directed — `.github/scripts/` chosen over a top-level `scripts/` directory.)
+- KTD7. **Dropped during implementation:** there is no CI-tooling package. Its two parts went with the switch to `thresholds.break` (KTD9, KTD11).
 - KTD8. **`@stryker-mutator/core` and `@stryker-mutator/vitest-runner` 10.0.0 are installed as released; tests carry no `describe`, which keeps the runner's Vitest 5 bug out of reach.** Each package declares both as dev dependencies, the way each declares `vitest`. Rewriting the tests is mostly mechanical: `describe.each` becomes `test.each` on each test of the group, `describe.skipIf` becomes `test.skipIf`, and a `beforeEach` scoped to a group becomes a helper its tests call. Governs R14, R25.
-- KTD9. **The 80% floor per file is a script over Stryker's JSON report, run after Stryker.** Stryker's `thresholds.break` judges only the total score. The script computes each file's score with `mutation-testing-metrics` (the package Stryker 10.0.0 itself depends on), fails naming every file below 80 with its surviving mutants (file, line, mutator), and passes a file with no valid mutants (score NaN). Stryker's `break` stays unset so the script's verdict is the only one. A package's `test:mutation` runs a full Stryker run, then the script; CI runs the two as separate steps (KTD10). Governs R14.
+- KTD9. **The 80% floor is Stryker's `thresholds.break`, on the package's total score.** It sits in `stryker.parent.conf.json` (KTD13). Stryker has no threshold per file; a per-file script over its JSON report was built and removed in favor of the documented setting. Governs R14.
 - KTD10. **Mutation runs follow Stryker's own CI.** A push to `main` runs Stryker in full and saves each package's `reports/stryker-incremental.json` to the Actions cache. A pull request restores the newest entry for the package, which GitHub looks up in the pull request's own scope first and then in `main`'s, runs Stryker with `--incremental`, and saves its result for its own next run; a Dependabot pull request does not save, so it always starts from `main`, as Renovate branches do in Stryker's CI. The floor runs as its own step after the save. The cache is restored and saved as separate steps, saving on success or failure, under a key carrying the package, the run id and the attempt. Governs R15. (session-settled: user-directed — chosen over a per-package script deciding full runs from the base commit, and over a weekly full run.)
-- KTD11. **A drift test checks that every suite is wired.** It finds each package's suites from `vitest.config.*` and `vitest.*.config.*` under `apps/*`, `packages/*` and `.github/scripts`, leaving out `vitest.mutation.config.*`, which is no suite. It fails when a unit or integration suite is missing from the root `projects`, when the root `projects` lists a component suite, when any suite is missing from the `tests.yml` matrix, or when a file a package's coverage excludes from every suite is missing from its `stryker.config.json` `mutate` excludes; `mutate` may exclude more, such as `packages/data`'s `src/migration.gen.ts` (KTD13). It finds the repository root with git rather than from its own path, and it reads files from disk, so it is integration. Without it, a package that gains an integration suite moves files out of unit and no check judges them. Governs R11, R17, R22, R23. (session-settled: user-approved.)
+- KTD11. **Dropped during implementation:** no drift test. Wiring a new suite into the root `projects` and `tests.yml` is checked in review, as in the projects surveyed.
 - KTD12. **`packages/tasks` is the pilot: its levels, then its mutation run, land and pass before the same pattern goes to the other packages.** (session-settled: user-directed — "O mais importante tá no task.")
-- KTD13. **Stryker runs per package, in Stryker's sandbox, with one Vitest config.** Each package has `stryker.config.json`. A package with an integration suite points `vitest.configFile` at `vitest.mutation.config.ts` (`.mts` in `apps/server`), whose `projects` list the unit and integration configs; the name avoids `vitest.config.*`, which the root's directory lookup would pick up. A package with only a unit suite points at its `vitest.config.ts`. `mutate` covers `src/` minus the coverage excludes (R17) and minus `packages/data`'s generated `src/migration.gen.ts`, which a disable comment could not survive. `packages/data` sets `vitest.related` to false, because its drift test reaches `src/schema.ts` through drizzle-kit, not an import. `.github/scripts`'s mutation config leaves the drift test out: it kills no mutant and reads the whole repository, which the sandbox does not hold. Governs R14, R15, R17.
+- KTD13. **Stryker runs per package, in Stryker's sandbox, with one Vitest config.** As in Stryker's own monorepo, `stryker.parent.conf.json` at the root holds what every package shares (the runner, the base `mutate` patterns, the reporters, `thresholds`, and a `tsconfigFile` that doesn't exist, which skips the sandbox's tsconfig rewrite that needs TypeScript 6's API, stryker-js#6111), and each package's `stryker.config.mjs` adds only its Vitest config and the files it leaves out. A package with an integration suite points `vitest.configFile` at `vitest.mutation.config.ts` (`.mts` in `apps/server`), whose `projects` list the unit and integration configs; the name avoids `vitest.config.*`, which the root's directory lookup would pick up. A package with only a unit suite points at its `vitest.config.ts`. `mutate` covers `src/` minus the coverage excludes (R17) and minus `packages/data`'s generated `src/migration.gen.ts`, which a disable comment could not survive. `packages/data` sets `vitest.related` to false, because its drift test reaches `src/schema.ts` through drizzle-kit, not an import. `.github/scripts`'s mutation config leaves the drift test out: it kills no mutant and reads the whole repository, which the sandbox does not hold. Governs R14, R15, R17.
 - KTD14. **Module independence is `no-restricted-imports` in `.oxlintrc.json` overrides, one per nesting depth.** oxlint 1.88 has no internal-modules or boundaries rule, and the organization's oxlint 1.87 run allows built-in rules only, so no JS plugin. For a file at `src/modules/<a>/x.ts` the group patterns forbid `../*/**` and allow `../*/index` and `../../**`; a second override does the same one level deeper. Gitignore-style groups with `!` were verified; a regex with lookahead is silently ignored. A module's entry point is its `index.ts`, created when another module first needs it. Governs R18.
 
 ### High-Level Technical Design
 
-How the suites, the root run and CI fit together. The drift test (KTD11) holds the dashed links in step.
+How the suites, the root run and CI fit together.
 
 ```mermaid
 flowchart TB
@@ -241,10 +242,9 @@ flowchart TB
   I["vitest.integration.config.ts"]
   C["vitest.component.config.ts (ui only)"]
   M["vitest.mutation.config.ts: projects unit + integration"]
-  S["stryker.config.json"]
+  S["stryker.config.mjs, over stryker.parent.conf.json"]
   R["root vitest.config.ts, the organization's run"]
   W["tests.yml matrix"]
-  D["drift test"]
   U -->|lists| I
   M --> U
   M --> I
@@ -255,9 +255,6 @@ flowchart TB
   W --> I
   W --> C
   W --> S
-  D -.checks.-> R
-  D -.checks.-> W
-  D -.checks.-> S
 ```
 
 One `<pkg> / mutation` job (KTD10):
@@ -269,13 +266,12 @@ flowchart TB
   E -->|yes| F[stryker run, full]
   E -->|no: pull request| C[restore the newest incremental file: own scope, then main]
   C --> G[stryker run --incremental]
-  F --> H[save the incremental file, on success or failure]
-  G --> Q{Dependabot?}
-  Q -->|no| H
-  Q -->|yes| K
-  H --> K[floor script: each file at 80%, no-valid-mutant files pass]
-  K -->|a file below 80| X[check fails, naming the files and survivors; HTML report uploaded]
-  K -->|all pass| P[check passes]
+  F --> K{package score below 80?}
+  G --> K
+  K -->|yes| X[check fails; HTML report uploaded]
+  K -->|no| P[check passes]
+  F --> H[save the incremental file, unless Dependabot]
+  G --> H
 ```
 
 ### Risks
@@ -293,7 +289,7 @@ flowchart TB
 
 ### Sequencing
 
-U1 is the pilot (KTD12). U2, U3 and U9 follow its pattern and can land in any order. U4 needs no suite change. U5 needs U1 to U4 and U9. U6 needs U5. U7 is independent. U8 comes last, once commands and names are final.
+U1 is the pilot (KTD12). U2, U3 and U9 follow its pattern and can land in any order. U4 was dropped. U5 needs U1 to U3 and U9. U6 needs U5. U7 is independent. U8 comes last, once commands and names are final.
 
 ---
 
@@ -391,7 +387,7 @@ U1 is the pilot (KTD12). U2, U3 and U9 follow its pattern and can land in any or
 
 **Approach:** `pnpm test` in each package runs its levels in order (unit, integration, component); mutation stays out of `test`. The web app's config changes only its name.
 
-**Test expectation:** none -- renames and scripts; U6's drift test and the passing suites prove them.
+**Test expectation:** none -- renames and scripts; the passing suites prove them.
 
 **Verification:** `pnpm test:unit`, `pnpm test:integration` and `pnpm test:component` each run the right suites; `pnpm exec vitest run --project 'server/*' apps/server/src/modules/health` runs that module with no coverage verdict (AE5).
 
@@ -414,51 +410,22 @@ U1 is the pilot (KTD12). U2, U3 and U9 follow its pattern and can land in any or
 
 **Verification:** `pnpm test:unit` passes at 90% per file with no `describe` left.
 
-### U4. CI tooling in `.github/scripts`
+### U4. CI tooling in `.github/scripts` (dropped)
 
-**Goal:** A workspace package holds the per-file mutation floor, under its own unit and integration suites.
-
-**Requirements:** R14; KTD4, KTD7, KTD9.
-
-**Dependencies:** none.
-
-**Files:**
-
-- `pnpm-workspace.yaml` (add `.github/scripts`)
-- `.github/scripts/package.json`, `tsconfig.json`, `vitest.config.ts`, `vitest.integration.config.ts`
-- `.github/scripts/src/mutation-floor.ts`, `.github/scripts/src/mutation-floor.test.ts`, `.github/scripts/src/mutation-floor.integration.test.ts`
-- `vitest.config.ts` (root: add `.github/scripts/vitest.config.ts` and `.github/scripts/vitest.integration.config.ts`)
-
-**Approach:**
-
-1. The floor splits a pure decision (report in, verdict out) from a thin command-line entry that reads the report file. Unit tests cover the decision, integration tests the entry on a report written to a temporary directory.
-2. The script runs on Node's type stripping, so imports carry `.ts` extensions, as in `packages/data/scripts/migration.ts`.
-3. Its output names each failing file with its score and its surviving mutants, so the check's log says why (Success Criteria).
-
-**Patterns to follow:** `packages/data/scripts/migration.ts` and `packages/data/tsconfig.json` (`allowImportingTsExtensions`).
-
-**Test scenarios:**
-
-- Covers AE4. A report with one file at 79% and others at 100% fails, naming that file and its survivors.
-- A file at exactly 80% passes.
-- A file with no valid mutants (score NaN) passes.
-- An empty report (no files) passes.
-- The entry exits non-zero when the report file is missing or is not a Stryker report.
-
-**Verification:** `pnpm --filter @sextou/github-scripts test` passes at 90% per file in both suites; `pnpm typecheck` checks the package; the root `vitest run` runs both suites.
+Built, then removed during implementation: Stryker's `thresholds.break` replaces the per-file floor (KTD9), and there is no drift test (KTD11).
 
 ### U5. Mutation testing per package
 
-**Goal:** Every package runs Stryker over its unit and integration suites and fails below 80% per file, `packages/tasks` first.
+**Goal:** Every package runs Stryker over its unit and integration suites and fails below 80%, `packages/tasks` first.
 
 **Requirements:** R14, R16, R17, R25, AE4, AE10; KTD8, KTD9, KTD12, KTD13.
 
-**Dependencies:** U1, U2, U3, U4, U9.
+**Dependencies:** U1, U2, U3, U9.
 
 **Files:**
 
-- `<pkg>/stryker.config.json` for the eight packages and `.github/scripts/`
-- `packages/tasks/vitest.mutation.config.ts`, `packages/data/vitest.mutation.config.ts`, `apps/server/vitest.mutation.config.mts`, `.github/scripts/vitest.mutation.config.ts` (create)
+- `stryker.parent.conf.json` at the root, and `<pkg>/stryker.config.mjs` for the eight packages
+- `packages/tasks/vitest.mutation.config.ts`, `packages/data/vitest.mutation.config.ts`, `apps/server/vitest.mutation.config.mts` (create)
 - each package's `package.json` (`@stryker-mutator/core` and `@stryker-mutator/vitest-runner` 10.0.0; `test:mutation` runs Stryker, then the floor)
 - `apps/web/vite.config.ts` (import the Lingui macros plugin by package name; the relative `../../packages/ui/lingui-macros` resolves to nothing from the sandbox)
 - `packages/ui/package.json` (export the macros plugin, if it isn't exported yet)
@@ -468,7 +435,7 @@ U1 is the pilot (KTD12). U2, U3 and U9 follow its pattern and can land in any or
 **Approach:**
 
 1. On `packages/tasks`: run once and confirm the report shows tests run per mutant for every test file.
-2. Raise `packages/tasks` to 80% per file with tests that follow the Test-Writing Instructions; an equivalent mutant gets a disable comment naming the mutator and the reason (R14).
+2. Raise `packages/tasks` to 80% with tests that follow the Test-Writing Instructions; an equivalent mutant gets a disable comment naming the mutator and the reason (R14).
 3. Repeat for the other packages. `packages/ui` mutates its jsdom unit suite only; check its dry run passes with the Lingui macros before relying on it.
 
 **Execution note:** Stop at step 1 if a top-level test still runs for no mutant (Goal Capsule stop condition).
@@ -482,9 +449,9 @@ U1 is the pilot (KTD12). U2, U3 and U9 follow its pattern and can land in any or
 - `pnpm --filter @sextou/data test:mutation` mutates neither `src/index.ts` nor `src/migration.gen.ts`.
 - Running Stryker with `--incremental` a second time with no change reuses every result from `reports/stryker-incremental.json`.
 
-**Verification:** `pnpm --filter <pkg> test:mutation` passes for every package and for `@sextou/github-scripts`, each file at 80% or more.
+**Verification:** `pnpm --filter <pkg> test:mutation` passes for every package, at 80% or more.
 
-### U6. The tests workflow and the drift test
+### U6. The tests workflow
 
 **Goal:** Every pair of package and level and every package's mutation run shows as its own check on each pull request.
 
@@ -495,8 +462,6 @@ U1 is the pilot (KTD12). U2, U3 and U9 follow its pattern and can land in any or
 **Files:**
 
 - `.github/workflows/tests.yml` (create)
-- `.github/scripts/src/registry.integration.test.ts` (create; the drift test)
-- `.github/scripts/package.json` (a YAML parser as a dev dependency, if no installed one serves)
 
 **Approach:**
 
@@ -507,12 +472,6 @@ U1 is the pilot (KTD12). U2, U3 and U9 follow its pattern and can land in any or
 **Patterns to follow:** `.github/workflows/security.yml` and `ci.yml` (`permissions: {}` at the top, `contents: read` per job, actions pinned by SHA with the version as a comment); the organization's `typescript.yml` v0.4.0 setup steps.
 
 **Test scenarios:**
-
-- The drift test fails when a temporary `vitest.integration.config.ts` in a package is missing from the matrix, and names the file.
-- The drift test fails when a package's `vitest.config.ts` is missing from the root `projects` or the matrix.
-- The drift test fails when the root `projects` lists the component config.
-- The drift test fails when a file excluded from a package's coverage is missing from its `mutate` excludes, and passes on `packages/data`'s extra `migration.gen.ts` exclusion.
-- The drift test passes on the repository as it stands.
 
 **Verification:** A draft pull request shows each check of the Levels per Package table and no `tasks / component` (AE3); a deliberate branch-coverage drop in a `packages/data` unit file fails `data / unit`, naming the file (AE1); on that pull request `server / mutation` runs incrementally, and the push to `main` after merge runs it in full (AE8); zizmor passes on `main` after merge.
 
@@ -547,8 +506,7 @@ U1 is the pilot (KTD12). U2, U3 and U9 follow its pattern and can land in any or
 1. Commands: `test:unit`, `test:integration`, `test:component`, `test:mutation`, `test`, and the module filter of KTD5.
 2. Tests: the criteria of R1 to R5, with the two R24 cases and `apps/web`'s `App.test.tsx` as the one exception to R2; the hierarchy; the floors; the file naming of KTD3 and the two lists of KTD2; the Test-Writing Instructions; no `describe`, why, and issue #54; that mutation runs execute code in worker threads, where `os.homedir()` ignores a changed `HOME`.
 3. CI: `tests.yml` and its check names; the checks are not required yet; mutation runs in full on `main` and incrementally on pull requests; a red mutation check on `main` turns pull requests red for that package until someone fixes `main`.
-4. Architecture: `.github/scripts/` as the CI tooling package.
-5. Drop the sentence saying CI does not install Chromium.
+4. Drop the sentence saying CI does not install Chromium.
 
 **Test expectation:** none -- documentation.
 
@@ -558,17 +516,17 @@ U1 is the pilot (KTD12). U2, U3 and U9 follow its pattern and can land in any or
 
 ## Verification Contract
 
-| Gate          | Command or place                    | Proves                                                                                           |
-| ------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Lint          | `pnpm lint`                         | oxlint (including KTD14) and oxfmt pass                                                          |
-| Types         | `pnpm typecheck`                    | every package, `.github/scripts` included                                                        |
-| Unit          | `pnpm test:unit`                    | every unit suite at 90% per file (also run by pre-push, R21)                                     |
-| Integration   | `pnpm test:integration`             | `tasks`, `data`, `server`, `scripts` integration suites at 90% per file, the drift test included |
-| Component     | `pnpm test:component`               | `packages/ui` stories in Chromium at 90% per file                                                |
-| Mutation      | `pnpm --filter <pkg> test:mutation` | each file of the package at 80% or more                                                          |
-| No `describe` | a search of the tests               | none left (R25)                                                                                  |
-| Root run      | `pnpm exec vitest run`              | the organization's run still finds every unit and integration test (R22)                         |
-| CI            | the draft pull request's checks     | U6's verification                                                                                |
+| Gate          | Command or place                    | Proves                                                                   |
+| ------------- | ----------------------------------- | ------------------------------------------------------------------------ |
+| Lint          | `pnpm lint`                         | oxlint (including KTD14) and oxfmt pass                                  |
+| Types         | `pnpm typecheck`                    | every package                                                            |
+| Unit          | `pnpm test:unit`                    | every unit suite at 90% per file (also run by pre-push, R21)             |
+| Integration   | `pnpm test:integration`             | `tasks`, `data` and `server` integration suites at 90% per file          |
+| Component     | `pnpm test:component`               | `packages/ui` stories in Chromium at 90% per file                        |
+| Mutation      | `pnpm --filter <pkg> test:mutation` | the package at 80% or more                                               |
+| No `describe` | a search of the tests               | none left (R25)                                                          |
+| Root run      | `pnpm exec vitest run`              | the organization's run still finds every unit and integration test (R22) |
+| CI            | the draft pull request's checks     | U6's verification                                                        |
 
 ---
 
