@@ -1,5 +1,5 @@
-import { DatabaseSync } from 'node:sqlite';
-import { describe, expect, it } from 'vitest';
+import { connect, type Database } from '@tursodatabase/database';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { finalStatuses, holds, isFinal, Status, statusList } from './status';
 
 // A name that is not one of the states.
@@ -52,15 +52,25 @@ describe('holds', () => {
 });
 
 describe('statusList', () => {
-  const client = new DatabaseSync(':memory:');
-  const inList = client.prepare(`SELECT ? IN (${statusList}) AS found`);
+  let client: Database;
 
-  it.each(Object.values(Status))('holds %s for SQLite', (status) => {
-    expect(inList.get(status)?.found).toBe(1);
+  beforeAll(async () => {
+    client = await connect(':memory:');
   });
 
-  it('holds nothing else', () => {
-    expect(inList.get(unknown)?.found).toBe(0);
+  afterAll(() => client.close());
+
+  async function inList(value: string) {
+    return (await client.get(`SELECT ? IN (${statusList}) AS found`, value))
+      ?.found;
+  }
+
+  it.each(Object.values(Status))('holds %s for SQL', async (status) => {
+    expect(await inList(status)).toBe(1);
+  });
+
+  it('holds nothing else', async () => {
+    expect(await inList(unknown)).toBe(0);
     expect(statusList.split(', ')).toHaveLength(Object.values(Status).length);
   });
 });
