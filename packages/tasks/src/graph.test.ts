@@ -912,6 +912,32 @@ describe('an error from SQLite', () => {
     expect(history(a)).toHaveLength(1);
     expect(connection().isTransaction).toBe(false);
   });
+
+  it('is thrown from a finish, which leaves the task running and its dependents held', () => {
+    const a = create('A');
+    const b = create('B');
+    link(b, a);
+    start(a);
+    // Fails the result's update, after the status and the change.
+    connection().exec(
+      "CREATE TRIGGER fail BEFORE UPDATE ON execution BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END",
+    );
+    expect(() =>
+      tasks.finishTask({
+        id: a,
+        changedBy: 'bot-dev-1',
+        status: 'succeeded',
+        resultPath: 'out/run-1',
+      }),
+    ).toThrow('disk I/O error');
+    expect(status(a)).toBe('running');
+    expect(history(a)).toHaveLength(2);
+    expect(execution(a)).toEqual([
+      { actor: 'bot-dev-1', log_path: null, result_path: null },
+    ]);
+    expect(counter(b)).toBe(1);
+    expect(connection().isTransaction).toBe(false);
+  });
 });
 
 describe('the graph after random operations', () => {
