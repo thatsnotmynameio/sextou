@@ -3,6 +3,8 @@
 export default {
   test: {
     projects: [
+      '.github/scripts',
+      '.github/scripts/vitest.integration.config.ts',
       'apps/desktop',
       'apps/server',
       'apps/server/vitest.integration.config.mts',

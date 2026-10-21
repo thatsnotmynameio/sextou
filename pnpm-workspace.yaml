@@ -1,6 +1,7 @@
 packages:
   - apps/*
   - packages/*
+  - .github/scripts
 allowBuilds:
   electron-winstaller: true
   esbuild: false
