@@ -1,13 +1,12 @@
-import { healthResponseSchema } from '@sextou/contract';
 import { afterEach, expect, test } from 'vitest';
 import { createApp } from './app';
 import { startServer, type RunningServer } from './server';
 
 const app = createApp({
   version: '1.2.3',
-  startedAt: new Date(),
-  now: () => new Date(),
-  pingDatabase: async () => true,
+  database: { ping: async () => true },
+  dev: false,
+  webOrigin: 'http://localhost:5173',
 });
 
 const running: RunningServer[] = [];
@@ -30,18 +29,18 @@ test('startServer resolves with the port the system picked for port 0', async ()
 
 test('startServer serves the app over HTTP', async () => {
   const { port } = await start();
-  const response = await fetch(`http://127.0.0.1:${port}/health`);
+  const response = await fetch(`http://127.0.0.1:${port}/trpc/health.check`);
   expect(response.status).toBe(200);
-  expect(healthResponseSchema.parse(await response.json()).version).toBe(
-    '1.2.3',
-  );
+  expect(await response.json()).toEqual({
+    result: { data: { version: '1.2.3', database: 'up' } },
+  });
 });
 
 test('startServer stops accepting connections once closed', async () => {
   const server = await startServer(app, { host: '127.0.0.1', port: 0 });
   await server.close();
   await expect(
-    fetch(`http://127.0.0.1:${server.port}/health`),
+    fetch(`http://127.0.0.1:${server.port}/trpc/health.check`),
   ).rejects.toThrow();
 });
 

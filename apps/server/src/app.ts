@@ -1,16 +1,24 @@
+import { fetchRequestHandler } from '@trpc/server/adapters/fetch';
 import { Hono } from 'hono';
-import { healthRoutes } from './modules/health/health.routes';
+import { cors } from 'hono/cors';
+import { appRouter } from './router';
+import type { Context } from './trpc';
 
-export interface AppOptions {
-  version: string;
-  startedAt: Date;
-  // The current time; tests pass a fixed one.
-  now: () => Date;
-  // Whether the database answers a query; never rejects.
-  pingDatabase: () => Promise<boolean>;
+export interface AppOptions extends Context {
+  // The one origin CORS lets read the answers.
+  webOrigin: string;
 }
 
-// The HTTP app, with each module's routes under its own path.
-export function createApp(options: AppOptions) {
-  return new Hono().route('/health', healthRoutes(options));
+// The HTTP app: CORS, then the tRPC router at /trpc.
+export function createApp({ webOrigin, ...context }: AppOptions) {
+  return new Hono()
+    .use('/trpc/*', cors({ origin: webOrigin }))
+    .all('/trpc/*', (c) =>
+      fetchRequestHandler({
+        endpoint: '/trpc',
+        req: c.req.raw,
+        router: appRouter,
+        createContext: () => context,
+      }),
+    );
 }

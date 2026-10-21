@@ -4,10 +4,13 @@
   "private": true,
   "license": "MIT",
   "type": "module",
+  "exports": {
+    "./router": "./src/router.ts"
+  },
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/main.ts",
     "build": "vite build",
-    "start": "node dist/server.mjs",
+    "start": "node --env-file-if-exists=.env dist/server.mjs",
     "typecheck": "tsc --noEmit",
     "test": "pnpm test:unit && pnpm test:integration",
     "test:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit",
@@ -16,10 +19,6 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.5",
-    "@sextou/contract": "workspace:*",
-    "@sextou/core": "workspace:*",
-    "@sextou/data": "workspace:*",
-    "@sextou/tasks": "workspace:*",
     "@trpc/server": "^11.19.0",
     "@tursodatabase/database": "0.8.3",
     "drizzle-orm": "1.0.0-rc.4",
