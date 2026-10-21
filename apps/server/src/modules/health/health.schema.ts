@@ -6,5 +6,3 @@ export const healthSchema = z.object({
   version: z.string().min(1),
   database: z.enum(['up', 'down']),
 });
-
-export type Health = z.infer<typeof healthSchema>;

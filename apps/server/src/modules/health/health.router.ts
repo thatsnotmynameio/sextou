@@ -5,6 +5,6 @@ export const healthRouter = router({
   // The server's version, and whether its database answers.
   check: procedure.output(healthSchema).query(async ({ ctx }) => ({
     version: ctx.version,
-    database: (await ctx.database.ping()) ? ('up' as const) : ('down' as const),
+    database: (await ctx.database.ping()) ? 'up' : 'down',
   })),
 });

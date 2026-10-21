@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -85,14 +86,14 @@ test('the health page shows the database down when the server can’t open it', 
   expect(screen.getByText('down')).toBeInTheDocument();
 });
 
-// Covers AE3: nothing listens on the port a stopped server used.
-test('the health page says the server can’t be reached once it stops', async () => {
-  const url = await startServer(':memory:');
-  const exited = once(server!, 'exit');
-  server!.kill('SIGTERM');
-  await exited;
+// Covers AE3: nothing listens on a port a closed listener freed.
+test('the health page says the server can’t be reached when nothing listens', async () => {
+  const listener = createServer().listen(0, '127.0.0.1');
+  await once(listener, 'listening');
+  const { port } = listener.address() as AddressInfo;
+  await new Promise((closed) => listener.close(closed));
 
-  renderHome(url);
+  renderHome(`http://127.0.0.1:${port}`);
 
   expect(await screen.findByRole('alert', {}, wait)).toHaveTextContent(
     'The server can’t be reached.',
