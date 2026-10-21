@@ -10,6 +10,8 @@ export default mergeConfig(
   defineConfig({
     test: {
       name: 'web/integration',
+      // This package's own module cache, as vitest.config's comment explains.
+      fsModuleCachePath: 'node_modules/.vitest-cache',
       environment: 'jsdom',
       include: ['src/**/*.integration.test.{ts,tsx}'],
       setupFiles: ['./vitest.setup.ts'],

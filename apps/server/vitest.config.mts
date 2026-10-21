@@ -28,10 +28,16 @@ export const coverage = {
 } satisfies CoverageOptions;
 
 // The unit suite: *.test.ts in Node, with no disk or network: the router
-// through createCaller, the app through app.request. The root vitest.config.ts runs it with the integration suite.
+// through createCaller, the app through app.request. The root
+// vitest.config.ts runs it with the integration suite.
 export default defineConfig({
   test: {
     name: 'server/unit',
+    // This package's own module cache. Vitest otherwise keeps one at the
+    // workspace root for every package, and each run clears it when the
+    // lockfile changed: `pnpm -r` runs the packages at once, so one run's
+    // clear fails on files another is writing (ENOTEMPTY).
+    fsModuleCachePath: 'node_modules/.vitest-cache',
     environment: 'node',
     include: ['src/**/*.test.ts'],
     exclude: ['src/**/*.integration.test.ts'],

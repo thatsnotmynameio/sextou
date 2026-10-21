@@ -29,6 +29,11 @@ export default mergeConfig(
   defineConfig({
     test: {
       name: 'ui/unit',
+      // This package's own module cache. Vitest otherwise keeps one at the
+      // workspace root for every package, and each run clears it when the
+      // lockfile changed: `pnpm -r` runs the packages at once, so one run's
+      // clear fails on files another is writing (ENOTEMPTY).
+      fsModuleCachePath: 'node_modules/.vitest-cache',
       environment: 'jsdom',
       include: ['src/**/*.test.tsx'],
       setupFiles: ['./vitest.setup.ts'],

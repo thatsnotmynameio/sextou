@@ -7,6 +7,8 @@ import { coverage, integrationOnly } from './vitest.config.mjs';
 export default defineConfig({
   test: {
     name: 'server/integration',
+    // This package's own module cache, as vitest.config's comment explains.
+    fsModuleCachePath: 'node_modules/.vitest-cache',
     environment: 'node',
     include: ['src/**/*.integration.test.ts'],
     coverage: {
