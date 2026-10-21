@@ -10,6 +10,7 @@ export default {
       'apps/server',
       'apps/server/vitest.integration.config.mts',
       'apps/web',
+      'apps/web/vitest.integration.config.ts',
       'packages/tasks',
       'packages/tasks/vitest.integration.config.ts',
       'packages/ui',

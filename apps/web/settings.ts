@@ -1,0 +1,66 @@
+export interface Settings {
+  // Where the server answers: the client calls `${serverUrl}/trpc`, and the
+  // Content Security Policy lets the page connect to its origin.
+  serverUrl: string;
+  // How long a request to the server may take before the page says the
+  // server can't be reached.
+  requestTimeoutMs: number;
+  // The dev server's port. The desktop's SEXTOU_WEB_URL and the server's
+  // SEXTOU_SERVER_WEB_ORIGIN name the origin it makes.
+  port: number;
+}
+
+// The web app's settings, from the environment vite.config.ts loads: each
+// variable has a default, and apps/web/.env.example lists them. Throws
+// naming the variable on an invalid value.
+export function readSettings(env: Record<string, string | undefined>) {
+  const read = <T>(
+    name: string,
+    parse: (value: string, name: string) => T,
+    fallback: T,
+  ): T => {
+    const value = env[name];
+    return value === undefined ? fallback : parse(value, name);
+  };
+
+  return {
+    serverUrl: read('SEXTOU_WEB_SERVER_URL', parseUrl, 'http://127.0.0.1:4310'),
+    requestTimeoutMs: read(
+      'SEXTOU_WEB_REQUEST_TIMEOUT_MS',
+      parseTimeout,
+      30000,
+    ),
+    port: read('SEXTOU_WEB_PORT', parsePort, 5173),
+  } satisfies Settings;
+}
+
+function invalid(name: string, value: string, expected: string) {
+  return new Error(
+    `Invalid ${name}: ${JSON.stringify(value)} (expected ${expected})`,
+  );
+}
+
+function parseUrl(value: string, name: string): string {
+  const url = URL.parse(value);
+  if (url?.protocol !== 'http:' && url?.protocol !== 'https:') {
+    throw invalid(name, value, 'an http or https URL');
+  }
+  return url.href.replace(/\/+$/, '');
+}
+
+// Only digits, at least 1 millisecond.
+function parseTimeout(value: string, name: string): number {
+  if (!/^\d+$/.test(value) || Number(value) === 0) {
+    throw invalid(name, value, 'a whole number of milliseconds above 0');
+  }
+  return Number(value);
+}
+
+// Only digits, from 1 to 65535.
+function parsePort(value: string, name: string): number {
+  const port = Number(value);
+  if (!/^\d+$/.test(value) || port === 0 || port > 65535) {
+    throw invalid(name, value, 'a port from 1 to 65535');
+  }
+  return port;
+}

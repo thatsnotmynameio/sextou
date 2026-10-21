@@ -8,8 +8,9 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "test": "pnpm test:unit",
+    "test": "pnpm test:unit && pnpm test:integration",
     "test:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit",
+    "test:integration": "vitest run --config vitest.integration.config.ts --coverage --coverage.reportsDirectory=coverage/integration",
     "test:mutation": "stryker run"
   },
   "dependencies": {

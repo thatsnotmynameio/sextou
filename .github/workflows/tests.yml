@@ -58,6 +58,7 @@ jobs:
           - { package: server, level: unit, dir: apps/server }
           - { package: server, level: integration, dir: apps/server }
           - { package: web, level: unit, dir: apps/web }
+          - { package: web, level: integration, dir: apps/web }
           - { package: tasks, level: unit, dir: packages/tasks }
           - { package: tasks, level: integration, dir: packages/tasks }
           - { package: ui, level: unit, dir: packages/ui }
