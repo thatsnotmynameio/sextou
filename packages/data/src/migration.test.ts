@@ -1,4 +1,4 @@
-import { DatabaseSync } from 'node:sqlite';
+import { connect, type Database } from '@tursodatabase/database';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { migrateDatabase } from './migration';
 
@@ -9,83 +9,81 @@ const second = {
 };
 const broken = { id: '2_broken', statements: ['CREATE TABLE c (x', 'nope'] };
 
-let client: DatabaseSync;
+let client: Database;
 
-function tables() {
-  return client
-    .prepare(
-      "SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name",
-    )
-    .all()
-    .map((row) => row.name);
+async function tables() {
+  const rows = await client.all(
+    "SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name",
+  );
+  return rows.map((row: { name: string }) => row.name);
 }
 
-function applied() {
-  return client
-    .prepare('SELECT id FROM migration ORDER BY id')
-    .all()
-    .map((row) => row.id);
+async function applied() {
+  const rows = await client.all('SELECT id FROM migration ORDER BY id');
+  return rows.map((row: { id: string }) => row.id);
 }
 
-beforeEach(() => {
-  client = new DatabaseSync(':memory:');
+beforeEach(async () => {
+  client = await connect(':memory:');
 });
 
-afterEach(() => {
-  client.close();
+afterEach(async () => {
+  await client.close();
 });
 
 describe('migrateDatabase', () => {
-  it('applies every migration to a new database', () => {
-    expect(migrateDatabase(client, [first, second])).toEqual([
+  it('applies every migration to a new database', async () => {
+    expect(await migrateDatabase(client, [first, second])).toEqual([
       '1_first',
       '2_second',
     ]);
-    expect(tables()).toEqual(['a', 'b', 'migration']);
-    expect(applied()).toEqual(['1_first', '2_second']);
+    expect(await tables()).toEqual(['a', 'b', 'migration']);
+    expect(await applied()).toEqual(['1_first', '2_second']);
   });
 
-  it('applies nothing to a current database', () => {
-    migrateDatabase(client, [first, second]);
-    expect(migrateDatabase(client, [first, second])).toEqual([]);
-    expect(applied()).toEqual(['1_first', '2_second']);
+  it('applies nothing to a current database', async () => {
+    await migrateDatabase(client, [first, second]);
+    expect(await migrateDatabase(client, [first, second])).toEqual([]);
+    expect(await applied()).toEqual(['1_first', '2_second']);
   });
 
-  it('applies only the pending migrations', () => {
-    migrateDatabase(client, [first]);
-    expect(migrateDatabase(client, [first, second])).toEqual(['2_second']);
-    expect(tables()).toEqual(['a', 'b', 'migration']);
+  it('applies only the pending migrations', async () => {
+    await migrateDatabase(client, [first]);
+    expect(await migrateDatabase(client, [first, second])).toEqual([
+      '2_second',
+    ]);
+    expect(await tables()).toEqual(['a', 'b', 'migration']);
   });
 
-  it('applies none when one fails, and names it', () => {
-    expect(() => migrateDatabase(client, [first, broken])).toThrow(
+  it('applies none when one fails, and names it', async () => {
+    await expect(migrateDatabase(client, [first, broken])).rejects.toThrow(
       /^Migration 2_broken failed: /,
     );
-    expect(tables()).toEqual([]);
+    expect(await tables()).toEqual([]);
   });
 
-  it('keeps what earlier starts applied when a later migration fails', () => {
-    migrateDatabase(client, [first]);
-    client.exec('INSERT INTO a VALUES (1)');
-    expect(() => migrateDatabase(client, [first, second, broken])).toThrow(
-      'Migration 2_broken failed',
-    );
-    expect(tables()).toEqual(['a', 'migration']);
-    expect(applied()).toEqual(['1_first']);
-    expect(client.prepare('SELECT x FROM a').all()).toEqual([{ x: 1 }]);
+  it('keeps what earlier starts applied when a later migration fails', async () => {
+    await migrateDatabase(client, [first]);
+    await client.exec('INSERT INTO a VALUES (1)');
+    await expect(
+      migrateDatabase(client, [first, second, broken]),
+    ).rejects.toThrow('Migration 2_broken failed');
+    expect(await tables()).toEqual(['a', 'migration']);
+    expect(await applied()).toEqual(['1_first']);
+    expect(await client.all('SELECT x FROM a')).toEqual([{ x: 1 }]);
   });
 
-  it('refuses a database a newer sextou migrated, and leaves it as it was', () => {
-    migrateDatabase(client, [first, second]);
-    expect(() => migrateDatabase(client, [first])).toThrow(
+  it('refuses a database a newer sextou migrated, and leaves it as it was', async () => {
+    await migrateDatabase(client, [first, second]);
+    await expect(migrateDatabase(client, [first])).rejects.toThrow(
       'This database was written by a newer sextou (unknown migration 2_second)',
     );
-    expect(tables()).toEqual(['a', 'b', 'migration']);
-    expect(applied()).toEqual(['1_first', '2_second']);
+    expect(await tables()).toEqual(['a', 'b', 'migration']);
+    expect(await applied()).toEqual(['1_first', '2_second']);
   });
 
-  it('creates only its own table when there is no migration', () => {
-    expect(migrateDatabase(client, [])).toEqual([]);
-    expect(tables()).toEqual(['migration']);
+  it('creates only its own table when there is no migration', async () => {
+    expect(await migrateDatabase(client, [])).toEqual([]);
+    expect(await tables()).toEqual(['migration']);
   });
 });

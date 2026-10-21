@@ -1,67 +1,63 @@
-import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from 'node:fs';
+import { chmodSync, closeSync, mkdirSync, openSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import { connect } from '@tursodatabase/database';
 import { sql } from 'drizzle-orm';
-import { drizzle, type NodeSQLiteDatabase } from 'drizzle-orm/node-sqlite';
+import { drizzle } from 'drizzle-orm/tursodatabase/database';
+import type { TursoDatabaseDatabase } from 'drizzle-orm/tursodatabase';
 import { migrateDatabase } from './migration';
 
 export interface Database {
   // The drizzle handle features query through.
-  db: NodeSQLiteDatabase;
-  // Whether the database answers a query. Never throws.
-  ping: () => boolean;
+  db: TursoDatabaseDatabase;
+  // Whether the database answers a query. Never rejects.
+  ping: () => Promise<boolean>;
   // Closes the database; does nothing once closed.
-  close: () => void;
+  close: () => Promise<void>;
 }
 
 // Opens the SQLite database at an absolute file path, or in memory for
-// ':memory:', and applies the migrations it doesn't have yet. Throws when it
-// can't, with the error from the file system, SQLite or the migrations.
-export function openDatabase(path: string): Database {
-  const inMemory = path === ':memory:';
-  if (!inMemory) restrictToOwner(path);
+// ':memory:', and applies the migrations it doesn't have yet. Rejects when it
+// can't, with the error from the file system, Turso or the migrations.
+//
+// Turso opens every database in WAL mode, which lets reads run while a write
+// is in progress, and syncs in full on each commit, its default. It rejects a
+// file that isn't a database when connecting.
+export async function openDatabase(path: string): Promise<Database> {
+  if (path !== ':memory:') restrictToOwner(path);
 
-  const client = new DatabaseSync(path);
+  const client = await connect(path);
   try {
-    // SQLite opens a file that isn't a database without complaint and fails
-    // on the first statement: running one here makes that an open failure.
-    // WAL lets reads run while a write is in progress.
-    client.exec(
-      inMemory
-        ? 'select 1'
-        : 'PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL',
-    );
-    migrateDatabase(client);
+    // Turso leaves foreign keys off unless the connection turns them on.
+    await client.exec('PRAGMA foreign_keys = ON');
+    await migrateDatabase(client);
   } catch (error) {
-    client.close();
+    await client.close();
     throw error;
   }
 
   const db = drizzle({ client });
   return {
     db,
-    ping: () => {
+    ping: async () => {
       try {
-        db.get(sql`select 1`);
+        await db.get(sql`select 1`);
         return true;
       } catch {
         return false;
       }
     },
-    close: () => {
-      // A second DatabaseSync.close() throws.
-      if (client.isOpen) client.close();
-    },
+    close: () => client.close(),
   };
 }
 
-// Creates the folder and the file for their owner only, and makes an existing
-// file and its WAL sidecars owner-only too. SQLite gives new sidecars the main
-// file's mode, so the file must be owner-only before SQLite opens it.
+// Creates the folder, the file and its WAL file for their owner only, and
+// makes an existing file and WAL file owner-only too. Turso writes no other
+// sidecar, keeps the WAL file after closing, and creates it with the umask's
+// mode, so the WAL file must exist, owner-only, before Turso opens the file.
 function restrictToOwner(path: string) {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  closeSync(openSync(path, 'a', 0o600));
-  for (const file of [path, `${path}-wal`, `${path}-shm`]) {
-    if (existsSync(file)) chmodSync(file, 0o600);
+  for (const file of [path, `${path}-wal`]) {
+    closeSync(openSync(file, 'a', 0o600));
+    chmodSync(file, 0o600);
   }
 }
