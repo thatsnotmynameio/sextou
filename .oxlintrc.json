@@ -25,6 +25,38 @@
           }
         ]
       }
+    },
+    {
+      "files": ["**/src/modules/*/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../*/**", "!../*/index", "!../../**"],
+                "message": "A module reaches another module only through its entry point, the index.ts in its folder."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["**/src/modules/*/*/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../../*/**", "!../../*/index", "!../../../**"],
+                "message": "A module reaches another module only through its entry point, the index.ts in its folder."
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }
