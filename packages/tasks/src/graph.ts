@@ -142,34 +142,37 @@ export interface Graph {
 // The statements the writes run. Each is prepared on its write's transaction:
 // one prepared on the connection would wait for the lock the transaction
 // holds.
-const find = 'SELECT status, holding_blockers FROM task WHERE id = ?';
-const insertTask = `INSERT INTO task (id, title, kind, priority, parent_id, assignee, description, source_path, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '${Status.open}')`;
+const find = 'SELECT status, holding_blockers FROM tasks WHERE id = ?';
+const insertTask = `INSERT INTO tasks (id, title, kind, priority, parent_id, assignee, description, source_path, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '${Status.open}')`;
 const insertChange =
-  'INSERT INTO status_change (task_id, from_status, to_status, changed_by, reason, time_changed) VALUES (?, ?, ?, ?, ?, ?)';
+  'INSERT INTO task_status_changes (task_id, from_status, to_status, changed_by, reason, time_changed) VALUES (?, ?, ?, ?, ?, ?)';
 const insertExecution =
-  'INSERT INTO execution (task_id, actor, log_path) VALUES (?, ?, ?)';
-const setResult = 'UPDATE execution SET result_path = ? WHERE task_id = ?';
-const findLink = 'SELECT 1 FROM link WHERE task_id = ? AND blocker_id = ?';
-const insertLink = 'INSERT INTO link (task_id, blocker_id) VALUES (?, ?)';
-const deleteLink = 'DELETE FROM link WHERE task_id = ? AND blocker_id = ?';
+  'INSERT INTO task_executions (task_id, actor, log_path) VALUES (?, ?, ?)';
+const setResult =
+  'UPDATE task_executions SET result_path = ? WHERE task_id = ?';
+const findLink =
+  'SELECT 1 FROM task_links WHERE task_id = ? AND blocker_id = ?';
+const insertLink = 'INSERT INTO task_links (task_id, blocker_id) VALUES (?, ?)';
+const deleteLink =
+  'DELETE FROM task_links WHERE task_id = ? AND blocker_id = ?';
 // Whether the second task is reachable from the first through open blockers.
 // A task past open has only succeeded or skipped blockers, so a path to an
 // open task never runs through one.
 const reaches = `WITH RECURSIVE reached (id) AS (
   SELECT ?
   UNION
-  SELECT link.blocker_id FROM reached
-  JOIN link ON link.task_id = reached.id
-  JOIN task ON task.id = link.blocker_id AND task.status = '${Status.open}'
+  SELECT task_links.blocker_id FROM reached
+  JOIN task_links ON task_links.task_id = reached.id
+  JOIN tasks ON tasks.id = task_links.blocker_id AND tasks.status = '${Status.open}'
 )
 SELECT 1 FROM reached WHERE id = ? LIMIT 1`;
 const addBlocker =
-  'UPDATE task SET holding_blockers = holding_blockers + 1 WHERE id = ?';
+  'UPDATE tasks SET holding_blockers = holding_blockers + 1 WHERE id = ?';
 const removeBlocker =
-  'UPDATE task SET holding_blockers = holding_blockers - 1 WHERE id = ?';
-const setStatus = 'UPDATE task SET status = ? WHERE id = ?';
+  'UPDATE tasks SET holding_blockers = holding_blockers - 1 WHERE id = ?';
+const setStatus = 'UPDATE tasks SET status = ? WHERE id = ?';
 const unblockDependents =
-  'UPDATE task SET holding_blockers = holding_blockers - 1 WHERE id IN (SELECT task_id FROM link WHERE blocker_id = ?)';
+  'UPDATE tasks SET holding_blockers = holding_blockers - 1 WHERE id IN (SELECT task_id FROM task_links WHERE blocker_id = ?)';
 
 // Thrown out of a write's transaction, so that a refusal rolls it back.
 class Refusal {
@@ -441,7 +444,7 @@ export function createGraph(client: Database): Graph {
       // assignee, then sorts only the rows it found. It scans the whole index
       // for assignees read from a JSON array, hence one parameter each.
       const rows = await client.all(
-        `SELECT id, title, kind, priority, parent_id, assignee, description, source_path, status FROM task WHERE assignee IN (${names.map(() => '?').join(', ')}) AND status = '${Status.open}' AND holding_blockers = 0 ORDER BY priority, rowid LIMIT ?`,
+        `SELECT id, title, kind, priority, parent_id, assignee, description, source_path, status FROM tasks WHERE assignee IN (${names.map(() => '?').join(', ')}) AND status = '${Status.open}' AND holding_blockers = 0 ORDER BY priority, rowid LIMIT ?`,
         ...names,
         limit,
       );

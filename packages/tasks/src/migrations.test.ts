@@ -1,6 +1,7 @@
 import { connect, type Database } from '@tursodatabase/database';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { migrate, steps } from './migrations';
+import { Status } from './status';
 
 const first = 'CREATE TABLE a (x)';
 const second = 'CREATE TABLE b (x); CREATE INDEX b_x ON b (x)';
@@ -69,13 +70,13 @@ describe('migrate', () => {
 });
 
 describe('the shipped steps', () => {
-  it('create the task, link, status change and execution tables', async () => {
+  it('create the tasks, task links, task status changes and task executions tables', async () => {
     await migrate(client, steps);
     expect(await tables()).toEqual([
-      'execution',
-      'link',
-      'status_change',
-      'task',
+      'task_executions',
+      'task_links',
+      'task_status_changes',
+      'tasks',
     ]);
     expect(await version()).toBe(steps.length);
   });
@@ -84,7 +85,7 @@ describe('the shipped steps', () => {
     await migrate(client, steps);
     expect(
       await client.all(
-        "SELECT name, \"notnull\" FROM pragma_table_info('task') WHERE name IN ('assignee', 'description', 'source_path') ORDER BY name",
+        "SELECT name, \"notnull\" FROM pragma_table_info('tasks') WHERE name IN ('assignee', 'description', 'source_path') ORDER BY name",
       ),
     ).toEqual([
       { name: 'assignee', notnull: 1 },
@@ -97,18 +98,18 @@ describe('the shipped steps', () => {
     await migrate(client, steps);
     await client.exec('PRAGMA foreign_keys = ON');
     await client.exec(
-      "INSERT INTO task (id, title, kind, priority, assignee, status) VALUES ('a', 'A', 'task', 2, 'dev', 'open'), ('b', 'B', 'task', 2, 'dev', 'open')",
+      "INSERT INTO tasks (id, title, kind, priority, assignee, status) VALUES ('a', 'A', 'task', 2, 'dev', 'open'), ('b', 'B', 'task', 2, 'dev', 'open')",
     );
-    await client.run("INSERT INTO link VALUES ('a', 'b')");
+    await client.run("INSERT INTO task_links VALUES ('a', 'b')");
     await expect(
-      client.run("INSERT INTO link VALUES ('a', 'b')"),
+      client.run("INSERT INTO task_links VALUES ('a', 'b')"),
     ).rejects.toThrow('UNIQUE constraint failed');
     await expect(
-      client.run("INSERT INTO link VALUES ('a', 'missing')"),
+      client.run("INSERT INTO task_links VALUES ('a', 'missing')"),
     ).rejects.toThrow('FOREIGN KEY constraint failed');
     expect(
       await client.run(
-        "DELETE FROM link WHERE task_id = 'a' AND blocker_id = 'b'",
+        "DELETE FROM task_links WHERE task_id = 'a' AND blocker_id = 'b'",
       ),
     ).toMatchObject({ changes: 1 });
   });
@@ -116,13 +117,75 @@ describe('the shipped steps', () => {
   it("let an execution's result path be updated", async () => {
     await migrate(client, steps);
     await client.exec(
-      "INSERT INTO task (id, title, kind, priority, assignee, status) VALUES ('a', 'A', 'task', 2, 'dev', 'running'); INSERT INTO execution (task_id, actor) VALUES ('a', 'bot')",
+      "INSERT INTO tasks (id, title, kind, priority, assignee, status) VALUES ('a', 'A', 'task', 2, 'dev', 'running'); INSERT INTO task_executions (task_id, actor) VALUES ('a', 'bot')",
     );
     await client.run(
-      "UPDATE execution SET result_path = 'out' WHERE task_id = 'a'",
+      "UPDATE task_executions SET result_path = 'out' WHERE task_id = 'a'",
     );
-    expect(await client.all('SELECT * FROM execution')).toEqual([
+    expect(await client.all('SELECT * FROM task_executions')).toEqual([
       { task_id: 'a', actor: 'bot', log_path: null, result_path: 'out' },
     ]);
+  });
+
+  describe('status checks', () => {
+    // A name that is not one of the states.
+    const unknown = 'closed';
+
+    function insertTask(id: string, status: string) {
+      return client.run(
+        "INSERT INTO tasks (id, title, kind, priority, assignee, status) VALUES (?, 'T', 'step', 0, 'bot', ?)",
+        id,
+        status,
+      );
+    }
+
+    function insertChange(from: string | null, to: string) {
+      return client.run(
+        "INSERT INTO task_status_changes (task_id, from_status, to_status, changed_by, time_changed) VALUES ('tsk_a', ?, ?, 'bot', 0)",
+        from,
+        to,
+      );
+    }
+
+    beforeEach(async () => {
+      await migrate(client, steps);
+    });
+
+    it.each(Object.values(Status))(
+      'accept %s on a task and on both sides of a change',
+      async (status) => {
+        await insertTask('tsk_a', status);
+        await insertChange(status, status);
+        expect(
+          await client.get(
+            'SELECT tasks.status, from_status, to_status FROM tasks JOIN task_status_changes ON task_id = tasks.id',
+          ),
+        ).toEqual({ status, from_status: status, to_status: status });
+      },
+    );
+
+    it('accept no status before a change, as at creation', async () => {
+      await insertTask('tsk_a', Status.open);
+      await insertChange(null, Status.open);
+      expect(
+        await client.get('SELECT from_status FROM task_status_changes'),
+      ).toEqual({ from_status: null });
+    });
+
+    it('refuse a status that is not a state, on a task and on either side of a change', async () => {
+      await expect(insertTask('tsk_a', unknown)).rejects.toThrow(
+        /CHECK constraint failed/,
+      );
+      await insertTask('tsk_a', Status.open);
+      await expect(insertChange(unknown, Status.open)).rejects.toThrow(
+        /CHECK constraint failed/,
+      );
+      await expect(insertChange(Status.open, unknown)).rejects.toThrow(
+        /CHECK constraint failed/,
+      );
+      expect(
+        await client.get('SELECT count(*) AS n FROM task_status_changes'),
+      ).toEqual({ n: 0 });
+    });
   });
 });

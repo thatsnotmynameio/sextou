@@ -82,13 +82,13 @@ describe('openTasks in memory', () => {
   it('opens a migrated, empty graph', async () => {
     await open(':memory:');
     expect(await tables(connection())).toEqual([
-      'execution',
-      'link',
-      'status_change',
-      'task',
+      'task_executions',
+      'task_links',
+      'task_status_changes',
+      'tasks',
     ]);
     expect(await pragma('user_version')).toBe(steps.length);
-    expect(await connection().get('SELECT count(*) AS n FROM task')).toEqual({
+    expect(await connection().get('SELECT count(*) AS n FROM tasks')).toEqual({
       n: 0,
     });
   });
@@ -124,10 +124,10 @@ describe('openTasks on a file', () => {
     await (await open(path)).close();
     await inspect(path, async (client) => {
       expect(await tables(client)).toEqual([
-        'execution',
-        'link',
-        'status_change',
-        'task',
+        'task_executions',
+        'task_links',
+        'task_status_changes',
+        'tasks',
       ]);
       expect(await client.get('PRAGMA user_version')).toEqual({
         user_version: steps.length,
@@ -207,7 +207,7 @@ describe('openTasks on a file', () => {
       expect(client.prepare('PRAGMA integrity_check').all()).toEqual([
         { integrity_check: 'ok' },
       ]);
-      expect(client.prepare('SELECT title, status FROM task').all()).toEqual([
+      expect(client.prepare('SELECT title, status FROM tasks').all()).toEqual([
         { title: 'A', status: Status.open },
       ]);
     } finally {

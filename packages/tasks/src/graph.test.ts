@@ -22,23 +22,26 @@ function connection() {
 
 async function counter(id: string) {
   return (
-    await connection().get('SELECT holding_blockers FROM task WHERE id = ?', id)
+    await connection().get(
+      'SELECT holding_blockers FROM tasks WHERE id = ?',
+      id,
+    )
   )?.holding_blockers;
 }
 
 async function status(id: string) {
-  return (await connection().get('SELECT status FROM task WHERE id = ?', id))
+  return (await connection().get('SELECT status FROM tasks WHERE id = ?', id))
     ?.status;
 }
 
 function links() {
   return connection().all(
-    'SELECT task_id, blocker_id FROM link ORDER BY task_id, blocker_id',
+    'SELECT task_id, blocker_id FROM task_links ORDER BY task_id, blocker_id',
   );
 }
 
 async function rows() {
-  return (await connection().get('SELECT count(*) AS n FROM task'))?.n;
+  return (await connection().get('SELECT count(*) AS n FROM tasks'))?.n;
 }
 
 async function create(
@@ -62,7 +65,7 @@ async function create(
 // The task's state changes, oldest first.
 function history(id: string) {
   return connection().all(
-    'SELECT from_status, to_status, changed_by, reason, time_changed FROM status_change WHERE task_id = ? ORDER BY id',
+    'SELECT from_status, to_status, changed_by, reason, time_changed FROM task_status_changes WHERE task_id = ? ORDER BY id',
     id,
   );
 }
@@ -70,7 +73,7 @@ function history(id: string) {
 // The task's execution, as a list of at most one row.
 function execution(id: string) {
   return connection().all(
-    'SELECT actor, log_path, result_path FROM execution WHERE task_id = ?',
+    'SELECT actor, log_path, result_path FROM task_executions WHERE task_id = ?',
     id,
   );
 }
@@ -113,6 +116,13 @@ beforeEach(async () => {
 afterEach(async () => {
   await tasks.close();
   vi.restoreAllMocks();
+});
+
+describe('Reason', () => {
+  it('gives each reason its own value', () => {
+    const values = Object.values(Reason);
+    expect(new Set(values).size).toBe(values.length);
+  });
 });
 
 describe('createTask', () => {
@@ -170,7 +180,7 @@ describe('createTask', () => {
     });
     expect(
       await connection().get(
-        'SELECT assignee, description, source_path FROM task',
+        'SELECT assignee, description, source_path FROM tasks',
       ),
     ).toEqual({
       assignee: 'dev',
@@ -249,7 +259,9 @@ describe('createTask', () => {
       await tasks.createTask({ createdBy: 'planner', ...input } as never),
     ).toEqual({ ok: false, reason: Reason.invalid });
     expect(await rows()).toBe(0);
-    expect(await connection().all('SELECT * FROM status_change')).toEqual([]);
+    expect(await connection().all('SELECT * FROM task_status_changes')).toEqual(
+      [],
+    );
   });
 
   it(`refuses a missing parent as ${Reason.notFound}, writing nothing`, async () => {
@@ -816,7 +828,7 @@ describe('listReady', () => {
     );
     // The sort covers only the rows the search found.
     expect(plan.map((row) => String(row.detail))).toEqual([
-      'SEARCH task USING INDEX task_ready (assignee=?)',
+      'SEARCH tasks USING INDEX task_ready (assignee=?)',
       'USE SORTER FOR ORDER BY',
     ]);
   });
@@ -968,7 +980,7 @@ describe('an error from SQLite', () => {
     const b = await create('B');
     // Fails the link's insert, after the counter has moved.
     await connection().exec(
-      "CREATE TRIGGER fail BEFORE INSERT ON link BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END",
+      "CREATE TRIGGER fail BEFORE INSERT ON task_links BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END",
     );
     await expect(link(b, a)).rejects.toThrow('disk I/O error');
     expect(await counter(b)).toBe(0);
@@ -983,7 +995,7 @@ describe('an error from SQLite', () => {
     const a = await create('A');
     // Fails the execution's insert, after the status and the change.
     await connection().exec(
-      "CREATE TRIGGER fail BEFORE INSERT ON execution BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END",
+      "CREATE TRIGGER fail BEFORE INSERT ON task_executions BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END",
     );
     await expect(start(a)).rejects.toThrow('disk I/O error');
     expect(await status(a)).toBe(Status.open);
@@ -998,7 +1010,7 @@ describe('an error from SQLite', () => {
     await start(a);
     // Fails the result's update, after the status and the change.
     await connection().exec(
-      "CREATE TRIGGER fail BEFORE UPDATE ON execution BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END",
+      "CREATE TRIGGER fail BEFORE UPDATE ON task_executions BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END",
     );
     await expect(
       tasks.finishTask({
@@ -1030,7 +1042,7 @@ describe('the graph after random operations', () => {
   it('keeps every counter equal to the holding blockers, no task past open held by one, and every change recorded', async () => {
     const next = random(42);
     const pick = <T>(items: T[]) => items[Math.floor(next() * items.length)];
-    const running = `SELECT id FROM task WHERE status = '${Status.running}'`;
+    const running = `SELECT id FROM tasks WHERE status = '${Status.running}'`;
     const ids = [await create('T0')];
     for (let step = 0; step < 400; step++) {
       const roll = next();
@@ -1054,31 +1066,31 @@ describe('the graph after random operations', () => {
 
     const holding = `blocker.status IN ('${Status.open}', '${Status.running}', '${Status.failed}')`;
     const drift = await connection().all(
-      `SELECT task.id FROM task WHERE task.status = '${Status.open}' AND task.holding_blockers <> (
-          SELECT count(*) FROM link JOIN task AS blocker ON blocker.id = link.blocker_id
-          WHERE link.task_id = task.id AND ${holding})`,
+      `SELECT tasks.id FROM tasks WHERE tasks.status = '${Status.open}' AND tasks.holding_blockers <> (
+          SELECT count(*) FROM task_links JOIN tasks AS blocker ON blocker.id = task_links.blocker_id
+          WHERE task_links.task_id = tasks.id AND ${holding})`,
     );
     const heldPastOpen = await connection().all(
-      `SELECT link.task_id FROM link
-        JOIN task ON task.id = link.task_id
-        JOIN task AS blocker ON blocker.id = link.blocker_id
-        WHERE task.status <> '${Status.open}' AND ${holding}`,
+      `SELECT task_links.task_id FROM task_links
+        JOIN tasks ON tasks.id = task_links.task_id
+        JOIN tasks AS blocker ON blocker.id = task_links.blocker_id
+        WHERE tasks.status <> '${Status.open}' AND ${holding}`,
     );
     const counts = Object.fromEntries(
       (
         await connection().all(
-          'SELECT status, count(*) AS n FROM task GROUP BY status',
+          'SELECT status, count(*) AS n FROM tasks GROUP BY status',
         )
       ).map((row) => [row.status, row.n]),
     );
     // A task whose last change doesn't end in its state, or whose executions
     // don't match it: one once started, none before.
     const unrecorded = await connection().all(
-      `SELECT task.id FROM task WHERE task.status IS NOT (
-          SELECT to_status FROM status_change WHERE task_id = task.id
+      `SELECT tasks.id FROM tasks WHERE tasks.status IS NOT (
+          SELECT to_status FROM task_status_changes WHERE task_id = tasks.id
           ORDER BY id DESC LIMIT 1)
-        OR (SELECT count(*) FROM execution WHERE task_id = task.id)
-          <> (task.status <> '${Status.open}')`,
+        OR (SELECT count(*) FROM task_executions WHERE task_id = tasks.id)
+          <> (tasks.status <> '${Status.open}')`,
     );
     expect(drift).toEqual([]);
     expect(heldPastOpen).toEqual([]);
