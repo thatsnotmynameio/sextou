@@ -39,10 +39,15 @@ async function startServer(database: string): Promise<string> {
   throw new Error('The server exited before listening');
 }
 
+// A real server's first answer, which opens its database, can take longer
+// than Testing Library's one second: wait as long as the request may.
+const requestTimeoutMs = 10_000;
+const wait = { timeout: requestTimeoutMs };
+
 function renderHome(serverUrl: string) {
   const router = createAppRouter({
     serverUrl,
-    requestTimeoutMs: 10_000,
+    requestTimeoutMs,
     history: createMemoryHistory({ initialEntries: ['/'] }),
   });
   render(<RouterProvider router={router} />);
@@ -67,7 +72,7 @@ afterEach(async () => {
 test('the health page shows the server’s version and its database up', async () => {
   renderHome(await startServer(':memory:'));
 
-  expect(await screen.findByText(version)).toBeInTheDocument();
+  expect(await screen.findByText(version, {}, wait)).toBeInTheDocument();
   expect(screen.getByText('up')).toBeInTheDocument();
 });
 
@@ -76,7 +81,7 @@ test('the health page shows the database down when the server can’t open it', 
   writeFileSync(join(dir, 'file'), '');
   renderHome(await startServer(join(dir, 'file', 'sextou.db')));
 
-  expect(await screen.findByText(version)).toBeInTheDocument();
+  expect(await screen.findByText(version, {}, wait)).toBeInTheDocument();
   expect(screen.getByText('down')).toBeInTheDocument();
 });
 
@@ -89,7 +94,7 @@ test('the health page says the server can’t be reached once it stops', async (
 
   renderHome(url);
 
-  expect(await screen.findByRole('alert')).toHaveTextContent(
+  expect(await screen.findByRole('alert', {}, wait)).toHaveTextContent(
     'The server can’t be reached.',
   );
 });
