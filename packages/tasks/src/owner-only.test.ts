@@ -27,23 +27,25 @@ afterEach(() => {
 
 // File modes mean nothing on Windows, where the profile's permissions apply.
 describe.skipIf(process.platform === 'win32')('restrictToOwner', () => {
-  it('creates a missing folder and an empty file for their owner only', () => {
+  it('creates a missing folder, an empty file and its sidecar for their owner only', () => {
     const path = join(dir, 'missing', 'graph.db');
     restrictToOwner(path);
     expect(mode(join(dir, 'missing'))).toBe(0o700);
-    expect(mode(path)).toBe(0o600);
-    expect(readFileSync(path, 'utf8')).toBe('');
+    for (const file of [path, `${path}-wal`]) {
+      expect(mode(file)).toBe(0o600);
+      expect(readFileSync(file, 'utf8')).toBe('');
+    }
   });
 
-  // A crash leaves the sidecars behind, with whatever mode they had.
-  it('makes an existing file and its sidecars owner-only, keeping their bytes', () => {
+  // A crash leaves the sidecar behind, with whatever mode it had.
+  it('makes an existing file and its sidecar owner-only, keeping their bytes', () => {
     const path = join(dir, 'graph.db');
-    for (const file of [path, `${path}-wal`, `${path}-shm`]) {
+    for (const file of [path, `${path}-wal`]) {
       writeFileSync(file, 'kept');
       chmodSync(file, 0o644);
     }
     restrictToOwner(path);
-    for (const file of [path, `${path}-wal`, `${path}-shm`]) {
+    for (const file of [path, `${path}-wal`]) {
       expect(mode(file)).toBe(0o600);
       expect(readFileSync(file, 'utf8')).toBe('kept');
     }

@@ -1,4 +1,4 @@
-import { DatabaseSync, type StatementSync } from 'node:sqlite';
+import { Database } from '@tursodatabase/database';
 import {
   afterEach,
   beforeEach,
@@ -13,43 +13,41 @@ import { openTasks, type Tasks } from './open-tasks';
 import { type FinalStatus, finalStatuses, Status } from './status';
 
 let tasks: Tasks;
-let prepare: MockInstance<DatabaseSync['prepare']>;
+let exec: MockInstance<Database['exec']>;
 
 // The connection openTasks opened, to read what the graph stored.
 function connection() {
-  return prepare.mock.contexts[0] as DatabaseSync;
+  return exec.mock.contexts[0] as Database;
 }
 
-function counter(id: string) {
-  return connection()
-    .prepare('SELECT holding_blockers FROM task WHERE id = ?')
-    .get(id)?.holding_blockers;
+async function counter(id: string) {
+  return (
+    await connection().get('SELECT holding_blockers FROM task WHERE id = ?', id)
+  )?.holding_blockers;
 }
 
-function status(id: string) {
-  return connection().prepare('SELECT status FROM task WHERE id = ?').get(id)
+async function status(id: string) {
+  return (await connection().get('SELECT status FROM task WHERE id = ?', id))
     ?.status;
 }
 
 function links() {
-  return connection()
-    .prepare(
-      'SELECT task_id, blocker_id FROM link ORDER BY task_id, blocker_id',
-    )
-    .all();
+  return connection().all(
+    'SELECT task_id, blocker_id FROM link ORDER BY task_id, blocker_id',
+  );
 }
 
-function rows() {
-  return connection().prepare('SELECT count(*) AS n FROM task').get()?.n;
+async function rows() {
+  return (await connection().get('SELECT count(*) AS n FROM task'))?.n;
 }
 
-function create(
+async function create(
   title: string,
   priority = 2,
   parentId?: string,
   assignee = 'dev',
 ) {
-  const result = tasks.createTask({
+  const result = await tasks.createTask({
     title,
     kind: 'task',
     priority,
@@ -63,20 +61,18 @@ function create(
 
 // The task's state changes, oldest first.
 function history(id: string) {
-  return connection()
-    .prepare(
-      'SELECT from_status, to_status, changed_by, reason, time_changed FROM status_change WHERE task_id = ? ORDER BY id',
-    )
-    .all(id);
+  return connection().all(
+    'SELECT from_status, to_status, changed_by, reason, time_changed FROM status_change WHERE task_id = ? ORDER BY id',
+    id,
+  );
 }
 
 // The task's execution, as a list of at most one row.
 function execution(id: string) {
-  return connection()
-    .prepare(
-      'SELECT actor, log_path, result_path FROM execution WHERE task_id = ?',
-    )
-    .all(id);
+  return connection().all(
+    'SELECT actor, log_path, result_path FROM execution WHERE task_id = ?',
+    id,
+  );
 }
 
 function link(taskId: string, blockerId: string) {
@@ -96,33 +92,33 @@ function finish(id: string, status: FinalStatus) {
 }
 
 // Starts a ready open task and, for a final state, finishes it.
-function moveTo(id: string, to: Status) {
+async function moveTo(id: string, to: Status) {
   if (to === Status.open) return;
-  if (!start(id).ok) throw new Error(`start ${id}`);
-  if (to !== Status.running && !finish(id, to).ok)
+  if (!(await start(id)).ok) throw new Error(`start ${id}`);
+  if (to !== Status.running && !(await finish(id, to)).ok)
     throw new Error(`finish ${id}`);
 }
 
-function ready(limit = 100, assignees = ['dev']) {
-  const result = tasks.listReady({ assignees, limit });
+async function ready(limit = 100, assignees = ['dev']) {
+  const result = await tasks.listReady({ assignees, limit });
   if (!result.ok) throw new Error(`ready: ${result.reason}`);
   return result.tasks.map((task) => task.title);
 }
 
-beforeEach(() => {
-  prepare = vi.spyOn(DatabaseSync.prototype, 'prepare');
-  tasks = openTasks(':memory:');
+beforeEach(async () => {
+  exec = vi.spyOn(Database.prototype, 'exec');
+  tasks = await openTasks(':memory:');
 });
 
-afterEach(() => {
-  tasks.close();
+afterEach(async () => {
+  await tasks.close();
   vi.restoreAllMocks();
 });
 
 describe('createTask', () => {
-  it('creates an open task that is ready, recording who created it and when', () => {
+  it('creates an open task that is ready, recording who created it and when', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
-    const result = tasks.createTask({
+    const result = await tasks.createTask({
       title: '  Write the parser ',
       kind: ' task ',
       priority: 2,
@@ -143,8 +139,8 @@ describe('createTask', () => {
         status: Status.open,
       },
     });
-    expect(ready()).toEqual(['Write the parser']);
-    expect(history(result.ok ? result.task.id : '')).toEqual([
+    expect(await ready()).toEqual(['Write the parser']);
+    expect(await history(result.ok ? result.task.id : '')).toEqual([
       {
         from_status: null,
         to_status: Status.open,
@@ -155,8 +151,8 @@ describe('createTask', () => {
     ]);
   });
 
-  it('keeps the description and source path, trimmed at the ends only', () => {
-    const result = tasks.createTask({
+  it('keeps the description and source path, trimmed at the ends only', async () => {
+    const result = await tasks.createTask({
       title: 'A',
       kind: 'task',
       priority: 2,
@@ -173,9 +169,9 @@ describe('createTask', () => {
       },
     });
     expect(
-      connection()
-        .prepare('SELECT assignee, description, source_path FROM task')
-        .get(),
+      await connection().get(
+        'SELECT assignee, description, source_path FROM task',
+      ),
     ).toEqual({
       assignee: 'dev',
       description: 'Parse the input.\n\nThen print it.',
@@ -183,8 +179,8 @@ describe('createTask', () => {
     });
   });
 
-  it('stores a file path as the source path, as given', () => {
-    const result = tasks.createTask({
+  it('stores a file path as the source path, as given', async () => {
+    const result = await tasks.createTask({
       title: 'A',
       kind: 'task',
       priority: 2,
@@ -198,8 +194,8 @@ describe('createTask', () => {
     });
   });
 
-  it('stores a blank description or source path as null', () => {
-    const blankDescription = tasks.createTask({
+  it('stores a blank description or source path as null', async () => {
+    const blankDescription = await tasks.createTask({
       title: 'A',
       kind: 'task',
       priority: 2,
@@ -207,7 +203,7 @@ describe('createTask', () => {
       createdBy: 'planner',
       description: '   ',
     });
-    const blankSource = tasks.createTask({
+    const blankSource = await tasks.createTask({
       title: 'B',
       kind: 'task',
       priority: 2,
@@ -248,19 +244,17 @@ describe('createTask', () => {
       assignee: 'dev',
       createdBy: undefined,
     },
-  ])(`refuses %j as ${Reason.invalid}, writing nothing`, (input) => {
+  ])(`refuses %j as ${Reason.invalid}, writing nothing`, async (input) => {
     expect(
-      tasks.createTask({ createdBy: 'planner', ...input } as never),
+      await tasks.createTask({ createdBy: 'planner', ...input } as never),
     ).toEqual({ ok: false, reason: Reason.invalid });
-    expect(rows()).toBe(0);
-    expect(connection().prepare('SELECT * FROM status_change').all()).toEqual(
-      [],
-    );
+    expect(await rows()).toBe(0);
+    expect(await connection().all('SELECT * FROM status_change')).toEqual([]);
   });
 
-  it(`refuses a missing parent as ${Reason.notFound}, writing nothing`, () => {
+  it(`refuses a missing parent as ${Reason.notFound}, writing nothing`, async () => {
     expect(
-      tasks.createTask({
+      await tasks.createTask({
         title: 'A',
         kind: 'task',
         priority: 2,
@@ -269,13 +263,13 @@ describe('createTask', () => {
         createdBy: 'planner',
       }),
     ).toEqual({ ok: false, reason: Reason.notFound });
-    expect(ready()).toEqual([]);
+    expect(await ready()).toEqual([]);
   });
 
-  it('accepts a child of a finished parent', () => {
-    const parent = create('Parent');
-    moveTo(parent, Status.failed);
-    const result = tasks.createTask({
+  it('accepts a child of a finished parent', async () => {
+    const parent = await create('Parent');
+    await moveTo(parent, Status.failed);
+    const result = await tasks.createTask({
       title: 'Child',
       kind: 'task',
       priority: 2,
@@ -286,8 +280,8 @@ describe('createTask', () => {
     expect(result).toMatchObject({ ok: true, task: { parentId: parent } });
   });
 
-  it('accepts any label as the kind', () => {
-    const result = tasks.createTask({
+  it('accepts any label as the kind', async () => {
+    const result = await tasks.createTask({
       title: 'A',
       kind: 'initiative',
       priority: 0,
@@ -298,83 +292,93 @@ describe('createTask', () => {
   });
 
   // Covers AE6: a parent only organizes.
-  it('keeps a parent and its open children ready when nothing links them', () => {
-    const issue = create('Issue');
-    create('Child 1', 2, issue);
-    create('Child 2', 2, issue);
-    expect(ready()).toEqual(['Issue', 'Child 1', 'Child 2']);
+  it('keeps a parent and its open children ready when nothing links them', async () => {
+    const issue = await create('Issue');
+    await create('Child 1', 2, issue);
+    await create('Child 2', 2, issue);
+    expect(await ready()).toEqual(['Issue', 'Child 1', 'Child 2']);
   });
 
-  it('gives a thousand tasks a thousand distinct ids', () => {
-    const ids = Array.from({ length: 1000 }, (_, n) => create(`T${n}`));
+  it('gives a thousand tasks a thousand distinct ids', async () => {
+    const ids: string[] = [];
+    for (let n = 0; n < 1000; n++) ids.push(await create(`T${n}`));
     expect(new Set(ids).size).toBe(1000);
     for (const id of ids) expect(id).toMatch(/^tsk_/);
   });
 });
 
 describe('link', () => {
-  it('takes a task blocked by an open task out of the ready list', () => {
-    const a = create('A');
-    const b = create('B');
-    expect(link(b, a)).toEqual({ ok: true });
-    expect(ready()).toEqual(['A']);
-    expect(counter(b)).toBe(1);
+  it('takes a task blocked by an open task out of the ready list', async () => {
+    const a = await create('A');
+    const b = await create('B');
+    expect(await link(b, a)).toEqual({ ok: true });
+    expect(await ready()).toEqual(['A']);
+    expect(await counter(b)).toBe(1);
   });
 
   // Covers AE1.
-  it('refuses a link that closes a cycle, leaving links and counters', () => {
-    const a = create('A');
-    const b = create('B');
-    const c = create('C');
-    link(b, a);
-    link(c, b);
-    expect(link(a, c)).toEqual({ ok: false, reason: Reason.cycle });
-    expect(links()).toHaveLength(2);
-    expect(links()).toEqual(
+  it('refuses a link that closes a cycle, leaving links and counters', async () => {
+    const a = await create('A');
+    const b = await create('B');
+    const c = await create('C');
+    await link(b, a);
+    await link(c, b);
+    expect(await link(a, c)).toEqual({ ok: false, reason: Reason.cycle });
+    expect(connection().inTransaction).toBe(false);
+    expect(await links()).toHaveLength(2);
+    expect(await links()).toEqual(
       expect.arrayContaining([
         { task_id: b, blocker_id: a },
         { task_id: c, blocker_id: b },
       ]),
     );
-    expect([counter(a), counter(b), counter(c)]).toEqual([0, 1, 1]);
+    expect([await counter(a), await counter(b), await counter(c)]).toEqual([
+      0, 1, 1,
+    ]);
   });
 
-  it(`refuses a task blocked by itself as ${Reason.sameTask}`, () => {
-    const a = create('A');
-    expect(link(a, a)).toEqual({ ok: false, reason: Reason.sameTask });
-    expect(links()).toEqual([]);
+  it(`refuses a task blocked by itself as ${Reason.sameTask}`, async () => {
+    const a = await create('A');
+    expect(await link(a, a)).toEqual({ ok: false, reason: Reason.sameTask });
+    expect(await links()).toEqual([]);
   });
 
-  it(`refuses a missing task on either side as ${Reason.notFound}`, () => {
-    const a = create('A');
-    expect(link(a, 'tsk_missing')).toEqual({
+  it(`refuses a missing task on either side as ${Reason.notFound}`, async () => {
+    const a = await create('A');
+    expect(await link(a, 'tsk_missing')).toEqual({
       ok: false,
       reason: Reason.notFound,
     });
-    expect(link('tsk_missing', a)).toEqual({
+    expect(await link('tsk_missing', a)).toEqual({
       ok: false,
       reason: Reason.notFound,
     });
-    expect(links()).toEqual([]);
+    expect(await links()).toEqual([]);
   });
 
-  it(`refuses an id that is not a string as ${Reason.invalid}`, () => {
-    const a = create('A');
-    expect(link(a, 7 as never)).toEqual({ ok: false, reason: Reason.invalid });
-    expect(link(7 as never, a)).toEqual({ ok: false, reason: Reason.invalid });
+  it(`refuses an id that is not a string as ${Reason.invalid}`, async () => {
+    const a = await create('A');
+    expect(await link(a, 7 as never)).toEqual({
+      ok: false,
+      reason: Reason.invalid,
+    });
+    expect(await link(7 as never, a)).toEqual({
+      ok: false,
+      reason: Reason.invalid,
+    });
   });
 
-  it('changes nothing for a pair already linked, even once both finished', () => {
-    const a = create('A');
-    const b = create('B');
-    link(b, a);
-    expect(link(b, a)).toEqual({ ok: true });
-    expect(counter(b)).toBe(1);
-    moveTo(a, Status.succeeded);
-    moveTo(b, Status.succeeded);
-    expect(link(b, a)).toEqual({ ok: true });
-    expect(counter(b)).toBe(0);
-    expect(links()).toEqual([{ task_id: b, blocker_id: a }]);
+  it('changes nothing for a pair already linked, even once both finished', async () => {
+    const a = await create('A');
+    const b = await create('B');
+    await link(b, a);
+    expect(await link(b, a)).toEqual({ ok: true });
+    expect(await counter(b)).toBe(1);
+    await moveTo(a, Status.succeeded);
+    await moveTo(b, Status.succeeded);
+    expect(await link(b, a)).toEqual({ ok: true });
+    expect(await counter(b)).toBe(0);
+    expect(await links()).toEqual([{ task_id: b, blocker_id: a }]);
   });
 
   it.each<Status>([
@@ -382,84 +386,84 @@ describe('link', () => {
     Status.succeeded,
     Status.failed,
     Status.skipped,
-  ])(`refuses a %s task as ${Reason.notOpen}`, (to) => {
-    const a = create('A');
-    const b = create('B');
-    moveTo(b, to);
-    expect(link(b, a)).toEqual({ ok: false, reason: Reason.notOpen });
-    expect(links()).toEqual([]);
+  ])(`refuses a %s task as ${Reason.notOpen}`, async (to) => {
+    const a = await create('A');
+    const b = await create('B');
+    await moveTo(b, to);
+    expect(await link(b, a)).toEqual({ ok: false, reason: Reason.notOpen });
+    expect(await links()).toEqual([]);
   });
 
   // Covers AE7.
   it.each<Status>([Status.succeeded, Status.skipped])(
     'links to a %s blocker without holding the task',
-    (to) => {
-      const a = create('A');
-      const b = create('B');
-      moveTo(b, to);
-      expect(link(a, b)).toEqual({ ok: true });
-      expect(counter(a)).toBe(0);
-      expect(ready()).toEqual(['A']);
+    async (to) => {
+      const a = await create('A');
+      const b = await create('B');
+      await moveTo(b, to);
+      expect(await link(a, b)).toEqual({ ok: true });
+      expect(await counter(a)).toBe(0);
+      expect(await ready()).toEqual(['A']);
     },
   );
 
   // Covers AE7.
   it.each<Status>([Status.open, Status.running, Status.failed])(
     'links to a %s blocker, which holds the task',
-    (to) => {
-      const a = create('A');
-      const b = create('B');
-      moveTo(b, to);
-      expect(link(a, b)).toEqual({ ok: true });
-      expect(counter(a)).toBe(1);
-      expect(ready()).not.toContain('A');
+    async (to) => {
+      const a = await create('A');
+      const b = await create('B');
+      await moveTo(b, to);
+      expect(await link(a, b)).toEqual({ ok: true });
+      expect(await counter(a)).toBe(1);
+      expect(await ready()).not.toContain('A');
     },
   );
 });
 
 describe('unlink', () => {
-  it('makes a task ready once its only open blocker is unlinked', () => {
-    const a = create('A');
-    const b = create('B');
-    link(b, a);
-    expect(unlink(b, a)).toEqual({ ok: true });
-    expect(counter(b)).toBe(0);
-    expect(ready()).toEqual(['A', 'B']);
+  it('makes a task ready once its only open blocker is unlinked', async () => {
+    const a = await create('A');
+    const b = await create('B');
+    await link(b, a);
+    expect(await unlink(b, a)).toEqual({ ok: true });
+    expect(await counter(b)).toBe(0);
+    expect(await ready()).toEqual(['A', 'B']);
   });
 
-  it('changes nothing for a pair that is not linked', () => {
-    const a = create('A');
-    const b = create('B');
-    const c = create('C');
-    link(b, a);
-    expect(unlink(b, c)).toEqual({ ok: true });
-    expect(counter(b)).toBe(1);
+  it('changes nothing for a pair that is not linked', async () => {
+    const a = await create('A');
+    const b = await create('B');
+    const c = await create('C');
+    await link(b, a);
+    expect(await unlink(b, c)).toEqual({ ok: true });
+    expect(await counter(b)).toBe(1);
   });
 
   it.each<Status>([Status.succeeded, Status.skipped])(
     'unlinks a %s blocker without moving the counter',
-    (to) => {
-      const a = create('A');
-      const b = create('B');
-      const c = create('C');
-      link(c, a);
-      link(c, b);
-      moveTo(a, to);
-      expect(unlink(c, a)).toEqual({ ok: true });
-      expect(counter(c)).toBe(1);
+    async (to) => {
+      const a = await create('A');
+      const b = await create('B');
+      const c = await create('C');
+      await link(c, a);
+      await link(c, b);
+      await moveTo(a, to);
+      expect(await unlink(c, a)).toEqual({ ok: true });
+      expect(await counter(c)).toBe(1);
     },
   );
 
   it.each<Status>([Status.running, Status.failed])(
     'makes a task ready once its %s blocker is unlinked',
-    (to) => {
-      const a = create('A');
-      const b = create('B');
-      link(b, a);
-      moveTo(a, to);
-      expect(unlink(b, a)).toEqual({ ok: true });
-      expect(counter(b)).toBe(0);
-      expect(ready()).toEqual(['B']);
+    async (to) => {
+      const a = await create('A');
+      const b = await create('B');
+      await link(b, a);
+      await moveTo(a, to);
+      expect(await unlink(b, a)).toEqual({ ok: true });
+      expect(await counter(b)).toBe(0);
+      expect(await ready()).toEqual(['B']);
     },
   );
 
@@ -468,23 +472,23 @@ describe('unlink', () => {
     Status.succeeded,
     Status.failed,
     Status.skipped,
-  ])(`refuses a %s task as ${Reason.notOpen}, keeping the link`, (to) => {
-    const a = create('A');
-    const b = create('B');
-    link(b, a);
-    moveTo(a, Status.succeeded);
-    moveTo(b, to);
-    expect(unlink(b, a)).toEqual({ ok: false, reason: Reason.notOpen });
-    expect(links()).toEqual([{ task_id: b, blocker_id: a }]);
+  ])(`refuses a %s task as ${Reason.notOpen}, keeping the link`, async (to) => {
+    const a = await create('A');
+    const b = await create('B');
+    await link(b, a);
+    await moveTo(a, Status.succeeded);
+    await moveTo(b, to);
+    expect(await unlink(b, a)).toEqual({ ok: false, reason: Reason.notOpen });
+    expect(await links()).toEqual([{ task_id: b, blocker_id: a }]);
   });
 
-  it(`refuses a missing task as ${Reason.notFound} and a non-string id as ${Reason.invalid}`, () => {
-    const a = create('A');
-    expect(unlink(a, 'tsk_missing')).toEqual({
+  it(`refuses a missing task as ${Reason.notFound} and a non-string id as ${Reason.invalid}`, async () => {
+    const a = await create('A');
+    expect(await unlink(a, 'tsk_missing')).toEqual({
       ok: false,
       reason: Reason.notFound,
     });
-    expect(unlink(a, null as never)).toEqual({
+    expect(await unlink(a, null as never)).toEqual({
       ok: false,
       reason: Reason.invalid,
     });
@@ -492,45 +496,58 @@ describe('unlink', () => {
 });
 
 describe('startTask', () => {
-  it('moves a ready task to running, out of the ready list', () => {
-    const a = create('A');
-    expect(start(a)).toEqual({ ok: true });
-    expect(status(a)).toBe(Status.running);
-    expect(ready()).toEqual([]);
+  it('moves a ready task to running, out of the ready list', async () => {
+    const a = await create('A');
+    expect(await start(a)).toEqual({ ok: true });
+    expect(await status(a)).toBe(Status.running);
+    expect(await ready()).toEqual([]);
   });
 
   // Covers AE3.
   it.each<Status>([Status.open, Status.running, Status.failed])(
     `refuses a task with a %s blocker as ${Reason.blocked}, which stays open`,
-    (to) => {
-      const a = create('A');
-      const b = create('B');
-      link(b, a);
-      moveTo(a, to);
-      expect(start(b)).toEqual({ ok: false, reason: Reason.blocked });
-      expect(status(b)).toBe(Status.open);
-      expect(history(b)).toHaveLength(1);
-      expect(execution(b)).toEqual([]);
+    async (to) => {
+      const a = await create('A');
+      const b = await create('B');
+      await link(b, a);
+      await moveTo(a, to);
+      expect(await start(b)).toEqual({ ok: false, reason: Reason.blocked });
+      expect(await status(b)).toBe(Status.open);
+      expect(await history(b)).toHaveLength(1);
+      expect(await execution(b)).toEqual([]);
     },
   );
 
   // Covers AE4.
-  it(`refuses a task already started as ${Reason.notOpen}`, () => {
-    const a = create('A');
-    expect(start(a)).toEqual({ ok: true });
-    expect(start(a)).toEqual({ ok: false, reason: Reason.notOpen });
-    expect(status(a)).toBe(Status.running);
-    expect(history(a)).toHaveLength(2);
-    expect(execution(a)).toHaveLength(1);
+  it(`refuses a task already started as ${Reason.notOpen}`, async () => {
+    const a = await create('A');
+    expect(await start(a)).toEqual({ ok: true });
+    expect(await start(a)).toEqual({ ok: false, reason: Reason.notOpen });
+    expect(await status(a)).toBe(Status.running);
+    expect(await history(a)).toHaveLength(2);
+    expect(await execution(a)).toHaveLength(1);
+  });
+
+  it('starts a task once when two starts run at once', async () => {
+    const a = await create('A');
+    const results = await Promise.all([start(a), start(a)]);
+    expect(results).toEqual(
+      expect.arrayContaining([
+        { ok: true },
+        { ok: false, reason: Reason.notOpen },
+      ]),
+    );
+    expect(await execution(a)).toHaveLength(1);
+    expect(await history(a)).toHaveLength(2);
   });
 
   it.each<Status>([Status.succeeded, Status.failed, Status.skipped])(
     `refuses a %s task as ${Reason.notOpen}`,
-    (to) => {
-      const a = create('A');
-      moveTo(a, to);
-      expect(start(a)).toEqual({ ok: false, reason: Reason.notOpen });
-      expect(status(a)).toBe(to);
+    async (to) => {
+      const a = await create('A');
+      await moveTo(a, to);
+      expect(await start(a)).toEqual({ ok: false, reason: Reason.notOpen });
+      expect(await status(a)).toBe(to);
     },
   );
 
@@ -544,23 +561,23 @@ describe('startTask', () => {
     { changedBy: 'orchestrator', actor: 7 },
     { changedBy: 'orchestrator' },
     { changedBy: 'orchestrator', actor: 'bot', logPath: 7 },
-  ])(`refuses %j as ${Reason.invalid}, writing nothing`, (input) => {
-    const a = create('A');
-    expect(tasks.startTask({ id: a, ...input } as never)).toEqual({
+  ])(`refuses %j as ${Reason.invalid}, writing nothing`, async (input) => {
+    const a = await create('A');
+    expect(await tasks.startTask({ id: a, ...input } as never)).toEqual({
       ok: false,
       reason: Reason.invalid,
     });
-    expect(status(a)).toBe(Status.open);
-    expect(history(a)).toHaveLength(1);
-    expect(execution(a)).toEqual([]);
+    expect(await status(a)).toBe(Status.open);
+    expect(await history(a)).toHaveLength(1);
+    expect(await execution(a)).toEqual([]);
   });
 
-  it(`refuses a missing task as ${Reason.notFound} and a non-string id as ${Reason.invalid}`, () => {
-    expect(start('tsk_missing')).toEqual({
+  it(`refuses a missing task as ${Reason.notFound} and a non-string id as ${Reason.invalid}`, async () => {
+    expect(await start('tsk_missing')).toEqual({
       ok: false,
       reason: Reason.notFound,
     });
-    expect(start(undefined as never)).toEqual({
+    expect(await start(undefined as never)).toEqual({
       ok: false,
       reason: Reason.invalid,
     });
@@ -571,69 +588,75 @@ describe('finishTask', () => {
   // Covers AE1.
   it.each<FinalStatus>([Status.succeeded, Status.skipped])(
     'frees the tasks it blocks when it finishes as %s',
-    (to) => {
-      const a = create('A');
-      const b = create('B');
-      const c = create('C');
-      link(c, a);
-      link(c, b);
-      start(a);
-      expect(finish(a, to)).toEqual({ ok: true });
-      expect(status(a)).toBe(to);
-      expect(ready()).toEqual(['B']);
-      moveTo(b, to);
-      expect(ready()).toEqual(['C']);
+    async (to) => {
+      const a = await create('A');
+      const b = await create('B');
+      const c = await create('C');
+      await link(c, a);
+      await link(c, b);
+      await start(a);
+      expect(await finish(a, to)).toEqual({ ok: true });
+      expect(await status(a)).toBe(to);
+      expect(await ready()).toEqual(['B']);
+      await moveTo(b, to);
+      expect(await ready()).toEqual(['C']);
     },
   );
 
   // Covers AE2.
-  it('keeps the tasks it blocks waiting when it fails, until unlinked', () => {
-    const a = create('A');
-    const b = create('B');
-    link(b, a);
-    start(a);
-    expect(finish(a, Status.failed)).toEqual({ ok: true });
-    expect(status(a)).toBe(Status.failed);
-    expect(status(b)).toBe(Status.open);
-    expect(counter(b)).toBe(1);
-    expect(ready()).toEqual([]);
-    unlink(b, a);
-    expect(ready()).toEqual(['B']);
+  it('keeps the tasks it blocks waiting when it fails, until unlinked', async () => {
+    const a = await create('A');
+    const b = await create('B');
+    await link(b, a);
+    await start(a);
+    expect(await finish(a, Status.failed)).toEqual({ ok: true });
+    expect(await status(a)).toBe(Status.failed);
+    expect(await status(b)).toBe(Status.open);
+    expect(await counter(b)).toBe(1);
+    expect(await ready()).toEqual([]);
+    await unlink(b, a);
+    expect(await ready()).toEqual(['B']);
   });
 
   // Covers AE5.
   it.each(finalStatuses)(
     `refuses to finish an open task as %s, as ${Reason.notRunning}`,
-    (to) => {
-      const a = create('A');
-      expect(finish(a, to)).toEqual({ ok: false, reason: Reason.notRunning });
-      expect(status(a)).toBe(Status.open);
+    async (to) => {
+      const a = await create('A');
+      expect(await finish(a, to)).toEqual({
+        ok: false,
+        reason: Reason.notRunning,
+      });
+      expect(await status(a)).toBe(Status.open);
     },
   );
 
   // Covers AE6.
-  it('refuses to finish a finished task again, in any state', () => {
-    const a = create('A');
-    const b = create('B');
-    link(b, a);
-    moveTo(a, Status.succeeded);
+  it('refuses to finish a finished task again, in any state', async () => {
+    const a = await create('A');
+    const b = await create('B');
+    await link(b, a);
+    await moveTo(a, Status.succeeded);
     for (const to of finalStatuses) {
-      expect(finish(a, to)).toEqual({ ok: false, reason: Reason.notRunning });
+      expect(await finish(a, to)).toEqual({
+        ok: false,
+        reason: Reason.notRunning,
+      });
     }
-    expect(status(a)).toBe(Status.succeeded);
-    expect(counter(b)).toBe(0);
+    expect(await status(a)).toBe(Status.succeeded);
+    expect(await counter(b)).toBe(0);
   });
 
   it.each([Status.open, Status.running, 'closed', undefined, 7])(
     `refuses %j as the final state as ${Reason.invalid}`,
-    (to) => {
-      const a = create('A');
-      start(a);
-      expect(finish(a, to as never)).toEqual({
+    async (to) => {
+      const a = await create('A');
+      await start(a);
+      expect(await finish(a, to as never)).toEqual({
         ok: false,
         reason: Reason.invalid,
       });
-      expect(status(a)).toBe(Status.running);
+      expect(await status(a)).toBe(Status.running);
     },
   );
 
@@ -644,25 +667,29 @@ describe('finishTask', () => {
     {},
     { changedBy: 'bot-dev-1', reason: 7 },
     { changedBy: 'bot-dev-1', resultPath: 7 },
-  ])(`refuses %j as ${Reason.invalid}, writing nothing`, (input) => {
-    const a = create('A');
-    start(a);
+  ])(`refuses %j as ${Reason.invalid}, writing nothing`, async (input) => {
+    const a = await create('A');
+    await start(a);
     expect(
-      tasks.finishTask({ id: a, status: Status.succeeded, ...input } as never),
+      await tasks.finishTask({
+        id: a,
+        status: Status.succeeded,
+        ...input,
+      } as never),
     ).toEqual({ ok: false, reason: Reason.invalid });
-    expect(status(a)).toBe(Status.running);
-    expect(history(a)).toHaveLength(2);
-    expect(execution(a)).toEqual([
+    expect(await status(a)).toBe(Status.running);
+    expect(await history(a)).toHaveLength(2);
+    expect(await execution(a)).toEqual([
       { actor: 'bot-dev-1', log_path: null, result_path: null },
     ]);
   });
 
-  it(`refuses a missing task as ${Reason.notFound} and a non-string id as ${Reason.invalid}`, () => {
-    expect(finish('tsk_missing', Status.succeeded)).toEqual({
+  it(`refuses a missing task as ${Reason.notFound} and a non-string id as ${Reason.invalid}`, async () => {
+    expect(await finish('tsk_missing', Status.succeeded)).toEqual({
       ok: false,
       reason: Reason.notFound,
     });
-    expect(finish(7 as never, Status.succeeded)).toEqual({
+    expect(await finish(7 as never, Status.succeeded)).toEqual({
       ok: false,
       reason: Reason.invalid,
     });
@@ -670,20 +697,20 @@ describe('finishTask', () => {
 });
 
 describe('listReady', () => {
-  it('lists the most urgent first, then the oldest, up to the limit', () => {
+  it('lists the most urgent first, then the oldest, up to the limit', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
     // Twenty tasks in one millisecond, with random ids: only the creation
     // order sorts them.
     const titles = Array.from({ length: 20 }, (_, n) => `P2-${n}`);
-    for (const title of titles) create(title, 2);
-    create('P0', 0);
-    create('P1', 1);
-    expect(ready(100)).toEqual(['P0', 'P1', ...titles]);
-    expect(ready(3)).toEqual(['P0', 'P1', 'P2-0']);
+    for (const title of titles) await create(title, 2);
+    await create('P0', 0);
+    await create('P1', 1);
+    expect(await ready(100)).toEqual(['P0', 'P1', ...titles]);
+    expect(await ready(3)).toEqual(['P0', 'P1', 'P2-0']);
   });
 
-  it('returns whole tasks', () => {
-    const created = tasks.createTask({
+  it('returns whole tasks', async () => {
+    const created = await tasks.createTask({
       title: 'A',
       kind: 'task',
       priority: 2,
@@ -693,45 +720,45 @@ describe('listReady', () => {
       sourcePath: './notes/task.md',
     });
     if (!created.ok) throw new Error(`create: ${created.reason}`);
-    expect(tasks.listReady({ assignees: ['dev'], limit: 1 })).toEqual({
+    expect(await tasks.listReady({ assignees: ['dev'], limit: 1 })).toEqual({
       ok: true,
       tasks: [created.task],
     });
   });
 
-  it("merges the assignees' ready tasks into one list and leaves out the rest", () => {
-    create('A', 2, undefined, 'dev');
-    create('B', 1, undefined, 'bot-dev-1');
-    create('C', 0, undefined, 'qa');
-    expect(ready(100, ['bot-dev-1', 'dev'])).toEqual(['B', 'A']);
+  it("merges the assignees' ready tasks into one list and leaves out the rest", async () => {
+    await create('A', 2, undefined, 'dev');
+    await create('B', 1, undefined, 'bot-dev-1');
+    await create('C', 0, undefined, 'qa');
+    expect(await ready(100, ['bot-dev-1', 'dev'])).toEqual(['B', 'A']);
   });
 
-  it('matches the assignee exactly', () => {
-    create('A', 2, undefined, 'dev');
-    expect(ready(100, ['Dev'])).toEqual([]);
-    expect(ready(100, ['dev-1'])).toEqual([]);
+  it('matches the assignee exactly', async () => {
+    await create('A', 2, undefined, 'dev');
+    expect(await ready(100, ['Dev'])).toEqual([]);
+    expect(await ready(100, ['dev-1'])).toEqual([]);
   });
 
-  it('orders two assignees by creation across both, up to the limit', () => {
+  it('orders two assignees by creation across both, up to the limit', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
     const titles = Array.from({ length: 6 }, (_, n) => `T${n}`);
-    titles.forEach((title, n) =>
-      create(title, 2, undefined, ['dev', 'qa'][n % 2]),
-    );
-    expect(ready(100, ['qa', 'dev'])).toEqual(titles);
-    expect(ready(3, ['qa', 'dev'])).toEqual(['T0', 'T1', 'T2']);
+    for (const [n, title] of titles.entries()) {
+      await create(title, 2, undefined, ['dev', 'qa'][n % 2]);
+    }
+    expect(await ready(100, ['qa', 'dev'])).toEqual(titles);
+    expect(await ready(3, ['qa', 'dev'])).toEqual(['T0', 'T1', 'T2']);
   });
 
-  it('trims the assignees asked for and returns a task once', () => {
-    create('A');
-    expect(ready(100, [' dev '])).toEqual(['A']);
-    expect(ready(100, ['dev', 'dev'])).toEqual(['A']);
+  it('trims the assignees asked for and returns a task once', async () => {
+    await create('A');
+    expect(await ready(100, [' dev '])).toEqual(['A']);
+    expect(await ready(100, ['dev', 'dev'])).toEqual(['A']);
   });
 
   it.each([[], undefined, 'dev', [''], ['  '], [7]])(
     `refuses %j as the assignees as ${Reason.invalid}`,
-    (assignees) => {
-      expect(tasks.listReady({ assignees, limit: 1 } as never)).toEqual({
+    async (assignees) => {
+      expect(await tasks.listReady({ assignees, limit: 1 } as never)).toEqual({
         ok: false,
         reason: Reason.invalid,
       });
@@ -740,44 +767,71 @@ describe('listReady', () => {
 
   it.each([0, -1, 1.5, Number.NaN])(
     `refuses a limit of %d as ${Reason.invalid}`,
-    (limit) => {
-      expect(tasks.listReady({ assignees: ['dev'], limit })).toEqual({
+    async (limit) => {
+      expect(await tasks.listReady({ assignees: ['dev'], limit })).toEqual({
         ok: false,
         reason: Reason.invalid,
       });
     },
   );
 
-  it('searches the ready index by assignee, with no table scan', () => {
-    const statement = prepare.mock.results
-      .map((result) => result.value as StatementSync)
-      .find((candidate) =>
-        candidate.sourceSQL.includes('holding_blockers = 0'),
-      );
-    const plan = connection()
-      .prepare(`EXPLAIN QUERY PLAN ${statement?.sourceSQL}`)
-      .all('["dev","qa"]', 10)
-      .map((row) => String(row.detail));
+  it('merges three assignees into one list, in the same order', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+    const titles = Array.from({ length: 9 }, (_, n) => `T${n}`);
+    for (const [n, title] of titles.entries()) {
+      await create(title, n % 2, undefined, ['dev', 'qa', 'ops'][n % 3]);
+    }
+    expect(await ready(100, ['ops', 'qa', 'dev'])).toEqual([
+      'T0',
+      'T2',
+      'T4',
+      'T6',
+      'T8',
+      'T1',
+      'T3',
+      'T5',
+      'T7',
+    ]);
+    expect(await ready(4, ['qa', 'dev', 'ops'])).toEqual([
+      'T0',
+      'T2',
+      'T4',
+      'T6',
+    ]);
+  });
+
+  it('searches the ready index by assignee, with no table scan', async () => {
+    const prepare = vi.spyOn(Database.prototype, 'prepare');
+    await tasks.listReady({ assignees: ['dev', 'qa'], limit: 10 });
+    const sql = String(
+      prepare.mock.calls.find(([text]) =>
+        text.includes('holding_blockers = 0'),
+      )?.[0],
+    );
+    const plan = await connection().all(
+      `EXPLAIN QUERY PLAN ${sql}`,
+      'dev',
+      'qa',
+      10,
+    );
     // The sort covers only the rows the search found.
-    expect(plan).toEqual([
+    expect(plan.map((row) => String(row.detail))).toEqual([
       'SEARCH task USING INDEX task_ready (assignee=?)',
-      'LIST SUBQUERY 1',
-      'SCAN json_each VIRTUAL TABLE INDEX 1:',
-      'USE TEMP B-TREE FOR ORDER BY',
+      'USE SORTER FOR ORDER BY',
     ]);
   });
 });
 
 describe('the history and the execution', () => {
   // Covers AE6.
-  it('records every change from creation, in order', () => {
+  it('records every change from creation, in order', async () => {
     const now = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
-    const a = create('A');
+    const a = await create('A');
     now.mockReturnValue(1_700_000_001_000);
-    start(a);
+    await start(a);
     now.mockReturnValue(1_700_000_002_000);
-    finish(a, Status.succeeded);
-    expect(history(a)).toEqual([
+    await finish(a, Status.succeeded);
+    expect(await history(a)).toEqual([
       {
         from_status: null,
         to_status: Status.open,
@@ -803,25 +857,25 @@ describe('the history and the execution', () => {
   });
 
   // Covers AE8.
-  it('keeps who ran the task apart from who moved it, with its paths and the reason', () => {
+  it('keeps who ran the task apart from who moved it, with its paths and the reason', async () => {
     const now = vi.spyOn(Date, 'now');
-    const a = create('A');
+    const a = await create('A');
     now.mockReturnValue(1_700_000_001_000);
-    tasks.startTask({
+    await tasks.startTask({
       id: a,
       changedBy: 'orchestrator',
       actor: 'bot-dev-1',
       logPath: 'logs/run-1.txt',
     });
     now.mockReturnValue(1_700_000_009_000);
-    tasks.finishTask({
+    await tasks.finishTask({
       id: a,
       changedBy: 'bot-dev-2',
       status: Status.failed,
       reason: 'tests failed',
       resultPath: 'out/run-1',
     });
-    expect(execution(a)).toEqual([
+    expect(await execution(a)).toEqual([
       {
         actor: 'bot-dev-1',
         log_path: 'logs/run-1.txt',
@@ -829,7 +883,7 @@ describe('the history and the execution', () => {
       },
     ]);
     // The execution started and ended with these two changes.
-    expect(history(a).slice(1)).toEqual([
+    expect((await history(a)).slice(1)).toEqual([
       {
         from_status: Status.open,
         to_status: Status.running,
@@ -847,44 +901,44 @@ describe('the history and the execution', () => {
     ]);
   });
 
-  it('stores no log or result path when none is given', () => {
-    const a = create('A');
-    moveTo(a, Status.skipped);
-    expect(execution(a)).toEqual([
+  it('stores no log or result path when none is given', async () => {
+    const a = await create('A');
+    await moveTo(a, Status.skipped);
+    expect(await execution(a)).toEqual([
       { actor: 'bot-dev-1', log_path: null, result_path: null },
     ]);
   });
 
-  it('trims the names, the paths and the reason, and stores a blank one as null', () => {
-    const a = create('A');
-    const b = create('B');
-    tasks.startTask({
+  it('trims the names, the paths and the reason, and stores a blank one as null', async () => {
+    const a = await create('A');
+    const b = await create('B');
+    await tasks.startTask({
       id: a,
       changedBy: ' orchestrator ',
       actor: ' bot-dev-1 ',
       logPath: ' logs/run-1.txt ',
     });
-    tasks.finishTask({
+    await tasks.finishTask({
       id: a,
       changedBy: ' bot-dev-2 ',
       status: Status.skipped,
       reason: ' not needed ',
       resultPath: ' out/run-1 ',
     });
-    tasks.startTask({
+    await tasks.startTask({
       id: b,
       changedBy: 'orchestrator',
       actor: 'bot-dev-1',
       logPath: '  ',
     });
-    tasks.finishTask({
+    await tasks.finishTask({
       id: b,
       changedBy: 'bot-dev-1',
       status: Status.succeeded,
       reason: ' ',
       resultPath: ' ',
     });
-    expect(execution(a)).toEqual([
+    expect(await execution(a)).toEqual([
       {
         actor: 'bot-dev-1',
         log_path: 'logs/run-1.txt',
@@ -892,70 +946,75 @@ describe('the history and the execution', () => {
       },
     ]);
     expect(
-      history(a).map(({ changed_by, reason }) => ({ changed_by, reason })),
+      (await history(a)).map(({ changed_by, reason }) => ({
+        changed_by,
+        reason,
+      })),
     ).toEqual([
       { changed_by: 'planner', reason: null },
       { changed_by: 'orchestrator', reason: null },
       { changed_by: 'bot-dev-2', reason: 'not needed' },
     ]);
-    expect(execution(b)).toEqual([
+    expect(await execution(b)).toEqual([
       { actor: 'bot-dev-1', log_path: null, result_path: null },
     ]);
-    expect(history(b)[2]).toMatchObject({ reason: null });
+    expect((await history(b))[2]).toMatchObject({ reason: null });
   });
 });
 
 describe('an error from SQLite', () => {
-  it('is thrown, and the write it interrupted leaves nothing behind', () => {
-    const a = create('A');
-    const b = create('B');
+  it('is thrown, and the write it interrupted leaves nothing behind', async () => {
+    const a = await create('A');
+    const b = await create('B');
     // Fails the link's insert, after the counter has moved.
-    connection().exec(
+    await connection().exec(
       "CREATE TRIGGER fail BEFORE INSERT ON link BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END",
     );
-    expect(() => link(b, a)).toThrow('disk I/O error');
-    expect(counter(b)).toBe(0);
-    expect(links()).toEqual([]);
-    expect(connection().isTransaction).toBe(false);
-    expect(ready()).toEqual(['A', 'B']);
+    await expect(link(b, a)).rejects.toThrow('disk I/O error');
+    expect(await counter(b)).toBe(0);
+    expect(await links()).toEqual([]);
+    expect(connection().inTransaction).toBe(false);
+    expect(await ready()).toEqual(['A', 'B']);
+    await create('C');
+    expect(await ready()).toEqual(['A', 'B', 'C']);
   });
 
-  it('is thrown from a start, which leaves the task open with no new change', () => {
-    const a = create('A');
+  it('is thrown from a start, which leaves the task open with no new change', async () => {
+    const a = await create('A');
     // Fails the execution's insert, after the status and the change.
-    connection().exec(
+    await connection().exec(
       "CREATE TRIGGER fail BEFORE INSERT ON execution BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END",
     );
-    expect(() => start(a)).toThrow('disk I/O error');
-    expect(status(a)).toBe(Status.open);
-    expect(history(a)).toHaveLength(1);
-    expect(connection().isTransaction).toBe(false);
+    await expect(start(a)).rejects.toThrow('disk I/O error');
+    expect(await status(a)).toBe(Status.open);
+    expect(await history(a)).toHaveLength(1);
+    expect(connection().inTransaction).toBe(false);
   });
 
-  it('is thrown from a finish, which leaves the task running and its dependents held', () => {
-    const a = create('A');
-    const b = create('B');
-    link(b, a);
-    start(a);
+  it('is thrown from a finish, which leaves the task running and its dependents held', async () => {
+    const a = await create('A');
+    const b = await create('B');
+    await link(b, a);
+    await start(a);
     // Fails the result's update, after the status and the change.
-    connection().exec(
+    await connection().exec(
       "CREATE TRIGGER fail BEFORE UPDATE ON execution BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END",
     );
-    expect(() =>
+    await expect(
       tasks.finishTask({
         id: a,
         changedBy: 'bot-dev-1',
         status: Status.succeeded,
         resultPath: 'out/run-1',
       }),
-    ).toThrow('disk I/O error');
-    expect(status(a)).toBe(Status.running);
-    expect(history(a)).toHaveLength(2);
-    expect(execution(a)).toEqual([
+    ).rejects.toThrow('disk I/O error');
+    expect(await status(a)).toBe(Status.running);
+    expect(await history(a)).toHaveLength(2);
+    expect(await execution(a)).toEqual([
       { actor: 'bot-dev-1', log_path: null, result_path: null },
     ]);
-    expect(counter(b)).toBe(1);
-    expect(connection().isTransaction).toBe(false);
+    expect(await counter(b)).toBe(1);
+    expect(connection().inTransaction).toBe(false);
   });
 });
 
@@ -968,25 +1027,25 @@ describe('the graph after random operations', () => {
     };
   }
 
-  it('keeps every counter equal to the holding blockers, no task past open held by one, and every change recorded', () => {
+  it('keeps every counter equal to the holding blockers, no task past open held by one, and every change recorded', async () => {
     const next = random(42);
     const pick = <T>(items: T[]) => items[Math.floor(next() * items.length)];
-    const running = connection().prepare(
-      `SELECT id FROM task WHERE status = '${Status.running}'`,
-    );
-    const ids = [create('T0')];
+    const running = `SELECT id FROM task WHERE status = '${Status.running}'`;
+    const ids = [await create('T0')];
     for (let step = 0; step < 400; step++) {
       const roll = next();
       if (roll < 0.25) {
         const assignee = pick(['dev', 'qa', 'ops']);
-        ids.push(create(`T${ids.length}`, 2, pick(ids), assignee));
-      } else if (roll < 0.55) link(pick(ids), pick(ids));
-      else if (roll < 0.7) unlink(pick(ids), pick(ids));
-      else if (roll < 0.85) start(pick(ids));
+        ids.push(await create(`T${ids.length}`, 2, pick(ids), assignee));
+      } else if (roll < 0.55) await link(pick(ids), pick(ids));
+      else if (roll < 0.7) await unlink(pick(ids), pick(ids));
+      else if (roll < 0.85) await start(pick(ids));
       else {
         // Mostly a running task, so finishes happen; any task otherwise.
-        const candidates = running.all().map((row) => String(row.id));
-        finish(
+        const candidates = (await connection().all(running)).map((row) =>
+          String(row.id),
+        );
+        await finish(
           next() < 0.8 && candidates.length > 0 ? pick(candidates) : pick(ids),
           pick([...finalStatuses]),
         );
@@ -994,43 +1053,38 @@ describe('the graph after random operations', () => {
     }
 
     const holding = `blocker.status IN ('${Status.open}', '${Status.running}', '${Status.failed}')`;
-    const drift = connection()
-      .prepare(
-        `SELECT task.id FROM task WHERE task.status = '${Status.open}' AND task.holding_blockers <> (
+    const drift = await connection().all(
+      `SELECT task.id FROM task WHERE task.status = '${Status.open}' AND task.holding_blockers <> (
           SELECT count(*) FROM link JOIN task AS blocker ON blocker.id = link.blocker_id
           WHERE link.task_id = task.id AND ${holding})`,
-      )
-      .all();
-    const heldPastOpen = connection()
-      .prepare(
-        `SELECT link.task_id FROM link
+    );
+    const heldPastOpen = await connection().all(
+      `SELECT link.task_id FROM link
         JOIN task ON task.id = link.task_id
         JOIN task AS blocker ON blocker.id = link.blocker_id
         WHERE task.status <> '${Status.open}' AND ${holding}`,
-      )
-      .all();
+    );
     const counts = Object.fromEntries(
-      connection()
-        .prepare('SELECT status, count(*) AS n FROM task GROUP BY status')
-        .all()
-        .map((row) => [row.status, row.n]),
+      (
+        await connection().all(
+          'SELECT status, count(*) AS n FROM task GROUP BY status',
+        )
+      ).map((row) => [row.status, row.n]),
     );
     // A task whose last change doesn't end in its state, or whose executions
     // don't match it: one once started, none before.
-    const unrecorded = connection()
-      .prepare(
-        `SELECT task.id FROM task WHERE task.status IS NOT (
+    const unrecorded = await connection().all(
+      `SELECT task.id FROM task WHERE task.status IS NOT (
           SELECT to_status FROM status_change WHERE task_id = task.id
           ORDER BY id DESC LIMIT 1)
         OR (SELECT count(*) FROM execution WHERE task_id = task.id)
           <> (task.status <> '${Status.open}')`,
-      )
-      .all();
+    );
     expect(drift).toEqual([]);
     expect(heldPastOpen).toEqual([]);
     expect(unrecorded).toEqual([]);
     // The run exercised links, starts and every finish, not only refusals.
-    expect(links().length).toBeGreaterThan(20);
+    expect((await links()).length).toBeGreaterThan(20);
     for (const to of finalStatuses) {
       expect(counts[to]).toBeGreaterThan(2);
     }
