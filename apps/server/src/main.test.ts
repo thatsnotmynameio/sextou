@@ -7,7 +7,6 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 import { healthResponseSchema } from '@sextou/contract';
 import { openDatabase, type Database } from '@sextou/data';
 import { openTasks, type Tasks } from '@sextou/tasks';
@@ -214,11 +213,8 @@ it.runIf(process.platform === 'linux')(
 
 describe('when the task graph cannot be opened', () => {
   it('exits with 1 naming the path and the reason, closes the database, and never listens', async () => {
-    // A newer version wrote this file.
     const tasks = join(dir, 'default.tasks.db');
-    const newer = new DatabaseSync(tasks);
-    newer.exec('PRAGMA user_version = 99');
-    newer.close();
+    writeFileSync(tasks, 'not a database, just some text that is long enough');
     args('--data-dir', dir, '--database', ':memory:');
 
     await import('./main');
@@ -226,7 +222,7 @@ describe('when the task graph cannot be opened', () => {
     expect(startServer).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
     expect(console.error).toHaveBeenCalledWith(
-      `Could not open the task graph at ${tasks}: This tasks database was written by a newer version (schema 99, this one knows 1)`,
+      `Could not open the task graph at ${tasks}: failed to open database ${tasks}: File is not a database`,
     );
     expect(await databaseAnswers()).toBe(false);
     expect(on).not.toHaveBeenCalled();

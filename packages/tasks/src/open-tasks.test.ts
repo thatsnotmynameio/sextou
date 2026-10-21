@@ -191,6 +191,9 @@ describe('openTasks on a file', () => {
     await expect(open(join(dir, 'file', 'graph.db'))).rejects.toThrow('EEXIST');
   });
 
+  // The one test that reaches past Turso, to node:sqlite: what it checks is
+  // that another engine reads the file, so sextou can go back to standard
+  // SQLite without exporting anything.
   it('leaves a file that standard SQLite reads', async () => {
     const path = join(dir, 'graph.db');
     const tasks = await open(path);
