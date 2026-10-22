@@ -208,13 +208,19 @@ test('opens the task graph at SEXTOU_SERVER_TASK_GRAPH before listening', async 
   });
 });
 
-// Covers the tasks module's AE1: a task graph file a newer version wrote.
-test('listens when the task graph does not open, and its service works after a restart on a file it opens', async () => {
+// A task graph file a newer version wrote, which openTasks refuses.
+async function newerTaskGraph() {
   const path = join(dir, 'tasks.db');
   const client = await connect(path);
   await client.exec('PRAGMA user_version = 99');
   await client.close();
   vi.stubEnv('SEXTOU_SERVER_TASK_GRAPH', path);
+  return path;
+}
+
+// Covers the tasks module's AE1.
+test('listens when the task graph does not open, printing why, and its service rejects', async () => {
+  const path = await newerTaskGraph();
 
   await import('./main');
 
@@ -225,10 +231,16 @@ test('listens when the task graph does not open, and its service works after a r
     ),
   );
   await expect((await initedTasks()).createTask(newTask)).rejects.toThrow();
+});
 
+// Covers the tasks module's AE1.
+test('a restart once the task graph is fixed gives a service that works', async () => {
+  const path = await newerTaskGraph();
+  await import('./main');
   rmSync(path);
   rmSync(`${path}-wal`, { force: true });
   vi.resetModules();
+
   await import('./main');
 
   expect(await (await initedTasks(1)).createTask(newTask)).toMatchObject({
