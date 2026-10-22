@@ -1,4 +1,5 @@
 import { connect } from '@tursodatabase/database';
+import { drizzle } from 'drizzle-orm/tursodatabase/database';
 import { createGraph, type Graph } from './graph';
 import { migrate } from './migrations';
 import { restrictToOwner } from './owner-only';
@@ -29,5 +30,8 @@ export async function openTasks(path: string): Promise<Tasks> {
     throw error;
   }
 
-  return { ...createGraph(client), close: () => client.close() };
+  return {
+    ...createGraph(drizzle({ client })),
+    close: () => client.close(),
+  };
 }

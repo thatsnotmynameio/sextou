@@ -107,9 +107,15 @@ test('openTasks in memory closes twice without throwing', async () => {
 test('openTasks in memory rejects an operation once closed', async () => {
   const tasks = await open(':memory:');
   await tasks.close();
+  // drizzle wraps a query's error and keeps Turso's on cause. A write fails
+  // starting its transaction, which drizzle passes through as Turso threw it.
   await expect(
     tasks.listReady({ assignees: ['dev'], limit: 1 }),
-  ).rejects.toThrow('The database connection is not open');
+  ).rejects.toMatchObject({
+    cause: {
+      message: expect.stringContaining('The database connection is not open'),
+    },
+  });
   await expect(
     tasks.createTask({
       title: 'A',

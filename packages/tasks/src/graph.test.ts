@@ -887,9 +887,7 @@ test('listReady searches the ready index by assignee, with no table scan', async
   const prepare = vi.spyOn(Database.prototype, 'prepare');
   await tasks.listReady({ assignees: ['dev', 'qa'], limit: 10 });
   const sql = String(
-    prepare.mock.calls.find(([text]) =>
-      text.includes('holding_blockers = 0'),
-    )?.[0],
+    prepare.mock.calls.find(([text]) => text.includes('holding_blockers'))?.[0],
   );
   const plan = await connection().all(
     `EXPLAIN QUERY PLAN ${sql}`,
@@ -1042,6 +1040,12 @@ test('the history and the execution trim the names, the paths and the reason, an
   expect((await history(b))[2]).toMatchObject({ reason: null });
 });
 
+// The error a failing trigger raises, as drizzle rejects with it: its own
+// error, with Turso's on cause.
+const diskError = {
+  cause: { message: expect.stringContaining('disk I/O error') },
+};
+
 test('an error from SQLite is thrown, and the write it interrupted leaves nothing behind', async () => {
   const a = await create('A');
   const b = await create('B');
@@ -1049,7 +1053,7 @@ test('an error from SQLite is thrown, and the write it interrupted leaves nothin
   await connection().exec(
     "CREATE TRIGGER fail BEFORE INSERT ON task_links BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END",
   );
-  await expect(link(b, a)).rejects.toThrow('disk I/O error');
+  await expect(link(b, a)).rejects.toMatchObject(diskError);
   expect(await counter(b)).toBe(0);
   expect(await links()).toEqual([]);
   expect(connection().inTransaction).toBe(false);
@@ -1064,7 +1068,7 @@ test('an error from SQLite is thrown from a start, which leaves the task open wi
   await connection().exec(
     "CREATE TRIGGER fail BEFORE INSERT ON task_executions BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END",
   );
-  await expect(start(a)).rejects.toThrow('disk I/O error');
+  await expect(start(a)).rejects.toMatchObject(diskError);
   expect(await status(a)).toBe(Status.open);
   expect(await history(a)).toHaveLength(1);
   expect(connection().inTransaction).toBe(false);
@@ -1086,7 +1090,7 @@ test('an error from SQLite is thrown from a finish, which leaves the task runnin
       status: Status.succeeded,
       resultPath: 'out/run-1',
     }),
-  ).rejects.toThrow('disk I/O error');
+  ).rejects.toMatchObject(diskError);
   expect(await status(a)).toBe(Status.running);
   expect(await history(a)).toHaveLength(2);
   expect(await execution(a)).toEqual([
