@@ -39,6 +39,30 @@ vi.mock(import('../../src/database'), async (importOriginal) => {
   return { createDatabase: vi.fn(database.createDatabase) };
 });
 
+// The real logger, writing to memory instead of stdout, so each test reads
+// the records main wrote.
+const output = vi.hoisted(() => ({ lines: [] as string[] }));
+vi.mock(import('../../src/logger'), async (importOriginal) => {
+  const logger = await importOriginal();
+  const { Writable } = await import('node:stream');
+  return {
+    createLogger: (options) =>
+      logger.createLogger(
+        options,
+        new Writable({
+          write: (chunk, _encoding, done) => {
+            output.lines.push(String(chunk));
+            done();
+          },
+        }),
+      ),
+  };
+});
+
+function records(): unknown[] {
+  return output.lines.map((line) => JSON.parse(line));
+}
+
 const variables = [
   'SEXTOU_SERVER_HOST',
   'SEXTOU_SERVER_PORT',
@@ -47,6 +71,7 @@ const variables = [
   'SEXTOU_SERVER_WEB_ORIGIN',
   'SEXTOU_SERVER_DATABASE_TIMEOUT_MS',
   'SEXTOU_SERVER_DEV',
+  'SEXTOU_SERVER_LOG_LEVEL',
   'XDG_DATA_HOME',
   'LOCALAPPDATA',
 ];
@@ -81,14 +106,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   dir = mkdtempSync(join(tmpdir(), 'sextou-main-'));
   home.dir = dir;
+  output.lines = [];
   for (const name of variables) {
     vi.stubEnv(name, undefined);
   }
   on = vi.spyOn(process, 'on').mockImplementation(() => process);
   off = vi.spyOn(process, 'off').mockImplementation(() => process);
   exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
-  vi.spyOn(console, 'log').mockImplementation(() => undefined);
-  vi.spyOn(console, 'error').mockImplementation(() => undefined);
 });
 
 afterEach(async () => {
@@ -103,7 +127,7 @@ afterEach(async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('starts the server from the environment and prints where it listens', async () => {
+test('starts the server from the environment and logs where it listens', async () => {
   vi.stubEnv('SEXTOU_SERVER_PORT', '0');
   vi.stubEnv('SEXTOU_SERVER_DATABASE', ':memory:');
 
@@ -118,9 +142,13 @@ test('starts the server from the environment and prints where it listens', async
     version: packageJson.version,
     database: 'up',
   });
-  expect(console.log).toHaveBeenCalledWith(
-    'listening on http://127.0.0.1:54321',
-  );
+  expect(records()).toEqual([
+    expect.objectContaining({
+      level: 30,
+      msg: 'listening',
+      url: 'http://127.0.0.1:54321',
+    }),
+  ]);
 });
 
 test('brackets an IPv6 address in the listening URL', async () => {
@@ -133,7 +161,33 @@ test('brackets an IPv6 address in the listening URL', async () => {
 
   await import('../../src/main');
 
-  expect(console.log).toHaveBeenCalledWith('listening on http://[::1]:54321');
+  expect(records()).toEqual([
+    expect.objectContaining({ msg: 'listening', url: 'http://[::1]:54321' }),
+  ]);
+});
+
+// A process that starts the server reads the URL from this record.
+test('logs no listening record at level warn', async () => {
+  vi.stubEnv('SEXTOU_SERVER_DATABASE', ':memory:');
+  vi.stubEnv('SEXTOU_SERVER_LOG_LEVEL', 'warn');
+
+  await import('../../src/main');
+
+  expect(startServer).toHaveBeenCalledOnce();
+  expect(records()).toEqual([]);
+});
+
+test('logs readable lines, not JSON, with SEXTOU_SERVER_DEV=true', async () => {
+  vi.stubEnv('SEXTOU_SERVER_DATABASE', ':memory:');
+  vi.stubEnv('SEXTOU_SERVER_DEV', 'true');
+
+  await import('../../src/main');
+
+  await vi.waitFor(() =>
+    expect(output.lines.join('')).toContain('http://127.0.0.1:54321'),
+  );
+  expect(output.lines.join('')).toContain('listening');
+  expect(() => records()).toThrow(SyntaxError);
 });
 
 // Covers AE1. The default path is the Linux one; CI runs Linux.
@@ -159,9 +213,17 @@ test('listens and reports the database down when its folder is a file', async ()
     version: packageJson.version,
     database: 'down',
   });
-  expect(console.error).toHaveBeenCalledWith(
-    `Could not create the database's folder ${join(dir, 'file')}: EEXIST: file already exists, mkdir '${join(dir, 'file')}'`,
-  );
+  expect(records()).toEqual([
+    expect.objectContaining({
+      level: 50,
+      msg: "Could not create the database's folder",
+      folder: join(dir, 'file'),
+      err: expect.objectContaining({
+        message: `EEXIST: file already exists, mkdir '${join(dir, 'file')}'`,
+      }),
+    }),
+    expect.objectContaining({ msg: 'listening' }),
+  ]);
 });
 
 test('creates no folder for an in-memory database', async () => {
@@ -179,12 +241,45 @@ test('exits with 1, naming the variable, without listening when a variable is in
   await import('../../src/main');
 
   expect(process.exitCode).toBe(1);
-  expect(console.error).toHaveBeenCalledWith(
-    'Invalid SEXTOU_SERVER_PORT: "abc" (expected a port from 0 to 65535)',
-  );
+  expect(records()).toEqual([
+    expect.objectContaining({
+      level: 50,
+      msg: 'Invalid SEXTOU_SERVER_PORT: "abc" (expected a port from 0 to 65535)',
+    }),
+  ]);
   expect(createDatabase).not.toHaveBeenCalled();
   expect(startServer).not.toHaveBeenCalled();
   expect(on).not.toHaveBeenCalled();
+});
+
+// The configured level isn't read when another variable is invalid.
+test('logs an invalid variable even at level silent', async () => {
+  vi.stubEnv('SEXTOU_SERVER_PORT', 'abc');
+  vi.stubEnv('SEXTOU_SERVER_LOG_LEVEL', 'silent');
+
+  await import('../../src/main');
+
+  expect(records()).toEqual([
+    expect.objectContaining({
+      level: 50,
+      msg: 'Invalid SEXTOU_SERVER_PORT: "abc" (expected a port from 0 to 65535)',
+    }),
+  ]);
+});
+
+test('exits with 1, naming the variable, without listening when the log level is invalid', async () => {
+  vi.stubEnv('SEXTOU_SERVER_LOG_LEVEL', 'verbose');
+
+  await import('../../src/main');
+
+  expect(process.exitCode).toBe(1);
+  expect(records()).toEqual([
+    expect.objectContaining({
+      level: 50,
+      msg: expect.stringMatching(/^Invalid SEXTOU_SERVER_LOG_LEVEL: "verbose"/),
+    }),
+  ]);
+  expect(startServer).not.toHaveBeenCalled();
 });
 
 test('lets SEXTOU_SERVER_WEB_ORIGIN read the answers', async () => {

@@ -211,10 +211,28 @@ function toTask(row: Record<string, unknown>): Task {
   };
 }
 
+// One level of a logger: a message, or fields and then a message.
+interface LogMethod {
+  (msg: string): void;
+  (fields: object, msg?: string): void;
+}
+
+// The logger the graph writes through, by the methods it would call, so the
+// package needs no logging library: a Pino logger is one.
+export interface Logger {
+  fatal: LogMethod;
+  error: LogMethod;
+  warn: LogMethod;
+  info: LogMethod;
+  debug: LogMethod;
+  trace: LogMethod;
+}
+
 // The graph's operations over a migrated connection. Readiness is kept in
 // each task's holding_blockers, which every write moves in the same
-// transaction, so no task past open is ever held by a blocker.
-export function createGraph(client: Database): Graph {
+// transaction, so no task past open is ever held by a blocker. The logger is
+// there for the graph's code; nothing in it logs yet.
+export function createGraph(client: Database, _logger: Logger): Graph {
   // Runs fn in an immediate transaction, which takes the write lock first, so
   // its checks and its writes see the same graph. Turso holds the connection
   // until the transaction ends: another operation waits for it. A refusal is

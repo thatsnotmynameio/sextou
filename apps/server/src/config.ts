@@ -1,6 +1,20 @@
 import path from 'node:path';
 import { defaultDataDirectory } from './data-directory';
 
+// Pino's level names, written out here so config.ts doesn't import Pino, which
+// leaves out silent from its own list.
+const logLevels = [
+  'fatal',
+  'error',
+  'warn',
+  'info',
+  'debug',
+  'trace',
+  'silent',
+] as const;
+
+export type LogLevel = (typeof logLevels)[number];
+
 export interface Config {
   host: string;
   port: number;
@@ -14,6 +28,8 @@ export interface Config {
   databaseTimeoutMs: number;
   // Whether error responses carry the stack.
   dev: boolean;
+  // The lowest level the logger writes.
+  logLevel: LogLevel;
 }
 
 // What the paths depend on: main passes the process's own.
@@ -69,6 +85,7 @@ export function loadConfig(
       () => 20000,
     ),
     dev: read('SEXTOU_SERVER_DEV', parseBoolean, () => false),
+    logLevel: read('SEXTOU_SERVER_LOG_LEVEL', parseLogLevel, () => 'info'),
   };
 }
 
@@ -144,4 +161,12 @@ function parseBoolean(value: string, name: string): boolean {
     throw invalid(name, value, 'true or false');
   }
   return value === 'true';
+}
+
+function parseLogLevel(value: string, name: string): LogLevel {
+  const level = logLevels.find((candidate) => candidate === value);
+  if (level === undefined) {
+    throw invalid(name, value, `one of ${logLevels.join(', ')}`);
+  }
+  return level;
 }
