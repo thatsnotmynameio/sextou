@@ -21,7 +21,8 @@ let dir: string;
 let server: ChildProcess | undefined;
 
 // Starts the server on a port the system picks and resolves with its URL,
-// from the line it prints once listening.
+// from the record it logs once listening. Its stdout is one JSON record per
+// line; a line that isn't JSON is skipped.
 async function startServer(database: string): Promise<string> {
   const child = spawn(process.execPath, ['--import', 'tsx', 'src/main.ts'], {
     cwd: serverDir,
@@ -30,6 +31,8 @@ async function startServer(database: string): Promise<string> {
       SEXTOU_SERVER_PORT: '0',
       SEXTOU_SERVER_DATABASE: database,
       SEXTOU_SERVER_DATA_DIR: dir,
+      // At warn and above, the server doesn't log where it listens.
+      SEXTOU_SERVER_LOG_LEVEL: 'info',
     },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
@@ -37,12 +40,20 @@ async function startServer(database: string): Promise<string> {
   // reads doesn't.
   server = child;
   for await (const line of createInterface({ input: child.stdout })) {
-    const url = /^listening on (http:\/\/\S+)$/.exec(line)?.[1];
-    if (url) {
-      return url;
+    const record = parseRecord(line);
+    if (record?.msg === 'listening' && typeof record.url === 'string') {
+      return record.url;
     }
   }
   throw new Error('The server exited before listening');
+}
+
+function parseRecord(line: string): Record<string, unknown> | undefined {
+  try {
+    return JSON.parse(line);
+  } catch {
+    return undefined;
+  }
 }
 
 // A real server's first answer, which opens its database, can take longer

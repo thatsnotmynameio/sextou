@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
 import { createApp, type AppOptions } from './app';
+import { createLogger } from './logger';
 
 const webOrigin = 'http://localhost:5173';
 
@@ -8,6 +9,7 @@ function app(options: Partial<AppOptions> = {}) {
     version: '1.2.3',
     database: { ping: async () => true },
     dev: false,
+    logger: createLogger('silent'),
     webOrigin,
     ...options,
   });
