@@ -1,7 +1,5 @@
-// The in-memory cases sit in the integration suite on purpose, beside the
-// cases on a file: openTasks takes ':memory:' or a path, and neither kind of
-// case alone reaches the coverage floor in open-tasks.ts, so this suite
-// answers for that file and the unit suite does not (vitest.config.ts).
+// The in-memory cases are integration tests too: opening the graph reads its
+// migrations from disk, even for ':memory:' (vitest.config.ts).
 import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
