@@ -18,8 +18,8 @@ import { startServer } from './server';
 // ignores a stubbed HOME. Each test points it at its own temporary directory,
 // so none reaches the developer's data directory.
 const home = vi.hoisted(() => ({ dir: '' }));
-vi.mock('node:os', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('node:os')>()),
+vi.mock(import('node:os'), async (importOriginal) => ({
+  ...(await importOriginal()),
   homedir: () => home.dir,
 }));
 
@@ -34,8 +34,8 @@ vi.mock('./server', () => ({
 }));
 
 // The real module, watched so each test can reach the database main created.
-vi.mock('./database', async (importOriginal) => {
-  const database = await importOriginal<typeof import('./database')>();
+vi.mock(import('./database'), async (importOriginal) => {
+  const database = await importOriginal();
   return { createDatabase: vi.fn(database.createDatabase) };
 });
 
@@ -81,7 +81,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   dir = mkdtempSync(join(tmpdir(), 'sextou-main-'));
   home.dir = dir;
-  for (const name of variables) vi.stubEnv(name, undefined);
+  for (const name of variables) {
+    vi.stubEnv(name, undefined);
+  }
   on = vi.spyOn(process, 'on').mockImplementation(() => process);
   off = vi.spyOn(process, 'off').mockImplementation(() => process);
   exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
@@ -91,7 +93,9 @@ beforeEach(() => {
 
 afterEach(async () => {
   for (const result of vi.mocked(createDatabase).mock.results) {
-    if (result.type === 'return') await result.value.close();
+    if (result.type === 'return') {
+      await result.value.close();
+    }
   }
   process.exitCode = undefined;
   vi.unstubAllEnvs();

@@ -23,7 +23,7 @@ let server: ChildProcess | undefined;
 // Starts the server on a port the system picks and resolves with its URL,
 // from the line it prints once listening.
 async function startServer(database: string): Promise<string> {
-  server = spawn(process.execPath, ['--import', 'tsx', 'src/main.ts'], {
+  const child = spawn(process.execPath, ['--import', 'tsx', 'src/main.ts'], {
     cwd: serverDir,
     env: {
       PATH: process.env.PATH,
@@ -33,9 +33,14 @@ async function startServer(database: string): Promise<string> {
     },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
-  for await (const line of createInterface({ input: server.stdout! })) {
+  // The spawned process keeps its stdio's types; the variable the cleanup
+  // reads doesn't.
+  server = child;
+  for await (const line of createInterface({ input: child.stdout })) {
     const url = /^listening on (http:\/\/\S+)$/.exec(line)?.[1];
-    if (url) return url;
+    if (url) {
+      return url;
+    }
   }
   throw new Error('The server exited before listening');
 }

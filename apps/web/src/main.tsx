@@ -15,7 +15,12 @@ const router = createAppRouter({
   requestTimeoutMs: SEXTOU_WEB_REQUEST_TIMEOUT_MS,
 });
 
-createRoot(document.getElementById('root')!).render(
+const root = document.getElementById('root');
+if (!root) {
+  throw new Error('index.html has no element with the id root');
+}
+
+createRoot(root).render(
   <StrictMode>
     <RouterProvider router={router} />
   </StrictMode>,

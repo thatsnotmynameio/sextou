@@ -57,7 +57,9 @@ async function create(
     assignee,
     createdBy: 'planner',
   });
-  if (!result.ok) throw new Error(`create ${title}: ${result.reason}`);
+  if (!result.ok) {
+    throw new Error(`create ${title}: ${result.reason}`);
+  }
   return result.task.id;
 }
 
@@ -95,15 +97,22 @@ function finish(id: string, status: FinalStatus) {
 
 // Starts a ready open task and, for a final state, finishes it.
 async function moveTo(id: string, to: Status) {
-  if (to === Status.open) return;
-  if (!(await start(id)).ok) throw new Error(`start ${id}`);
-  if (to !== Status.running && !(await finish(id, to)).ok)
+  if (to === Status.open) {
+    return;
+  }
+  if (!(await start(id)).ok) {
+    throw new Error(`start ${id}`);
+  }
+  if (to !== Status.running && !(await finish(id, to)).ok) {
     throw new Error(`finish ${id}`);
+  }
 }
 
 async function ready(limit = 100, assignees = ['dev']) {
   const result = await tasks.listReady({ assignees, limit });
-  if (!result.ok) throw new Error(`ready: ${result.reason}`);
+  if (!result.ok) {
+    throw new Error(`ready: ${result.reason}`);
+  }
   return result.tasks.map((task) => task.title);
 }
 
@@ -346,9 +355,13 @@ test('createTask keeps a parent and its open children ready when nothing links t
 // the pre-push hook does), past Vitest's five-second default.
 test('createTask gives a thousand tasks a thousand distinct ids', async () => {
   const ids: string[] = [];
-  for (let n = 0; n < 1000; n++) ids.push(await create(`T${n}`));
+  for (let n = 0; n < 1000; n++) {
+    ids.push(await create(`T${n}`));
+  }
   expect(new Set(ids).size).toBe(1000);
-  for (const id of ids) expect(id).toMatch(/^tsk_/);
+  for (const id of ids) {
+    expect(id).toMatch(/^tsk_/);
+  }
 }, 30_000);
 
 test('link takes a task blocked by an open task out of the ready list', async () => {
@@ -752,7 +765,9 @@ test('listReady lists the most urgent first, then the oldest, up to the limit', 
   // Twenty tasks in one millisecond, with random ids: only the creation
   // order sorts them.
   const titles = Array.from({ length: 20 }, (_, n) => `P2-${n}`);
-  for (const title of titles) await create(title, 2);
+  for (const title of titles) {
+    await create(title, 2);
+  }
   await create('P0', 0);
   await create('P1', 1);
   expect(await ready(100)).toEqual(['P0', 'P1', ...titles]);
@@ -769,7 +784,9 @@ test('listReady returns whole tasks', async () => {
     description: 'Parse the input.',
     sourcePath: './notes/task.md',
   });
-  if (!created.ok) throw new Error(`create: ${created.reason}`);
+  if (!created.ok) {
+    throw new Error(`create: ${created.reason}`);
+  }
   expect(await tasks.listReady({ assignees: ['dev'], limit: 1 })).toEqual({
     ok: true,
     tasks: [created.task],
@@ -1097,10 +1114,13 @@ test('the graph after random operations keeps every counter equal to the holding
     if (roll < 0.25) {
       const assignee = pick(['dev', 'qa', 'ops']);
       ids.push(await create(`T${ids.length}`, 2, pick(ids), assignee));
-    } else if (roll < 0.55) await link(pick(ids), pick(ids));
-    else if (roll < 0.7) await unlink(pick(ids), pick(ids));
-    else if (roll < 0.85) await start(pick(ids));
-    else {
+    } else if (roll < 0.55) {
+      await link(pick(ids), pick(ids));
+    } else if (roll < 0.7) {
+      await unlink(pick(ids), pick(ids));
+    } else if (roll < 0.85) {
+      await start(pick(ids));
+    } else {
       // Mostly a running task, so finishes happen; any task otherwise.
       const candidates = (await connection().all(running)).map((row) =>
         String(row.id),

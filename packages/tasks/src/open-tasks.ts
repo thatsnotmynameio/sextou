@@ -14,7 +14,9 @@ export interface Tasks extends Graph {
 // the migrations. Turso opens every file in WAL mode, which lets reads run
 // while a write is in progress, and refuses a second process.
 export async function openTasks(path: string): Promise<Tasks> {
-  if (path !== ':memory:') restrictToOwner(path);
+  if (path !== ':memory:') {
+    restrictToOwner(path);
+  }
 
   const client = await connect(path);
   try {

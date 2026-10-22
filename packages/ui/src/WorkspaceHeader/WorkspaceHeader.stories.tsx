@@ -55,13 +55,17 @@ export const LongName: Story = {
     const name = canvas.getByText('Tatu Engineering and Operations');
     const search = canvas.getByRole('button', { name: 'Search' });
     const newIssue = canvas.getByRole('button', { name: 'New issue' });
+    const row = name.closest('div');
+    if (!row) {
+      throw new Error('The name is not inside the header row');
+    }
     // The name is cut to fit and both buttons stay on the right, inside the row.
     await expect(name.scrollWidth).toBeGreaterThan(name.clientWidth);
     await expect(name.getBoundingClientRect().right).toBeLessThan(
       search.getBoundingClientRect().left,
     );
     await expect(newIssue.getBoundingClientRect().right).toBeLessThanOrEqual(
-      name.closest('div')!.getBoundingClientRect().right,
+      row.getBoundingClientRect().right,
     );
   },
 };

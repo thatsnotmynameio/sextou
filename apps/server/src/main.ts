@@ -11,7 +11,9 @@ import { createDatabase } from './database';
 import { startServer } from './server';
 
 const config = readConfig();
-if (config) await serve(config);
+if (config) {
+  await serve(config);
+}
 
 // An invalid variable stops the server before it listens.
 function readConfig(): Config | undefined {

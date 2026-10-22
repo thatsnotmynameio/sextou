@@ -226,12 +226,16 @@ export function createGraph(client: Database): Graph {
       return await client
         .transactionAsync(async (txn) => {
           const result = await fn(txn);
-          if (!result.ok) throw new Refusal(result);
+          if (!result.ok) {
+            throw new Refusal(result);
+          }
           return result;
         })
         .immediate();
     } catch (error) {
-      if (error instanceof Refusal) return error.result as T;
+      if (error instanceof Refusal) {
+        return error.result as T;
+      }
       throw error;
     }
   }
@@ -251,7 +255,9 @@ export function createGraph(client: Database): Graph {
   return {
     createTask: async (input) => {
       const parsed = createTaskSchema.safeParse(input);
-      if (!parsed.success) return refuse(Reason.invalid);
+      if (!parsed.success) {
+        return refuse(Reason.invalid);
+      }
       const { parentId, createdBy, ...fields } = parsed.data;
       return write(async (txn) => {
         if (
@@ -284,7 +290,9 @@ export function createGraph(client: Database): Graph {
 
     link: async (input) => {
       const parsed = linkSchema.safeParse(input);
-      if (!parsed.success) return refuse(Reason.invalid);
+      if (!parsed.success) {
+        return refuse(Reason.invalid);
+      }
       const { taskId, blockerId } = parsed.data;
       return write(async (txn) => {
         const task = await txn.get(find, taskId);
@@ -292,11 +300,15 @@ export function createGraph(client: Database): Graph {
         if (task === undefined || blocker === undefined) {
           return refuse(Reason.notFound);
         }
-        if (taskId === blockerId) return refuse(Reason.sameTask);
+        if (taskId === blockerId) {
+          return refuse(Reason.sameTask);
+        }
         if ((await txn.get(findLink, taskId, blockerId)) !== undefined) {
           return { ok: true };
         }
-        if (task.status !== Status.open) return refuse(Reason.notOpen);
+        if (task.status !== Status.open) {
+          return refuse(Reason.notOpen);
+        }
         // A blocker past open reaches no open task.
         if (
           blocker.status === Status.open &&
@@ -304,7 +316,9 @@ export function createGraph(client: Database): Graph {
         ) {
           return refuse(Reason.cycle);
         }
-        if (holds(blocker.status)) await txn.run(addBlocker, taskId);
+        if (holds(blocker.status)) {
+          await txn.run(addBlocker, taskId);
+        }
         await txn.run(insertLink, taskId, blockerId);
         return { ok: true };
       });
@@ -312,7 +326,9 @@ export function createGraph(client: Database): Graph {
 
     unlink: async (input) => {
       const parsed = unlinkSchema.safeParse(input);
-      if (!parsed.success) return refuse(Reason.invalid);
+      if (!parsed.success) {
+        return refuse(Reason.invalid);
+      }
       const { taskId, blockerId } = parsed.data;
       return write(async (txn) => {
         const task = await txn.get(find, taskId);
@@ -320,7 +336,9 @@ export function createGraph(client: Database): Graph {
         if (task === undefined || blocker === undefined) {
           return refuse(Reason.notFound);
         }
-        if (task.status !== Status.open) return refuse(Reason.notOpen);
+        if (task.status !== Status.open) {
+          return refuse(Reason.notOpen);
+        }
         const { changes } = await txn.run(deleteLink, taskId, blockerId);
         if (changes > 0 && holds(blocker.status)) {
           await txn.run(removeBlocker, taskId);
@@ -331,13 +349,21 @@ export function createGraph(client: Database): Graph {
 
     startTask: async (input) => {
       const parsed = startTaskSchema.safeParse(input);
-      if (!parsed.success) return refuse(Reason.invalid);
+      if (!parsed.success) {
+        return refuse(Reason.invalid);
+      }
       const { id, changedBy, actor, logPath } = parsed.data;
       return write(async (txn) => {
         const task = await txn.get(find, id);
-        if (task === undefined) return refuse(Reason.notFound);
-        if (task.status !== Status.open) return refuse(Reason.notOpen);
-        if (Number(task.holding_blockers) > 0) return refuse(Reason.blocked);
+        if (task === undefined) {
+          return refuse(Reason.notFound);
+        }
+        if (task.status !== Status.open) {
+          return refuse(Reason.notOpen);
+        }
+        if (Number(task.holding_blockers) > 0) {
+          return refuse(Reason.blocked);
+        }
         await txn.run(setStatus, Status.running, id);
         await recordChange(txn, id, Status.open, Status.running, changedBy);
         await txn.run(insertExecution, id, actor, logPath);
@@ -347,18 +373,26 @@ export function createGraph(client: Database): Graph {
 
     finishTask: async (input) => {
       const parsed = finishTaskSchema.safeParse(input);
-      if (!parsed.success) return refuse(Reason.invalid);
+      if (!parsed.success) {
+        return refuse(Reason.invalid);
+      }
       const { id, changedBy, status, reason, resultPath } = parsed.data;
       return write(async (txn) => {
         const task = await txn.get(find, id);
-        if (task === undefined) return refuse(Reason.notFound);
-        if (task.status !== Status.running) return refuse(Reason.notRunning);
+        if (task === undefined) {
+          return refuse(Reason.notFound);
+        }
+        if (task.status !== Status.running) {
+          return refuse(Reason.notRunning);
+        }
         await txn.run(setStatus, status, id);
         await recordChange(txn, id, Status.running, status, changedBy, reason);
         // A running task has its execution, from its start.
         await txn.run(setResult, resultPath, id);
         // Every task it blocks is open: no task past open is held.
-        if (!holds(status)) await txn.run(unblockDependents, id);
+        if (!holds(status)) {
+          await txn.run(unblockDependents, id);
+        }
         return { ok: true };
       });
     },
@@ -366,7 +400,9 @@ export function createGraph(client: Database): Graph {
     // Waits for a write in progress, so it reads the graph between writes.
     listReady: async (input) => {
       const parsed = listReadySchema.safeParse(input);
-      if (!parsed.success) return refuse(Reason.invalid);
+      if (!parsed.success) {
+        return refuse(Reason.invalid);
+      }
       const { assignees, limit } = parsed.data;
       // The WHERE matches task_ready's, so Turso searches that index once per
       // assignee, then sorts only the rows it found. It scans the whole index
