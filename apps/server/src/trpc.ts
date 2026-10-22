@@ -15,6 +15,8 @@ export interface Logger {
   info: LogMethod;
   debug: LogMethod;
   trace: LogMethod;
+  // A logger that adds the fields to each line it writes.
+  child: (fields: object) => Logger;
 }
 
 // What every procedure gets. main.ts builds it from the config; tests pass

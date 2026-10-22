@@ -96,3 +96,39 @@ test('an error response carries no stack outside development', async () => {
   expect(error.data.code).toBe('INTERNAL_SERVER_ERROR');
   expect(error.data).not.toHaveProperty('stack');
 });
+
+// The fields each request's logger was bound with.
+function requestLoggers() {
+  const silent = createLogger({ level: 'silent', pretty: false });
+  const bindings: object[] = [];
+  const logger = Object.assign(Object.create(silent), {
+    child: (fields: object) => {
+      bindings.push(fields);
+      return silent;
+    },
+  });
+  return { logger, bindings };
+}
+
+test('a request gets a logger bound to the X-Request-Id it carries', async () => {
+  const { logger, bindings } = requestLoggers();
+
+  await app({ logger }).request('/trpc/health.check', {
+    headers: { 'x-request-id': 'req-1' },
+  });
+
+  expect(bindings).toEqual([{ requestId: 'req-1' }]);
+});
+
+test('a request without an id gets a logger bound to a new one', async () => {
+  const { logger, bindings } = requestLoggers();
+
+  await app({ logger }).request('/trpc/health.check');
+  await app({ logger }).request('/trpc/health.check');
+
+  expect(bindings).toEqual([
+    { requestId: expect.stringMatching(/^[0-9a-f-]{36}$/) },
+    { requestId: expect.stringMatching(/^[0-9a-f-]{36}$/) },
+  ]);
+  expect(bindings[0]).not.toEqual(bindings[1]);
+});
