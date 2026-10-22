@@ -1,4 +1,5 @@
 import { Database } from '@tursodatabase/database';
+import { pino } from 'pino';
 import {
   afterEach,
   beforeEach,
@@ -118,7 +119,7 @@ async function ready(limit = 100, assignees = ['dev']) {
 
 beforeEach(async () => {
   exec = vi.spyOn(Database.prototype, 'exec');
-  tasks = await openTasks(':memory:');
+  tasks = await openTasks(':memory:', { logger: pino({ level: 'silent' }) });
 });
 
 afterEach(async () => {

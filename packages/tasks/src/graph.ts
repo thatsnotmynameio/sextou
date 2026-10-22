@@ -232,7 +232,7 @@ export interface Logger {
 // each task's holding_blockers, which every write moves in the same
 // transaction, so no task past open is ever held by a blocker. The logger is
 // there for the graph's code; nothing in it logs yet.
-export function createGraph(client: Database, _logger?: Logger): Graph {
+export function createGraph(client: Database, _logger: Logger): Graph {
   // Runs fn in an immediate transaction, which takes the write lock first, so
   // its checks and its writes see the same graph. Turso holds the connection
   // until the transaction ends: another operation waits for it. A refusal is

@@ -9,8 +9,8 @@ export interface Tasks extends Graph {
 }
 
 export interface OpenTasksOptions {
-  // Where the graph logs. Without one, it writes nothing anywhere.
-  logger?: Logger;
+  // Where the graph logs: the caller's logger, such as the server's.
+  logger: Logger;
 }
 
 // Opens the task graph kept in the database file at an absolute path, or in
@@ -20,7 +20,7 @@ export interface OpenTasksOptions {
 // while a write is in progress, and refuses a second process.
 export async function openTasks(
   path: string,
-  options?: OpenTasksOptions,
+  { logger }: OpenTasksOptions,
 ): Promise<Tasks> {
   if (path !== ':memory:') {
     restrictToOwner(path);
@@ -38,7 +38,7 @@ export async function openTasks(
   }
 
   return {
-    ...createGraph(client, options?.logger),
+    ...createGraph(client, logger),
     close: () => client.close(),
   };
 }
