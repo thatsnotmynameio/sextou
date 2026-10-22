@@ -44,13 +44,18 @@ vi.mock(import('./database'), async (importOriginal) => {
 const output = vi.hoisted(() => ({ lines: [] as string[] }));
 vi.mock(import('./logger'), async (importOriginal) => {
   const logger = await importOriginal();
+  const { Writable } = await import('node:stream');
   return {
-    createLogger: (level) =>
-      logger.createLogger(level, {
-        write: (line) => {
-          output.lines.push(line);
-        },
-      }),
+    createLogger: (options) =>
+      logger.createLogger(
+        options,
+        new Writable({
+          write: (chunk, _encoding, done) => {
+            output.lines.push(String(chunk));
+            done();
+          },
+        }),
+      ),
   };
 });
 
@@ -170,6 +175,19 @@ test('logs no listening record at level warn', async () => {
 
   expect(startServer).toHaveBeenCalledOnce();
   expect(records()).toEqual([]);
+});
+
+test('logs readable lines, not JSON, with SEXTOU_SERVER_DEV=true', async () => {
+  vi.stubEnv('SEXTOU_SERVER_DATABASE', ':memory:');
+  vi.stubEnv('SEXTOU_SERVER_DEV', 'true');
+
+  await import('./main');
+
+  await vi.waitFor(() =>
+    expect(output.lines.join('')).toContain('http://127.0.0.1:54321'),
+  );
+  expect(output.lines.join('')).toContain('listening');
+  expect(() => records()).toThrow(SyntaxError);
 });
 
 // Covers AE1. The default path is the Linux one; CI runs Linux.

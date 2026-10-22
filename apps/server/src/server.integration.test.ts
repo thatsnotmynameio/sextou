@@ -7,7 +7,7 @@ const app = createApp({
   version: '1.2.3',
   database: { ping: async () => true },
   dev: false,
-  logger: createLogger('silent'),
+  logger: createLogger({ level: 'silent', pretty: false }),
   webOrigin: 'http://localhost:5173',
 });
 

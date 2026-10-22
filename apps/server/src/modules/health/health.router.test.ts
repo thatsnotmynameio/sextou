@@ -11,7 +11,7 @@ function caller(context: Partial<Context> = {}) {
     version: '1.2.3',
     database: { ping: async () => true },
     dev: false,
-    logger: createLogger('silent'),
+    logger: createLogger({ level: 'silent', pretty: false }),
     ...context,
   });
 }

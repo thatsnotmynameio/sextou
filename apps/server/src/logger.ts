@@ -1,10 +1,20 @@
 import { pino, type DestinationStream } from 'pino';
+import PinoPretty from 'pino-pretty';
 import type { LogLevel } from './config';
 
-// The server's logger: one JSON line per record, at the given level and above,
-// on stdout unless a test passes another destination. No transport: Pino runs
-// a transport from files it loads at run time, which the single-file bundle
-// doesn't carry.
-export function createLogger(level: LogLevel, destination?: DestinationStream) {
-  return pino({ level }, destination);
+export interface LoggerOptions {
+  // The lowest level written.
+  level: LogLevel;
+  // Readable lines, for development; one JSON record per line otherwise.
+  pretty: boolean;
+}
+
+// The server's logger, on stdout unless a test passes another destination.
+// pino-pretty runs as a stream in this process rather than as Pino's
+// transport, which would load it in a worker thread.
+export function createLogger(
+  { level, pretty }: LoggerOptions,
+  destination?: DestinationStream,
+) {
+  return pino({ level }, pretty ? PinoPretty({ destination }) : destination);
 }

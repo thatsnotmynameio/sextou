@@ -27,14 +27,19 @@ function readConfig(): Config | undefined {
       cwd: process.cwd(),
     });
   } catch (error) {
-    createLogger('info').error((error as Error).message);
+    createLogger({ level: 'info', pretty: false }).error(
+      (error as Error).message,
+    );
     process.exitCode = 1;
     return undefined;
   }
 }
 
 async function serve(config: Config) {
-  const logger = createLogger(config.logLevel);
+  const logger = createLogger({
+    level: config.logLevel,
+    pretty: config.dev,
+  });
 
   // Turso creates the file but not its folder. A folder it can't create
   // doesn't stop the server: health reports the database down.
