@@ -84,7 +84,7 @@ await client
   .immediate();
 ```
 
-Tests follow the same rule as the code: they reach a database only through Turso. The one exception is the test that opens a file Turso wrote with `node:sqlite` (`packages/tasks/src/open-tasks.test.ts`), because what it proves is that standard SQLite can still read sextou's files.
+Tests follow the same rule as the code: they reach a database only through Turso. The one exception is the test that opens a file Turso wrote with `node:sqlite` (`packages/tasks/tests/integration/open-tasks.test.ts`), because what it proves is that standard SQLite can still read sextou's files.
 
 ## Related
 

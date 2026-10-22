@@ -20,7 +20,7 @@ export const integrationOnly = [
 // Each suite must reach this in every file it answers for, on its own.
 export const coverage = {
   provider: 'v8',
-  exclude: ['src/**/*.test.ts', 'src/**/*.d.ts'],
+  exclude: ['src/**/*.d.ts'],
   thresholds: {
     lines: 90,
     functions: 90,
@@ -30,7 +30,7 @@ export const coverage = {
   },
 } satisfies CoverageOptions;
 
-// The unit suite: *.test.ts in Node, with no disk or network: the router
+// The unit suite: tests/unit/ in Node, with no disk or network: the router
 // through createCaller, the app through app.request. The root
 // vitest.config.ts runs it with the integration suite.
 export default defineConfig({
@@ -42,8 +42,7 @@ export default defineConfig({
     // clear fails on files another is writing (ENOTEMPTY).
     fsModuleCachePath: 'node_modules/.vitest-cache',
     environment: 'node',
-    include: ['src/**/*.test.ts'],
-    exclude: ['src/**/*.integration.test.ts'],
+    include: ['tests/unit/**/*.test.ts'],
     coverage: {
       ...coverage,
       include: ['src/**/*.ts'],
