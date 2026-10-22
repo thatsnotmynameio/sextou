@@ -309,7 +309,9 @@ test('openTasks with only a path writes nothing to stdout or stderr', () => {
       `,
       join(dir, 'graph.db'),
     ],
-    { cwd: import.meta.dirname, encoding: 'utf8' },
+    // spawnSync blocks the event loop, so Vitest's own timeout can't end a
+    // child that hangs.
+    { cwd: import.meta.dirname, encoding: 'utf8', timeout: 30_000 },
   );
   expect(child.status).toBe(0);
   expect(child.stdout).toBe('');
