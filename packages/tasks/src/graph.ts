@@ -5,7 +5,14 @@ import type {
   TursoDatabaseDatabase,
   TursoDatabaseRunResult,
 } from 'drizzle-orm/tursodatabase';
-import { taskExecutions, taskLinks, tasks, taskStatusChanges } from './schema';
+import {
+  openStatus,
+  ready,
+  taskExecutions,
+  taskLinks,
+  tasks,
+  taskStatusChanges,
+} from './schema';
 import {
   createTaskSchema,
   finishTaskSchema,
@@ -153,15 +160,13 @@ export interface Graph {
   }) => Promise<{ ok: true; tasks: Task[] } | Refused<typeof Reason.invalid>>;
 }
 
+// A write's transaction. Inside a write, every query runs on it: one on db,
+// or prepared on it, would wait for the lock the transaction holds.
 type Transaction = SQLiteAsyncTransaction<
   'async',
   TursoDatabaseRunResult,
   EmptyRelations
 >;
-
-// The open status as literal SQL. Turso searches task_ready only for a query
-// that writes it so, as the index's condition does.
-const open = sql.raw(`'${Status.open}'`);
 
 // A task's columns, as Task has them.
 const taskColumns = {
@@ -185,9 +190,6 @@ function refuse<R extends Reason>(reason: R): Refused<R> {
   return { ok: false, reason };
 }
 
-// Inside a write, every query runs on its transaction, tx: one on db, or
-// prepared on it, would wait for the lock the transaction holds.
-
 function find(tx: Transaction, id: string) {
   return tx
     .select({ status: tasks.status, holdingBlockers: tasks.holdingBlockers })
@@ -210,7 +212,7 @@ function reaches(tx: Transaction, from: string, to: string) {
   UNION
   SELECT ${taskLinks.blockerId} FROM reached
   JOIN ${taskLinks} ON ${taskLinks.taskId} = reached.id
-  JOIN ${tasks} ON ${tasks.id} = ${taskLinks.blockerId} AND ${tasks.status} = ${open}
+  JOIN ${tasks} ON ${tasks.id} = ${taskLinks.blockerId} AND ${tasks.status} = ${openStatus}
 )
 SELECT 1 FROM reached WHERE id = ${to} LIMIT 1`);
 }
@@ -446,21 +448,17 @@ export function createGraph(db: TursoDatabaseDatabase): Graph {
         return refuse(Reason.invalid);
       }
       const { assignees, limit } = parsed.data;
-      // The WHERE matches task_ready's, so Turso searches that index once per
-      // assignee, then sorts only the rows it found. It scans the whole index
-      // for assignees read from a JSON array, hence one parameter each.
-      const ready = await db
+      // The WHERE holds task_ready's condition, so Turso searches that index
+      // once per assignee, then sorts only the rows it found. It scans the
+      // whole index for assignees read from a JSON array, hence one parameter
+      // each.
+      const rows = await db
         .select(taskColumns)
         .from(tasks)
-        .where(
-          and(
-            inArray(tasks.assignee, assignees),
-            sql`${tasks.status} = ${open} AND ${tasks.holdingBlockers} = 0`,
-          ),
-        )
+        .where(and(inArray(tasks.assignee, assignees), ready))
         .orderBy(tasks.priority, sql`rowid`)
         .limit(limit);
-      return { ok: true, tasks: ready };
+      return { ok: true, tasks: rows };
     },
   };
 }

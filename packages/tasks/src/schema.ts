@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import {
   type AnySQLiteColumn,
   check,
@@ -27,7 +27,8 @@ import { Status, statusList } from './status';
 // other index covers: with a second candidate, SQLite can pick the wrong one.
 // The index orders by assignee, then by priority, then by rowid, which is the
 // order the tasks were created in. Turso searches it only for a query that
-// writes the status and the count as literals, as its condition does.
+// writes the status and the count as literals, as its condition does: the
+// ready list writes the same condition, ready.
 export const tasks = sqliteTable(
   'tasks',
   {
@@ -46,13 +47,15 @@ export const tasks = sqliteTable(
     check('task_priority', sql`${table.priority} BETWEEN 0 AND 4`),
     check('task_status', sql`${table.status} IN (${sql.raw(statusList)})`),
     check('task_holding_blockers', sql`${table.holdingBlockers} >= 0`),
-    index('task_ready')
-      .on(table.assignee, table.priority)
-      .where(
-        sql`${table.status} = ${sql.raw(`'${Status.open}'`)} AND ${table.holdingBlockers} = 0`,
-      ),
+    index('task_ready').on(table.assignee, table.priority).where(ready),
   ],
 );
+
+// The open status as literal SQL.
+export const openStatus = sql.raw(`'${Status.open}'`);
+
+// An open task no blocker holds: task_ready's condition.
+export const ready: SQL = sql`${tasks.status} = ${openStatus} AND ${tasks.holdingBlockers} = 0`;
 
 // task_link_blocker finds the tasks a finishing task blocks.
 export const taskLinks = sqliteTable(

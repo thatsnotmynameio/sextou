@@ -36,8 +36,8 @@ export const coverage = {
   },
 } satisfies CoverageOptions;
 
-// The unit suite: *.test.ts in Node, with no disk. The root
-// vitest.config.ts runs it with the integration suite.
+// The unit suite: *.test.ts in Node, with no disk. The root vitest.config.ts
+// runs it with the integration suite.
 export default defineConfig({
   test: {
     name: 'tasks/unit',
