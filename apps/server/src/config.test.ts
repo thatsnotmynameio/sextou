@@ -19,6 +19,7 @@ test('loadConfig uses every default when no variable is set', () => {
     webOrigin: 'http://localhost:5173',
     databaseTimeoutMs: 20000,
     dev: false,
+    logLevel: 'info',
   });
 });
 
@@ -31,6 +32,7 @@ test('loadConfig takes every variable that is set', () => {
       SEXTOU_SERVER_WEB_ORIGIN: 'https://app.example',
       SEXTOU_SERVER_DATABASE_TIMEOUT_MS: '500',
       SEXTOU_SERVER_DEV: 'true',
+      SEXTOU_SERVER_LOG_LEVEL: 'debug',
     }),
   ).toEqual({
     host: '0.0.0.0',
@@ -39,6 +41,7 @@ test('loadConfig takes every variable that is set', () => {
     webOrigin: 'https://app.example',
     databaseTimeoutMs: 500,
     dev: true,
+    logLevel: 'debug',
   });
 });
 
@@ -166,6 +169,22 @@ test.each(['', '1', 'yes', 'TRUE'])(
   (dev) => {
     expect(() => load({ SEXTOU_SERVER_DEV: dev })).toThrow(
       `Invalid SEXTOU_SERVER_DEV: ${JSON.stringify(dev)}`,
+    );
+  },
+);
+
+test.each(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])(
+  'loadConfig accepts log level %j',
+  (level) => {
+    expect(load({ SEXTOU_SERVER_LOG_LEVEL: level }).logLevel).toBe(level);
+  },
+);
+
+test.each(['', 'INFO', 'verbose', '30'])(
+  'loadConfig rejects log level %j',
+  (level) => {
+    expect(() => load({ SEXTOU_SERVER_LOG_LEVEL: level })).toThrow(
+      `Invalid SEXTOU_SERVER_LOG_LEVEL: ${JSON.stringify(level)} (expected one of fatal, error, warn, info, debug, trace, silent)`,
     );
   },
 );
