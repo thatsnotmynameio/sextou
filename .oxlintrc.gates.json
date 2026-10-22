@@ -42,6 +42,15 @@
     "eslint/object-shorthand": "error",
     "typescript/no-non-null-assertion": "error",
     "typescript/ban-ts-comment": "error",
-    "typescript/no-explicit-any": "error"
-  }
+    "typescript/no-explicit-any": "error",
+    "eslint/no-console": "error"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.test.ts", "**/*.test.tsx"],
+      "rules": {
+        "eslint/no-console": "off"
+      }
+    }
+  ]
 }
