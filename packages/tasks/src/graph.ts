@@ -211,9 +211,6 @@ function toTask(row: Record<string, unknown>): Task {
   };
 }
 
-// The graph's operations over a migrated connection. Readiness is kept in
-// each task's holding_blockers, which every write moves in the same
-// transaction, so no task past open is ever held by a blocker.
 // One level of a logger: a message, or fields and then a message.
 interface LogMethod {
   (msg: string): void;
@@ -231,7 +228,10 @@ export interface Logger {
   trace: LogMethod;
 }
 
-// Nothing logs yet: the first operation that does renames _logger.
+// The graph's operations over a migrated connection. Readiness is kept in
+// each task's holding_blockers, which every write moves in the same
+// transaction, so no task past open is ever held by a blocker. The logger is
+// there for the graph's code; nothing in it logs yet.
 export function createGraph(client: Database, _logger?: Logger): Graph {
   // Runs fn in an immediate transaction, which takes the write lock first, so
   // its checks and its writes see the same graph. Turso holds the connection
