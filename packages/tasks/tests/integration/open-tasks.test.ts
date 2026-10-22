@@ -3,6 +3,7 @@
 import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   rmSync,
@@ -97,6 +98,18 @@ afterEach(async () => {
   }
   vi.restoreAllMocks();
   rmSync(dir, { recursive: true, force: true });
+});
+
+// An empty folder holds no migration, so the graph gets no table.
+test('openTasks applies the migrations of the folder it is given', async () => {
+  const folder = join(dir, 'migrations');
+  mkdirSync(folder);
+  const tasks = await openTasks(':memory:', {
+    logger: pino({ level: 'silent' }),
+    migrationsFolder: folder,
+  });
+  opened.push(tasks);
+  expect(await tables(connection())).toEqual(['__drizzle_migrations']);
 });
 
 test('openTasks in memory opens a migrated, empty graph', async () => {

@@ -5,9 +5,8 @@ import { migrate } from 'drizzle-orm/tursodatabase/migrator';
 import { createGraph, type Graph, type Logger } from './graph';
 import { restrictToOwner } from './owner-only';
 
-// The migrations drizzle-kit generates from schema.ts. An absolute path: the
-// migrator resolves a relative one against the working directory.
-const migrationsFolder = join(import.meta.dirname, '..', 'drizzle');
+// The migrations drizzle-kit generates from schema.ts, in this package.
+const packageMigrations = join(import.meta.dirname, '..', 'drizzle');
 
 export interface Tasks extends Graph {
   // Closes the database; does nothing once closed.
@@ -17,17 +16,20 @@ export interface Tasks extends Graph {
 export interface OpenTasksOptions {
   // Where the graph logs: the caller's logger, such as the server's.
   logger: Logger;
+  // The absolute path of a copy of the package's drizzle folder, for a
+  // caller whose bundle carries this package without its files. The
+  // package's own folder by default.
+  migrationsFolder?: string;
 }
 
 // Opens the task graph kept in the database file at an absolute path, or in
 // memory for ':memory:', and applies the migrations the file doesn't have
-// yet, read from the package's drizzle folder. Rejects when it can't, with
-// the error from the file system, Turso or the migrations. Turso opens every
-// file in WAL mode, which lets reads run while a write is in progress, and
-// refuses a second process.
+// yet. Rejects when it can't, with the error from the file system, Turso or
+// the migrations. Turso opens every file in WAL mode, which lets reads run
+// while a write is in progress, and refuses a second process.
 export async function openTasks(
   path: string,
-  { logger }: OpenTasksOptions,
+  { logger, migrationsFolder = packageMigrations }: OpenTasksOptions,
 ): Promise<Tasks> {
   if (path !== ':memory:') {
     restrictToOwner(path);

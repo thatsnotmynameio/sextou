@@ -1,4 +1,19 @@
+import { cpSync } from 'node:fs';
+import { join } from 'node:path';
 import { defineConfig } from 'vite';
+
+// @sextou/tasks reads its migrations from its drizzle folder at run time.
+// The bundle inlines the package's code but not that folder, so the build
+// copies it beside server.mjs and tells main.ts where through
+// __TASKS_MIGRATIONS__.
+const tasksMigrations = join(
+  import.meta.dirname,
+  '..',
+  '..',
+  'packages',
+  'tasks',
+  'drizzle',
+);
 
 // https://vitejs.dev/config
 // The production build: src/main.ts and everything it imports, the
@@ -13,6 +28,18 @@ export default defineConfig({
     // An explicit external wins over noExternal.
     external: ['@tursodatabase/database', 'pino', 'pino-pretty'],
   },
+  define: {
+    // The migrations' folder, relative to server.mjs.
+    __TASKS_MIGRATIONS__: JSON.stringify('drizzle'),
+  },
+  plugins: [
+    {
+      name: 'copy-tasks-migrations',
+      writeBundle({ dir = 'dist' }) {
+        cpSync(tasksMigrations, join(dir, 'drizzle'), { recursive: true });
+      },
+    },
+  ],
   build: {
     ssr: true,
     target: 'node24',

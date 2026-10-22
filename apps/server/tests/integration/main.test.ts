@@ -12,6 +12,11 @@ import {
 } from 'vitest';
 import packageJson from '../../package.json';
 import { createDatabase, type Database } from '../../src/database';
+import {
+  createTasksService,
+  type NewTask,
+  type TasksService,
+} from '../../src/modules/tasks';
 import { startServer } from '../../src/server';
 
 // main reads the home directory from node:os, which in a worker thread
@@ -63,11 +68,27 @@ function records(): unknown[] {
   return output.lines.map((line) => JSON.parse(line));
 }
 
+// The real service, watched so each test can reach the one main created and
+// see when its start settled.
+vi.mock(import('../../src/modules/tasks'), async (importOriginal) => {
+  const service = await importOriginal();
+  return {
+    createTasksService: vi.fn(
+      (...args: Parameters<typeof service.createTasksService>) => {
+        const tasks = service.createTasksService(...args);
+        vi.spyOn(tasks, 'start');
+        return tasks;
+      },
+    ),
+  };
+});
+
 const variables = [
   'SEXTOU_SERVER_HOST',
   'SEXTOU_SERVER_PORT',
   'SEXTOU_SERVER_DATA_DIR',
   'SEXTOU_SERVER_DATABASE',
+  'SEXTOU_SERVER_TASKS_DB',
   'SEXTOU_SERVER_WEB_ORIGIN',
   'SEXTOU_SERVER_DATABASE_TIMEOUT_MS',
   'SEXTOU_SERVER_DEV',
@@ -84,6 +105,19 @@ let exit: MockInstance<typeof process.exit>;
 function createdDatabase(): Database {
   return vi.mocked(createDatabase).mock.results[0].value;
 }
+
+// The tasks service from main's nth run, counting from 0.
+function tasksService(run = 0): TasksService {
+  return vi.mocked(createTasksService).mock.results[run].value;
+}
+
+const newTask: NewTask = {
+  title: 'Write the tests',
+  kind: 'task',
+  priority: 2,
+  assignee: { name: 'dev' },
+  createdBy: { name: 'planner' },
+};
 
 // The app main handed to startServer.
 function servedApp(): Hono {
@@ -110,6 +144,8 @@ beforeEach(() => {
   for (const name of variables) {
     vi.stubEnv(name, undefined);
   }
+  // A test that looks at the tasks database's file sets its own path.
+  vi.stubEnv('SEXTOU_SERVER_TASKS_DB', ':memory:');
   on = vi.spyOn(process, 'on').mockImplementation(() => process);
   off = vi.spyOn(process, 'off').mockImplementation(() => process);
   exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
@@ -121,8 +157,14 @@ afterEach(async () => {
       await result.value.close();
     }
   }
+  for (const result of vi.mocked(createTasksService).mock.results) {
+    if (result.type === 'return') {
+      await result.value.stop();
+    }
+  }
   process.exitCode = undefined;
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
   rmSync(dir, { recursive: true, force: true });
 });
@@ -201,6 +243,109 @@ test.runIf(process.platform === 'linux')(
   },
 );
 
+test.runIf(process.platform === 'linux')(
+  'opens the tasks database in the data directory when no path is given',
+  async () => {
+    vi.stubEnv('SEXTOU_SERVER_TASKS_DB', undefined);
+
+    await import('../../src/main');
+
+    expect(createTasksService).toHaveBeenCalledWith(
+      join(dir, '.local/share/sextou/tasks.db'),
+      { logger: expect.objectContaining({ error: expect.any(Function) }) },
+    );
+    expect(existsSync(join(dir, '.local/share/sextou/tasks.db'))).toBe(true);
+  },
+);
+
+test('starts the tasks service at SEXTOU_SERVER_TASKS_DB before listening', async () => {
+  const path = join(dir, 'tasks', 'tasks.db');
+  vi.stubEnv('SEXTOU_SERVER_TASKS_DB', path);
+  let startedAtListen: string | undefined;
+  vi.mocked(startServer).mockImplementationOnce(async () => {
+    startedAtListen = vi.mocked(tasksService().start).mock.settledResults[0]
+      ?.type;
+    return { host: '127.0.0.1', port: 54321, close: () => Promise.resolve() };
+  });
+
+  await import('../../src/main');
+
+  expect(createTasksService).toHaveBeenCalledWith(path, {
+    logger: expect.objectContaining({ error: expect.any(Function) }),
+  });
+  expect(startedAtListen).toBe('fulfilled');
+  expect(await tasksService().create(newTask)).toMatchObject({ ok: true });
+});
+
+// A tasks database file that is not a database, which the service can't open.
+function brokenTasksDb() {
+  const path = join(dir, 'tasks.db');
+  writeFileSync(path, 'not a database, just some text that is long enough');
+  vi.stubEnv('SEXTOU_SERVER_TASKS_DB', path);
+  return path;
+}
+
+// The production build defines __TASKS_MIGRATIONS__ as the folder beside
+// server.mjs; from source, main.ts resolves it against src/, where there is
+// none, so the open fails on that exact folder.
+test('hands the tasks service the migrations folder the build defined', async () => {
+  vi.stubGlobal('__TASKS_MIGRATIONS__', 'bundled-migrations');
+
+  await import('../../src/main');
+
+  expect(records()).toContainEqual(
+    expect.objectContaining({
+      msg: 'Could not open the tasks database',
+      err: expect.objectContaining({
+        message: expect.stringContaining(
+          join(import.meta.dirname, '..', '..', 'src', 'bundled-migrations'),
+        ),
+      }),
+    }),
+  );
+});
+
+test('listens when the tasks database does not open, logging why', async () => {
+  const path = brokenTasksDb();
+
+  await import('../../src/main');
+
+  expect(startServer).toHaveBeenCalledOnce();
+  expect(records()).toEqual([
+    expect.objectContaining({
+      level: 50,
+      msg: 'Could not open the tasks database',
+      path,
+      err: expect.objectContaining({
+        message: expect.stringContaining('File is not a database'),
+      }),
+    }),
+    expect.objectContaining({ msg: 'listening' }),
+  ]);
+});
+
+test('the tasks service rejects its calls when the tasks database does not open', async () => {
+  brokenTasksDb();
+
+  await import('../../src/main');
+
+  await expect(tasksService().create(newTask)).rejects.toThrow(
+    'File is not a database',
+  );
+});
+
+test('a restart once the tasks database is fixed gives a service that works', async () => {
+  const path = brokenTasksDb();
+  await import('../../src/main');
+  rmSync(path);
+  rmSync(`${path}-wal`, { force: true });
+  vi.resetModules();
+
+  await import('../../src/main');
+
+  expect(await tasksService(1).create(newTask)).toMatchObject({ ok: true });
+});
+
 // Covers AE2.
 test('listens and reports the database down when its folder is a file', async () => {
   writeFileSync(join(dir, 'file'), '');
@@ -247,6 +392,7 @@ test('exits with 1, naming the variable, without listening when a variable is in
       msg: 'Invalid SEXTOU_SERVER_PORT: "abc" (expected a port from 0 to 65535)',
     }),
   ]);
+  expect(createTasksService).not.toHaveBeenCalled();
   expect(createDatabase).not.toHaveBeenCalled();
   expect(startServer).not.toHaveBeenCalled();
   expect(on).not.toHaveBeenCalled();
@@ -322,7 +468,7 @@ test('gives the database the configured timeout', async () => {
   expect(createDatabase).toHaveBeenCalledWith(':memory:', 1234);
 });
 
-test('closes the database and rethrows when listening fails', async () => {
+test('stops the tasks service, closes the database and rethrows when listening fails', async () => {
   const error = Object.assign(new Error('listen EADDRINUSE'), {
     code: 'EADDRINUSE',
   });
@@ -331,12 +477,13 @@ test('closes the database and rethrows when listening fails', async () => {
 
   await expect(import('../../src/main')).rejects.toBe(error);
 
+  await expect(tasksService().create(newTask)).rejects.toThrow();
   expect(await createdDatabase().ping()).toBe(false);
   expect(on).not.toHaveBeenCalled();
 });
 
 test.each(['SIGTERM', 'SIGINT'])(
-  'on %s, stops listening, then closes the database, then exits with 0',
+  'on %s, stops listening, then the tasks service, then closes the database, then exits with 0',
   async (signal) => {
     const closed: string[] = [];
     vi.mocked(startServer).mockResolvedValueOnce({
@@ -352,6 +499,12 @@ test.each(['SIGTERM', 'SIGINT'])(
     }) as never);
     vi.stubEnv('SEXTOU_SERVER_DATABASE', ':memory:');
     await import('../../src/main');
+    const tasks = tasksService();
+    const stop = tasks.stop;
+    vi.spyOn(tasks, 'stop').mockImplementation(async () => {
+      await stop();
+      closed.push('tasks');
+    });
     const database = createdDatabase();
     const close = database.close;
     vi.spyOn(database, 'close').mockImplementation(async () => {
@@ -361,7 +514,8 @@ test.each(['SIGTERM', 'SIGINT'])(
 
     await handler(signal)();
 
-    expect(closedAtExit).toEqual(['server', 'database']);
+    expect(closedAtExit).toEqual(['server', 'tasks', 'database']);
+    await expect(tasks.create(newTask)).rejects.toThrow();
     expect(await database.ping()).toBe(false);
     expect(exit).toHaveBeenCalledWith(0);
   },
