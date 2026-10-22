@@ -15,7 +15,8 @@
     "test:mutation": "stryker run"
   },
   "dependencies": {
-    "@tursodatabase/database": "0.8.3"
+    "@tursodatabase/database": "0.8.3",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@stryker-mutator/core": "10.0.0",

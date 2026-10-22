@@ -1,58 +1,56 @@
 // The server's entry point: `pnpm --filter @sextou/server dev` runs it from
-// source, dist/server.mjs is its build.
+// source, dist/server.mjs is its build. Both load apps/server/.env when it
+// exists.
+import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { openDatabase, type Database } from '@sextou/data';
-import { openTasks, type Tasks } from '@sextou/tasks';
+import { dirname } from 'node:path';
 import packageJson from '../package.json';
 import { createApp } from './app';
-import { loadConfig } from './config';
+import { loadConfig, type Config } from './config';
+import { createDatabase } from './database';
 import { startServer } from './server';
 
-const config = loadConfig(process.env, process.argv.slice(2), {
-  platform: process.platform,
-  homedir,
-  cwd: process.cwd(),
-});
+const config = readConfig();
+if (config) await serve(config);
 
-// The database opens before the server listens: without it, no feature
-// works. Turso's own message doesn't always name the file, so this one does.
-let database: Database | undefined;
-try {
-  database = await openDatabase(config.database);
-} catch (error) {
-  console.error(
-    `Could not open the database at ${config.database}: ${(error as Error).message}`,
-  );
-  process.exitCode = 1;
-}
-
-// The task graph opens after the database and before the server listens. No
-// route reaches it yet.
-let tasks: Tasks | undefined;
-if (database) {
+// An invalid variable stops the server before it listens.
+function readConfig(): Config | undefined {
   try {
-    tasks = await openTasks(config.tasks);
+    return loadConfig(process.env, {
+      platform: process.platform,
+      homedir,
+      cwd: process.cwd(),
+    });
   } catch (error) {
-    console.error(
-      `Could not open the task graph at ${config.tasks}: ${(error as Error).message}`,
-    );
-    await database.close();
+    console.error((error as Error).message);
     process.exitCode = 1;
+    return undefined;
   }
 }
 
-if (database && tasks) await serve(database, tasks);
+async function serve(config: Config) {
+  // Turso creates the file but not its folder. A folder it can't create
+  // doesn't stop the server: health reports the database down.
+  if (config.database !== ':memory:') {
+    const folder = dirname(config.database);
+    try {
+      mkdirSync(folder, { recursive: true });
+    } catch (error) {
+      console.error(
+        `Could not create the database's folder ${folder}: ${(error as Error).message}`,
+      );
+    }
+  }
 
-async function serve(database: Database, tasks: Tasks) {
+  const database = createDatabase(config.database, config.databaseTimeoutMs);
   const app = createApp({
     version: packageJson.version,
-    startedAt: new Date(),
-    now: () => new Date(),
-    pingDatabase: database.ping,
+    database: { ping: database.ping },
+    dev: config.dev,
+    webOrigin: config.webOrigin,
   });
   const server = await startServer(app, config).catch(
     async (error: unknown) => {
-      await tasks.close();
       await database.close();
       throw error;
     },
@@ -67,7 +65,6 @@ async function serve(database: Database, tasks: Tasks) {
     process.off('SIGINT', shutdown);
     process.off('SIGTERM', shutdown);
     await server.close();
-    await tasks.close();
     await database.close();
     process.exit(0);
   };

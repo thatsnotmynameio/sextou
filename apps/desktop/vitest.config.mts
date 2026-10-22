@@ -7,6 +7,11 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     name: 'desktop/unit',
+    // This package's own module cache. Vitest otherwise keeps one at the
+    // workspace root for every package, and each run clears it when the
+    // lockfile changed: `pnpm -r` runs the packages at once, so one run's
+    // clear fails on files another is writing (ENOTEMPTY).
+    fsModuleCachePath: 'node_modules/.vitest-cache',
     environment: 'node',
     include: ['src/**/*.test.ts'],
     coverage: {

@@ -1,19 +1,19 @@
 import path from 'node:path';
-import { parseArgs } from 'node:util';
 import { defaultDataDirectory } from './data-directory';
 
 export interface Config {
   host: string;
   port: number;
-  // The absolute folder that holds sextou's databases: the task graph
-  // always, the main database unless --database moves it.
-  dataDir: string;
   // An absolute file path, or ':memory:'.
   database: string;
-  // The default organization's task graph, an absolute file path in the data
-  // directory. Each organization will get a file of its own; only the
-  // default exists.
-  tasks: string;
+  // The web app's origin, the one CORS lets call the server.
+  webOrigin: string;
+  // How long a database query may take before the server counts the
+  // database as down. Below the web app's request timeout, so a database
+  // that hangs shows as down rather than as a server that can't be reached.
+  databaseTimeoutMs: number;
+  // Whether error responses carry the stack.
+  dev: boolean;
 }
 
 // What the paths depend on: main passes the process's own.
@@ -25,86 +25,71 @@ export interface PathContext {
   cwd: string;
 }
 
-// Loopback by default: there is no authentication yet, so reaching the server
-// from the network takes an explicit --host.
-const defaults = { host: '127.0.0.1', port: 4310 };
-
-// The server's configuration, from the environment and the command line
-// arguments (without node and the script); an argument wins over its
-// variable. Throws on an unknown flag or an invalid value.
+// The server's configuration, from the environment: each variable has a
+// default, and apps/server/.env.example lists them. Throws naming the
+// variable on an invalid value.
 export function loadConfig(
   env: Record<string, string | undefined>,
-  args: string[],
   { platform, homedir, cwd }: PathContext,
 ): Config {
-  const { values } = parseArgs({
-    args,
-    strict: true,
-    options: {
-      host: { type: 'string' },
-      port: { type: 'string' },
-      'data-dir': { type: 'string' },
-      database: { type: 'string' },
-    },
-  });
+  const read = <T>(
+    name: string,
+    parse: (value: string, name: string) => T,
+    fallback: () => T,
+  ): T => {
+    const value = env[name];
+    return value === undefined ? fallback() : parse(value, name);
+  };
 
-  const port =
-    values.port !== undefined
-      ? parsePort(values.port, '--port')
-      : env.SEXTOU_SERVER_PORT !== undefined
-        ? parsePort(env.SEXTOU_SERVER_PORT, 'SEXTOU_SERVER_PORT')
-        : defaults.port;
-
-  const host =
-    values.host !== undefined
-      ? parseHost(values.host, '--host')
-      : env.SEXTOU_SERVER_HOST !== undefined
-        ? parseHost(env.SEXTOU_SERVER_HOST, 'SEXTOU_SERVER_HOST')
-        : defaults.host;
-
-  const dataDir =
-    values['data-dir'] !== undefined
-      ? parseDataDir(values['data-dir'], '--data-dir', cwd)
-      : env.SEXTOU_SERVER_DATA_DIR !== undefined
-        ? parseDataDir(
-            env.SEXTOU_SERVER_DATA_DIR,
+  return {
+    // Loopback by default: there is no authentication yet.
+    host: read('SEXTOU_SERVER_HOST', parseHost, () => '127.0.0.1'),
+    port: read('SEXTOU_SERVER_PORT', parsePort, () => 4310),
+    database: read(
+      'SEXTOU_SERVER_DATABASE',
+      (value, name) => parseDatabase(value, name, cwd),
+      () =>
+        path.join(
+          read(
             'SEXTOU_SERVER_DATA_DIR',
-            cwd,
-          )
-        : defaultDataDirectory(platform, env, homedir());
+            (value, name) => parseDataDir(value, name, cwd),
+            () => defaultDataDirectory(platform, env, homedir()),
+          ),
+          'sextou.db',
+        ),
+    ),
+    webOrigin: read(
+      'SEXTOU_SERVER_WEB_ORIGIN',
+      parseOrigin,
+      () => 'http://localhost:5173',
+    ),
+    databaseTimeoutMs: read(
+      'SEXTOU_SERVER_DATABASE_TIMEOUT_MS',
+      parseTimeout,
+      () => 20000,
+    ),
+    dev: read('SEXTOU_SERVER_DEV', parseBoolean, () => false),
+  };
+}
 
-  const database =
-    values.database !== undefined
-      ? parseDatabase(values.database, '--database', cwd)
-      : env.SEXTOU_SERVER_DATABASE !== undefined
-        ? parseDatabase(
-            env.SEXTOU_SERVER_DATABASE,
-            'SEXTOU_SERVER_DATABASE',
-            cwd,
-          )
-        : path.join(dataDir, 'sextou.db');
-
-  const tasks = path.join(dataDir, 'default.tasks.db');
-
-  return { host, port, dataDir, database, tasks };
+function invalid(name: string, value: string, expected: string) {
+  return new Error(
+    `Invalid ${name}: ${JSON.stringify(value)} (expected ${expected})`,
+  );
 }
 
 // Node binds an empty host to every interface: an empty value is an error,
 // not a way to reach the server from the network.
-function parseHost(value: string, source: string): string {
-  if (value === '') {
-    throw new Error(`Invalid ${source}: "" (expected a host name or address)`);
-  }
+function parseHost(value: string, name: string): string {
+  if (value === '') throw invalid(name, value, 'a host name or address');
   return value;
 }
 
 // Only digits, from 0 to 65535. 0 lets the system pick a free port.
-function parsePort(value: string, source: string): number {
+function parsePort(value: string, name: string): number {
   const port = Number(value);
   if (!/^\d+$/.test(value) || port > 65535) {
-    throw new Error(
-      `Invalid ${source}: ${JSON.stringify(value)} (expected a port from 0 to 65535)`,
-    );
+    throw invalid(name, value, 'a port from 0 to 65535');
   }
   return port;
 }
@@ -112,19 +97,45 @@ function parsePort(value: string, source: string): number {
 // An empty value would put the data in the working directory. A relative
 // path is made absolute, so the data doesn't move with the directory the
 // server starts from.
-function parseDataDir(value: string, source: string, cwd: string): string {
-  if (value === '') {
-    throw new Error(`Invalid ${source}: "" (expected a folder path)`);
-  }
+function parseDataDir(value: string, name: string, cwd: string): string {
+  if (value === '') throw invalid(name, value, 'a folder path');
   return path.resolve(cwd, value);
 }
 
 // SQLite opens an empty path as a temporary database it deletes on close, so
-// an empty value is an error. A relative path is made absolute, so the file
-// doesn't move with the directory the server starts from.
-function parseDatabase(value: string, source: string, cwd: string): string {
-  if (value === '') {
-    throw new Error(`Invalid ${source}: "" (expected a file path or :memory:)`);
-  }
+// an empty value is an error. A relative path is made absolute, as above.
+function parseDatabase(value: string, name: string, cwd: string): string {
+  if (value === '') throw invalid(name, value, 'a file path or :memory:');
   return value === ':memory:' ? value : path.resolve(cwd, value);
+}
+
+// Only the origin: the browser sends it with no path, and CORS compares it
+// as a string.
+function parseOrigin(value: string, name: string): string {
+  const url = URL.parse(value);
+  if (url?.protocol !== 'http:' && url?.protocol !== 'https:') {
+    throw invalid(name, value, 'an http or https URL');
+  }
+  return url.origin;
+}
+
+// Only digits, from 1 millisecond to the longest delay setTimeout takes: a
+// longer one fires after 1 ms, which would report the database down.
+function parseTimeout(value: string, name: string): number {
+  const ms = Number(value);
+  if (!/^\d+$/.test(value) || ms === 0 || ms > 2147483647) {
+    throw invalid(
+      name,
+      value,
+      'a whole number of milliseconds from 1 to 2147483647',
+    );
+  }
+  return ms;
+}
+
+function parseBoolean(value: string, name: string): boolean {
+  if (value !== 'true' && value !== 'false') {
+    throw invalid(name, value, 'true or false');
+  }
+  return value === 'true';
 }

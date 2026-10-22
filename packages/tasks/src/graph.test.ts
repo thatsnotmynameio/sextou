@@ -224,6 +224,34 @@ test('createTask stores a blank description or source path as null', async () =>
   expect(blankSource).toMatchObject({ ok: true, task: { sourcePath: null } });
 });
 
+test('createTask stores an empty description as null', async () => {
+  const result = await tasks.createTask({
+    title: 'A',
+    kind: 'task',
+    priority: 2,
+    assignee: 'dev',
+    createdBy: 'planner',
+    description: '',
+  });
+  expect(result).toMatchObject({ ok: true, task: { description: null } });
+  expect(await connection().get('SELECT description FROM tasks')).toEqual({
+    description: null,
+  });
+});
+
+test('createTask stores the title, the kind and the assignee trimmed', async () => {
+  await tasks.createTask({
+    title: '  Write the parser ',
+    kind: ' task ',
+    priority: 2,
+    assignee: '  dev ',
+    createdBy: 'planner',
+  });
+  expect(
+    await connection().get('SELECT title, kind, assignee FROM tasks'),
+  ).toEqual({ title: 'Write the parser', kind: 'task', assignee: 'dev' });
+});
+
 test.each([
   { title: '', kind: 'task', priority: 2, assignee: 'dev' },
   { title: '   ', kind: 'task', priority: 2, assignee: 'dev' },
@@ -232,7 +260,10 @@ test.each([
   { title: 'A', kind: 'task', priority: 5, assignee: 'dev' },
   { title: 'A', kind: 'task', priority: -1, assignee: 'dev' },
   { title: 'A', kind: 'task', priority: 1.5, assignee: 'dev' },
+  { title: 'A', kind: 'task', priority: 7, assignee: 'dev' },
   { title: 'A', kind: 'task', priority: 2, assignee: 'dev', parentId: 7 },
+  { title: 'A', kind: 'task', priority: 2, assignee: 'dev', parentId: null },
+  { title: 'A', kind: 'task', priority: 2, assignee: 'dev', description: null },
   { title: 7, kind: 'task', priority: 2, assignee: 'dev' },
   { title: 'A', kind: 'task', priority: 2 },
   { title: 'A', kind: 'task', priority: 2, assignee: '' },
@@ -310,12 +341,15 @@ test('createTask keeps a parent and its open children ready when nothing links t
   expect(await ready()).toEqual(['Issue', 'Child 1', 'Child 2']);
 });
 
+// A thousand writes, one transaction each: about a second alone, and up to
+// eight when every package's suite runs at once (`pnpm -r test:unit`, as
+// the pre-push hook does), past Vitest's five-second default.
 test('createTask gives a thousand tasks a thousand distinct ids', async () => {
   const ids: string[] = [];
   for (let n = 0; n < 1000; n++) ids.push(await create(`T${n}`));
   expect(new Set(ids).size).toBe(1000);
   for (const id of ids) expect(id).toMatch(/^tsk_/);
-});
+}, 30_000);
 
 test('link takes a task blocked by an open task out of the ready list', async () => {
   const a = await create('A');
@@ -362,6 +396,12 @@ test(`link refuses a missing task on either side as ${Reason.notFound}`, async (
     ok: false,
     reason: Reason.notFound,
   });
+  expect(await links()).toEqual([]);
+});
+
+test(`link refuses an empty id as ${Reason.notFound}`, async () => {
+  const a = await create('A');
+  expect(await link(a, '')).toEqual({ ok: false, reason: Reason.notFound });
   expect(await links()).toEqual([]);
 });
 
@@ -786,6 +826,20 @@ test.each([0, -1, 1.5, Number.NaN])(
     });
   },
 );
+
+test.each([
+  'createTask',
+  'link',
+  'unlink',
+  'startTask',
+  'finishTask',
+  'listReady',
+] as const)(`%s refuses null as ${Reason.invalid}`, async (operation) => {
+  expect(await tasks[operation](null as never)).toEqual({
+    ok: false,
+    reason: Reason.invalid,
+  });
+});
 
 test('listReady merges three assignees into one list, in the same order', async () => {
   vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);

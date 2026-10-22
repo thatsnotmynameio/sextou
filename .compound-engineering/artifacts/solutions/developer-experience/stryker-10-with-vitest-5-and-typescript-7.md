@@ -63,8 +63,8 @@ Items 1 and 5 fail silently. A `describe` costs a package its score with no mess
 
 Each check runs in the package named, at full concurrency only on a machine with the memory for it.
 
-- **`describe` (item 1):** wrap one test that kills mutants, such as one in `packages/core`, in a `describe`, and run `pnpm --filter @sextou/core test:mutation`. If the score holds, the runner names tests correctly; issue #54 then restores `describe` across the repo.
-- **`tsconfigFile` (item 2):** delete the `tsconfigFile` and `tsconfigFile_comment` lines and run `pnpm --filter @sextou/core test:mutation`. If the run starts, the rewrite works under TypeScript 7.
+- **`describe` (item 1):** wrap one test that kills mutants, such as one in `packages/tasks`, in a `describe`, and run `pnpm --filter @sextou/tasks test:mutation`. If the score holds, the runner names tests correctly; issue #54 then restores `describe` across the repo.
+- **`tsconfigFile` (item 2):** delete the `tsconfigFile` and `tsconfigFile_comment` lines and run `pnpm --filter @sextou/tasks test:mutation`. If the run starts, the rewrite works under TypeScript 7.
 - **BlockStatement (item 4):** remove the comment in `Sidebar.tsx` and run `pnpm --filter @sextou/ui exec stryker run --dryRunOnly`. The workaround stays until that dry run compiles.
 
 ## Related

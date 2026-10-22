@@ -4,14 +4,13 @@ import type { CoverageOptions } from 'vitest/node';
 // The source files the integration suite answers for. The unit suite answers
 // for every other one, so a new file belongs to it until it is listed here.
 //
-// No unit test answers for these, on purpose: each reaches another sextou
-// package for real (@sextou/core, @sextou/data or @sextou/tasks), the disk or
-// a listening server, so the unit suite answers only for config.ts and
-// data-directory.ts.
+// No unit test answers for these, on purpose. database.ts takes ':memory:' or
+// a path, and its in-memory cases alone don't reach the floor, so they sit in
+// its integration test beside the cases on a file. server.ts listens on a
+// port, and main.ts creates folders on disk and opens the database.
 export const integrationOnly = [
-  'src/app.ts',
+  'src/database.ts',
   'src/main.ts',
-  'src/modules/health/health.routes.ts',
   'src/server.ts',
 ];
 
@@ -28,11 +27,17 @@ export const coverage = {
   },
 } satisfies CoverageOptions;
 
-// The unit suite: *.test.ts in Node, with no other sextou package, disk or
-// network. The root vitest.config.ts runs it with the integration suite.
+// The unit suite: *.test.ts in Node, with no disk or network: the router
+// through createCaller, the app through app.request. The root
+// vitest.config.ts runs it with the integration suite.
 export default defineConfig({
   test: {
     name: 'server/unit',
+    // This package's own module cache. Vitest otherwise keeps one at the
+    // workspace root for every package, and each run clears it when the
+    // lockfile changed: `pnpm -r` runs the packages at once, so one run's
+    // clear fails on files another is writing (ENOTEMPTY).
+    fsModuleCachePath: 'node_modules/.vitest-cache',
     environment: 'node',
     include: ['src/**/*.test.ts'],
     exclude: ['src/**/*.integration.test.ts'],

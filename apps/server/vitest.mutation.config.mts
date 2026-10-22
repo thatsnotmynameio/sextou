@@ -5,6 +5,8 @@ import { defineConfig } from 'vitest/config';
 // vitest.config.*, and it sets no coverage: each suite's own run judges that.
 export default defineConfig({
   test: {
+    // This package's own module cache, as vitest.config's comment explains.
+    fsModuleCachePath: 'node_modules/.vitest-cache',
     projects: ['./vitest.config.mts', './vitest.integration.config.mts'],
   },
 });

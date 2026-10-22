@@ -1,6 +1,6 @@
 import { connect, type Database } from '@tursodatabase/database';
 import { afterAll, beforeAll, expect, test } from 'vitest';
-import { finalStatuses, holds, isFinal, Status, statusList } from './status';
+import { finalStatuses, holds, Status, statusList } from './status';
 
 // A name that is not one of the states.
 const unknown = 'closed';
@@ -17,17 +17,6 @@ test('finalStatuses lists succeeded, failed and skipped', () => {
     Status.skipped,
   ]);
 });
-
-test.each(finalStatuses)('isFinal accepts %s', (status) => {
-  expect(isFinal(status)).toBe(true);
-});
-
-test.each([Status.open, Status.running, unknown, '', undefined, null, 7])(
-  'isFinal refuses %j',
-  (value) => {
-    expect(isFinal(value)).toBe(false);
-  },
-);
 
 test.each([Status.succeeded, Status.skipped])(
   'holds is false for %s, which frees the tasks it blocks',

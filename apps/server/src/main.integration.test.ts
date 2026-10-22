@@ -1,15 +1,6 @@
-import {
-  existsSync,
-  mkdtempSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { healthResponseSchema } from '@sextou/contract';
-import { openDatabase, type Database } from '@sextou/data';
-import { openTasks, type Tasks } from '@sextou/tasks';
 import type { Hono } from 'hono';
 import {
   afterEach,
@@ -20,6 +11,7 @@ import {
   type MockInstance,
 } from 'vitest';
 import packageJson from '../package.json';
+import { createDatabase, type Database } from './database';
 import { startServer } from './server';
 
 // main reads the home directory from node:os, which in a worker thread
@@ -41,51 +33,41 @@ vi.mock('./server', () => ({
   ),
 }));
 
-// The real package, watched so each test can reach the database main opened.
-vi.mock('@sextou/data', async (importOriginal) => {
-  const data = await importOriginal<typeof import('@sextou/data')>();
-  return { openDatabase: vi.fn(data.openDatabase) };
+// The real module, watched so each test can reach the database main created.
+vi.mock('./database', async (importOriginal) => {
+  const database = await importOriginal<typeof import('./database')>();
+  return { createDatabase: vi.fn(database.createDatabase) };
 });
 
-// The real package too, so each test can reach the task graph main opened.
-vi.mock('@sextou/tasks', async (importOriginal) => {
-  const tasks = await importOriginal<typeof import('@sextou/tasks')>();
-  return { openTasks: vi.fn(tasks.openTasks) };
-});
+const variables = [
+  'SEXTOU_SERVER_HOST',
+  'SEXTOU_SERVER_PORT',
+  'SEXTOU_SERVER_DATA_DIR',
+  'SEXTOU_SERVER_DATABASE',
+  'SEXTOU_SERVER_WEB_ORIGIN',
+  'SEXTOU_SERVER_DATABASE_TIMEOUT_MS',
+  'SEXTOU_SERVER_DEV',
+  'XDG_DATA_HOME',
+  'LOCALAPPDATA',
+];
 
 let dir: string;
 let on: MockInstance<typeof process.on>;
 let off: MockInstance<typeof process.off>;
 let exit: MockInstance<typeof process.exit>;
 
-function args(...rest: string[]) {
-  vi.spyOn(process, 'argv', 'get').mockReturnValue([
-    'node',
-    'main.ts',
-    ...rest,
-  ]);
+function createdDatabase(): Database {
+  return vi.mocked(createDatabase).mock.results[0].value;
 }
 
-function openedDatabase(): Promise<Database> {
-  return vi.mocked(openDatabase).mock.results[0].value;
+// The app main handed to startServer.
+function servedApp(): Hono {
+  return vi.mocked(startServer).mock.calls[0][0] as Hono;
 }
 
-function openedTasks(): Promise<Tasks> {
-  return vi.mocked(openTasks).mock.results[0].value;
-}
-
-// A closed task graph rejects any operation.
-async function tasksOpen() {
-  try {
-    await (await openedTasks()).listReady({ assignees: ['dev'], limit: 1 });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function databaseAnswers() {
-  return (await openedDatabase()).ping();
+async function health() {
+  const response = await servedApp().request('/trpc/health.check');
+  return (await response.json()).result.data;
 }
 
 // The handler main registered for a signal.
@@ -99,12 +81,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   dir = mkdtempSync(join(tmpdir(), 'sextou-main-'));
   home.dir = dir;
-  vi.stubEnv('XDG_DATA_HOME', undefined);
-  vi.stubEnv('LOCALAPPDATA', undefined);
-  vi.stubEnv('SEXTOU_SERVER_HOST', undefined);
-  vi.stubEnv('SEXTOU_SERVER_PORT', undefined);
-  vi.stubEnv('SEXTOU_SERVER_DATABASE', undefined);
-  vi.stubEnv('SEXTOU_SERVER_DATA_DIR', undefined);
+  for (const name of variables) vi.stubEnv(name, undefined);
   on = vi.spyOn(process, 'on').mockImplementation(() => process);
   off = vi.spyOn(process, 'off').mockImplementation(() => process);
   exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
@@ -113,11 +90,8 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  for (const result of vi.mocked(openDatabase).mock.settledResults) {
-    if (result.type === 'fulfilled') await result.value.close();
-  }
-  for (const result of vi.mocked(openTasks).mock.settledResults) {
-    if (result.type === 'fulfilled') await result.value.close();
+  for (const result of vi.mocked(createDatabase).mock.results) {
+    if (result.type === 'return') await result.value.close();
   }
   process.exitCode = undefined;
   vi.unstubAllEnvs();
@@ -125,27 +99,19 @@ afterEach(async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('starts the server from the arguments and prints where it listens', async () => {
-  args('--port', '0', '--data-dir', dir, '--database', ':memory:');
+test('starts the server from the environment and prints where it listens', async () => {
+  vi.stubEnv('SEXTOU_SERVER_PORT', '0');
+  vi.stubEnv('SEXTOU_SERVER_DATABASE', ':memory:');
 
   await import('./main');
 
   expect(startServer).toHaveBeenCalledOnce();
-  const [app, config] = vi.mocked(startServer).mock.calls[0];
-  expect(config).toEqual({
+  expect(vi.mocked(startServer).mock.calls[0][1]).toMatchObject({
     host: '127.0.0.1',
     port: 0,
-    dataDir: dir,
-    database: ':memory:',
-    tasks: join(dir, 'default.tasks.db'),
   });
-  // The app reports the package's version, an uptime counted from the start
-  // just now, and the database it opened.
-  const response = await (app as Hono).request('/health');
-  expect(response.status).toBe(200);
-  expect(healthResponseSchema.parse(await response.json())).toEqual({
+  expect(await health()).toEqual({
     version: packageJson.version,
-    uptimeSeconds: 0,
     database: 'up',
   });
   expect(console.log).toHaveBeenCalledWith(
@@ -159,154 +125,145 @@ test('brackets an IPv6 address in the listening URL', async () => {
     port: 54321,
     close: () => Promise.resolve(),
   });
-  args('--database', ':memory:');
+  vi.stubEnv('SEXTOU_SERVER_DATABASE', ':memory:');
 
   await import('./main');
 
   expect(console.log).toHaveBeenCalledWith('listening on http://[::1]:54321');
 });
 
-// The default path is the Linux one; CI runs Linux.
+// Covers AE1. The default path is the Linux one; CI runs Linux.
 test.runIf(process.platform === 'linux')(
-  'creates the database in the data directory when no path is given',
+  'creates the data directory and the database in it when no path is given',
   async () => {
-    args();
-
     await import('./main');
 
+    expect(await health()).toMatchObject({ database: 'up' });
     expect(existsSync(join(dir, '.local/share/sextou/sextou.db'))).toBe(true);
-    const [app] = vi.mocked(startServer).mock.calls[0];
-    const response = await (app as Hono).request('/health');
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ database: 'up' });
   },
 );
 
-test('opens the database, then the task graph, then listens', async () => {
-  args('--database', ':memory:');
+// Covers AE2.
+test('listens and reports the database down when its folder is a file', async () => {
+  writeFileSync(join(dir, 'file'), '');
+  vi.stubEnv('SEXTOU_SERVER_DATABASE', join(dir, 'file', 'sextou.db'));
 
   await import('./main');
 
-  expect(vi.mocked(openDatabase).mock.invocationCallOrder[0]).toBeLessThan(
-    vi.mocked(openTasks).mock.invocationCallOrder[0],
-  );
-  expect(vi.mocked(openTasks).mock.invocationCallOrder[0]).toBeLessThan(
-    vi.mocked(startServer).mock.invocationCallOrder[0],
+  expect(startServer).toHaveBeenCalledOnce();
+  expect(await health()).toEqual({
+    version: packageJson.version,
+    database: 'down',
+  });
+  expect(console.error).toHaveBeenCalledWith(
+    `Could not create the database's folder ${join(dir, 'file')}: EEXIST: file already exists, mkdir '${join(dir, 'file')}'`,
   );
 });
 
-// Covers AE7. The default path is the Linux one; CI runs Linux.
-test.runIf(process.platform === 'linux')(
-  'starts with no git on the PATH and keeps only its two databases',
-  async () => {
-    vi.stubEnv('PATH', join(dir, 'empty'));
-    const dataDir = join(dir, 'data');
-    args('--data-dir', dataDir);
+test('creates no folder for an in-memory database', async () => {
+  vi.stubEnv('SEXTOU_SERVER_DATA_DIR', join(dir, 'data'));
+  vi.stubEnv('SEXTOU_SERVER_DATABASE', ':memory:');
+
+  await import('./main');
+
+  expect(existsSync(join(dir, 'data'))).toBe(false);
+});
+
+test('exits with 1, naming the variable, without listening when a variable is invalid', async () => {
+  vi.stubEnv('SEXTOU_SERVER_PORT', 'abc');
+
+  await import('./main');
+
+  expect(process.exitCode).toBe(1);
+  expect(console.error).toHaveBeenCalledWith(
+    'Invalid SEXTOU_SERVER_PORT: "abc" (expected a port from 0 to 65535)',
+  );
+  expect(createDatabase).not.toHaveBeenCalled();
+  expect(startServer).not.toHaveBeenCalled();
+  expect(on).not.toHaveBeenCalled();
+});
+
+test('lets SEXTOU_SERVER_WEB_ORIGIN read the answers', async () => {
+  vi.stubEnv('SEXTOU_SERVER_DATABASE', ':memory:');
+  vi.stubEnv('SEXTOU_SERVER_WEB_ORIGIN', 'https://app.example');
+
+  await import('./main');
+
+  const response = await servedApp().request('/trpc/health.check', {
+    headers: { origin: 'https://app.example' },
+  });
+  expect(response.headers.get('access-control-allow-origin')).toBe(
+    'https://app.example',
+  );
+});
+
+test.each([
+  ['true', true],
+  ['false', false],
+])(
+  'with SEXTOU_SERVER_DEV=%s, error responses carry the stack: %s',
+  async (value, stack) => {
+    vi.stubEnv('SEXTOU_SERVER_DATABASE', ':memory:');
+    vi.stubEnv('SEXTOU_SERVER_DEV', value);
 
     await import('./main');
 
-    const [app] = vi.mocked(startServer).mock.calls[0];
-    const response = await (app as Hono).request('/health');
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ database: 'up' });
-    const files = readdirSync(dataDir);
-    expect(files).toEqual(
-      expect.arrayContaining(['sextou.db', 'default.tasks.db']),
-    );
-    for (const file of files) {
-      expect(file).toMatch(/^(sextou|default\.tasks)\.db(-wal)?$/);
-    }
+    const response = await servedApp().request('/trpc/nothing');
+    const { error } = await response.json();
+    expect('stack' in error.data).toBe(stack);
   },
 );
 
-test('when the task graph cannot be opened, exits with 1 naming the path and the reason, closes the database, and never listens', async () => {
-  const tasks = join(dir, 'default.tasks.db');
-  writeFileSync(tasks, 'not a database, just some text that is long enough');
-  args('--data-dir', dir, '--database', ':memory:');
+test('gives the database the configured timeout', async () => {
+  vi.stubEnv('SEXTOU_SERVER_DATABASE', ':memory:');
+  vi.stubEnv('SEXTOU_SERVER_DATABASE_TIMEOUT_MS', '1234');
 
   await import('./main');
 
-  expect(startServer).not.toHaveBeenCalled();
-  expect(process.exitCode).toBe(1);
-  expect(console.error).toHaveBeenCalledWith(
-    `Could not open the task graph at ${tasks}: failed to open database ${tasks}: File is not a database`,
-  );
-  expect(await databaseAnswers()).toBe(false);
-  expect(on).not.toHaveBeenCalled();
+  expect(createDatabase).toHaveBeenCalledWith(':memory:', 1234);
 });
 
-test('when the database cannot be opened, exits with 1 and names the path and the reason, without listening', async () => {
-  writeFileSync(join(dir, 'file'), '');
-  const path = join(dir, 'file', 'sextou.db');
-  args('--database', path);
-
-  await import('./main');
-
-  expect(startServer).not.toHaveBeenCalled();
-  expect(openTasks).not.toHaveBeenCalled();
-  expect(process.exitCode).toBe(1);
-  // The reason is the file system's: the folder is a file.
-  expect(console.error).toHaveBeenCalledWith(
-    `Could not open the database at ${path}: EEXIST: file already exists, mkdir '${join(dir, 'file')}'`,
-  );
-  expect(on).not.toHaveBeenCalled();
-});
-
-test('closes the task graph and the database and rethrows when listening fails', async () => {
+test('closes the database and rethrows when listening fails', async () => {
   const error = Object.assign(new Error('listen EADDRINUSE'), {
     code: 'EADDRINUSE',
   });
   vi.mocked(startServer).mockRejectedValueOnce(error);
-  args('--database', ':memory:');
+  vi.stubEnv('SEXTOU_SERVER_DATABASE', ':memory:');
 
   await expect(import('./main')).rejects.toBe(error);
 
-  expect(await tasksOpen()).toBe(false);
-  expect(await databaseAnswers()).toBe(false);
+  expect(await createdDatabase().ping()).toBe(false);
   expect(on).not.toHaveBeenCalled();
 });
 
 test.each(['SIGTERM', 'SIGINT'])(
-  'on %s, closes the server, then the task graph, then the database, then exits with 0',
+  'on %s, stops listening, then closes the database, then exits with 0',
   async (signal) => {
-    let openAtServerClose: boolean[] | undefined;
-    let databaseAnsweredAtTasksClose: boolean | undefined;
+    const closed: string[] = [];
     vi.mocked(startServer).mockResolvedValueOnce({
       host: '127.0.0.1',
       port: 54321,
       close: async () => {
-        openAtServerClose = [await tasksOpen(), await databaseAnswers()];
+        closed.push('server');
       },
     });
-    const closed: string[] = [];
     let closedAtExit: string[] | undefined;
-    exit.mockImplementation(((code: number) => {
+    exit.mockImplementation((() => {
       closedAtExit = [...closed];
-      expect(code).toBe(0);
     }) as never);
-    args('--database', ':memory:');
+    vi.stubEnv('SEXTOU_SERVER_DATABASE', ':memory:');
     await import('./main');
-    const tasks = await openedTasks();
-    const database = await openedDatabase();
-    const closeTasks = tasks.close;
-    const closeDatabase = database.close;
-    vi.spyOn(tasks, 'close').mockImplementation(async () => {
-      databaseAnsweredAtTasksClose = await database.ping();
-      await closeTasks();
-      closed.push('tasks');
-    });
+    const database = createdDatabase();
+    const close = database.close;
     vi.spyOn(database, 'close').mockImplementation(async () => {
-      await closeDatabase();
+      await close();
       closed.push('database');
     });
 
     await handler(signal)();
 
-    expect(closedAtExit).toEqual(['tasks', 'database']);
-    expect(await tasksOpen()).toBe(false);
-    expect(await databaseAnswers()).toBe(false);
-    expect(openAtServerClose).toEqual([true, true]);
-    expect(databaseAnsweredAtTasksClose).toBe(true);
+    expect(closedAtExit).toEqual(['server', 'database']);
+    expect(await database.ping()).toBe(false);
     expect(exit).toHaveBeenCalledWith(0);
   },
 );
@@ -314,7 +271,7 @@ test.each(['SIGTERM', 'SIGINT'])(
 test.each(['SIGTERM', 'SIGINT'])(
   'on %s, stops listening for both signals, so shutdown runs once',
   async (signal) => {
-    args('--database', ':memory:');
+    vi.stubEnv('SEXTOU_SERVER_DATABASE', ':memory:');
     await import('./main');
     const shutdown = handler(signal);
 

@@ -142,6 +142,9 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
 
+# TanStack Router's plugin: its scratch files, in the folder Vite runs from
+.tanstack/
+
 # Electron-Forge
 out/
 

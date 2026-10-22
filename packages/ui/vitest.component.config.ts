@@ -19,6 +19,8 @@ export default mergeConfig(
     ],
     test: {
       name: 'ui/component',
+      // This package's own module cache, as vitest.config's comment explains.
+      fsModuleCachePath: 'node_modules/.vitest-cache',
       browser: {
         enabled: true,
         provider: playwright({}),
