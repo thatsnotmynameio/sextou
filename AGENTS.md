@@ -28,7 +28,7 @@ pnpm exec vitest run --project '<pkg>/*' <path> # one module's unit and integrat
 pnpm build            # electron-forge package, the web app, storybook build, then the server's bundle
 pnpm start            # the web dev server and the desktop app, in development
 pnpm storybook        # Storybook at http://localhost:6006
-pnpm --filter @sextou/server dev # the server from source, at http://127.0.0.1:4310
+pnpm --filter @sextou/server dev # the server from source, at http://127.0.0.1:4310, its JSON log lines made readable
 ```
 
 `pnpm start`, `pnpm storybook` and the server's `dev` start long-running processes: leave them to the user. Neither `pnpm start` nor the desktop app starts the server: the web app talks to the one at `SEXTOU_WEB_SERVER_URL`. Each app reads its settings from environment variables with defaults, listed in its `.env.example`; a `.env` beside it changes them in development.
