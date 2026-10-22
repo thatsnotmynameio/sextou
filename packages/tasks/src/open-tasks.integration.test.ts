@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
   mkdtempSync,
-  readFileSync,
+  readdirSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -23,7 +23,6 @@ import {
   vi,
   type MockInstance,
 } from 'vitest';
-import { steps } from './migrations';
 import { openTasks, type Tasks } from './open-tasks';
 import { Status } from './status';
 
@@ -66,6 +65,22 @@ async function tables(client: Database) {
   return rows.map((row) => row.name);
 }
 
+// The committed migrations' names, as drizzle's migrator records them.
+const migrations = readdirSync(join(import.meta.dirname, '..', 'drizzle'));
+
+async function applied(client: Database) {
+  const rows = await client.all('SELECT name FROM __drizzle_migrations');
+  return rows.map((row) => row.name);
+}
+
+const taskTables = [
+  '__drizzle_migrations',
+  'task_executions',
+  'task_links',
+  'task_status_changes',
+  'tasks',
+];
+
 function mode(path: string) {
   return statSync(path).mode & 0o777;
 }
@@ -85,13 +100,8 @@ afterEach(async () => {
 
 test('openTasks in memory opens a migrated, empty graph', async () => {
   await open(':memory:');
-  expect(await tables(connection())).toEqual([
-    'task_executions',
-    'task_links',
-    'task_status_changes',
-    'tasks',
-  ]);
-  expect(await pragma('user_version')).toBe(steps.length);
+  expect(await tables(connection())).toEqual(taskTables);
+  expect(await applied(connection())).toEqual(migrations);
   expect(await connection().get('SELECT count(*) AS n FROM tasks')).toEqual({
     n: 0,
   });
@@ -127,19 +137,12 @@ test('openTasks in memory rejects an operation once closed', async () => {
   ).rejects.toThrow('The database connection is not open');
 });
 
-test('openTasks on a file migrates a new file to the shipped steps', async () => {
+test('openTasks on a file creates the tables in a new file and records its migrations', async () => {
   const path = join(dir, 'graph.db');
   await (await open(path)).close();
   await inspect(path, async (client) => {
-    expect(await tables(client)).toEqual([
-      'task_executions',
-      'task_links',
-      'task_status_changes',
-      'tasks',
-    ]);
-    expect(await client.get('PRAGMA user_version')).toEqual({
-      user_version: steps.length,
-    });
+    expect(await tables(client)).toEqual(taskTables);
+    expect(await applied(client)).toEqual(migrations);
   });
 });
 
@@ -152,9 +155,7 @@ test('openTasks on a file applies nothing to a file it migrated before, and keep
   await (await open(path)).close();
   await inspect(path, async (client) => {
     expect(await client.all('SELECT x FROM kept')).toEqual([{ x: 1 }]);
-    expect(await client.get('PRAGMA user_version')).toEqual({
-      user_version: steps.length,
-    });
+    expect(await applied(client)).toEqual(migrations);
   });
 });
 
@@ -166,26 +167,16 @@ test('openTasks on a file runs in WAL mode, durable, with foreign keys on', asyn
   expect(await pragma('foreign_keys')).toBe(1);
 });
 
-// Turso keeps the WAL file, which opening creates, so the main file's bytes
-// and the recorded steps show the file is unchanged.
-test('openTasks on a file refuses a file a newer version migrated, and leaves it unchanged', async () => {
+// A file whose tables no migration recorded: the initial migration fails on
+// the tasks table it finds.
+test('openTasks on a file rejects when a migration fails, and closes the connection', async () => {
   const path = join(dir, 'graph.db');
-  await inspect(path, (client) =>
-    client.exec('CREATE TABLE future (x); PRAGMA user_version = 99'),
-  );
-  const before = readFileSync(path);
-  await expect(open(path)).rejects.toThrow(
-    `This tasks database was written by a newer version (schema 99, this one knows ${steps.length})`,
-  );
+  await inspect(path, (client) => client.exec('CREATE TABLE tasks (x)'));
+  await expect(open(path)).rejects.toMatchObject({
+    cause: { message: expect.stringContaining('already exists') },
+  });
   // inspect's connection ran the first exec; openTasks's ran the last.
   expect((exec.mock.contexts.at(-1) as Database).open).toBe(false);
-  expect(readFileSync(path).equals(before)).toBe(true);
-  await inspect(path, async (client) => {
-    expect(await tables(client)).toEqual(['future']);
-    expect(await client.get('PRAGMA user_version')).toEqual({
-      user_version: 99,
-    });
-  });
 });
 
 test('openTasks on a file rejects a file that is not a database', async () => {
