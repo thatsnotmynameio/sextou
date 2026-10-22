@@ -23,13 +23,13 @@ execution: code
 
 ### Summary
 
-A new check in sextou's own workflow lints every pull request with 38 native oxlint rules at `error` and fails the pull request on any finding. The rules are the ones more than 10 surveyed projects enable. Before the check takes effect, every rule is turned on over the code as #56 leaves it, every finding is reported to the user with its cause, and the user decides what is fixed and what becomes an exception.
+A new check in sextou's own workflow lints every pull request with 37 native oxlint rules at `error` and fails the pull request on any finding. The rules are the ones more than 10 surveyed projects enable. Before the check takes effect, every rule is turned on over the code as #56 leaves it, every finding is reported to the user with its cause, and the user decides what is fixed and what becomes an exception.
 
 ### Problem Frame
 
 No lint rule blocks a pull request on sextou today. `.oxlintrc.json` sets the `correctness` category to `warn`, and only the organization's `tnmn.io: typescript` run lints, where a warning does not fail the job. That run adds `typescript/ban-ts-comment` and `typescript/no-explicit-any` as errors on its command line, so sextou's own configuration enforces nothing.
 
-Rules that most large projects turn on are off here. Three surveys of 2026-10-21 read the lint configurations of 26 repositories with a stack like sextou's, 59 repositories that lint with oxlint, and 32 open-source products. Rules such as `typescript/consistent-type-imports`, `eslint/eqeqeq`, `eslint/no-console` and the React hooks rules are on in most of them and off in sextou. The React plugin is not loaded at all, while `packages/ui` is React and #56 brings TanStack's hooks to `apps/web`.
+Rules that most large projects turn on are off here. Three surveys of 2026-10-21 read the lint configurations of 26 repositories with a stack like sextou's, 59 repositories that lint with oxlint, and 32 open-source products. Rules such as `typescript/consistent-type-imports`, `eslint/eqeqeq` and the React hooks rules are on in most of them and off in sextou. The React plugin is not loaded at all, while `packages/ui` is React and #56 brings TanStack's hooks to `apps/web`.
 
 Nobody knows yet what these rules would find in sextou's code, so turning them on blind would either block every pull request or hide the cost of each rule.
 
@@ -37,6 +37,7 @@ Nobody knows yet what these rules would find in sextou's code, so turning them o
 
 - **The rules are the native oxlint rules that more than 10 surveyed projects enable, in at least one of the three surveys.** (session-settled: user-directed — chosen over a list picked by fit to sextou's code and plans, which the surveys showed few projects use, and over the shared configs companies publish: "De empresa não. Vamo começar com os nativos.") Governs R1.
 - **`eslint/no-undef` and `eslint/no-redeclare` are left out.** (session-settled: user-directed — chosen over keeping every rule above the threshold: TypeScript already checks both, `no-undef` flags globals such as `process` in TypeScript code, and `no-redeclare` flags the value-and-type pattern `packages/tasks` uses on purpose in `Status` and `Reason`.) Governs R1.
+- **`eslint/no-console` is left out.** (session-settled: user-directed — decided on the report of R7, chosen over an exception for the server's `main.ts` and its test: its findings were the server's own output, which the web app's integration test reads, and the tests that check it.) Governs R1.
 - **Every rule reports at `error` and fails the pull request.** (session-settled: user-directed — chosen over `warn`, which shows in code scanning and blocks nothing, and over `error` only for rules with no finding today.) Governs R2, R4.
 - **The check runs in sextou's own workflow, not through the organization's.** (session-settled: user-directed — "Falha. E é aqui. Não é em outro repo.": chosen over relying on `tnmn.io: typescript`; the check moves to the organization later, as #55's checks will.) Governs R4, R5.
 - **Every rule is turned on first and every finding goes to the user, who decides what is fixed.** (session-settled: user-directed — "O plano é ligar tudo. Ver o que acontece. E me falar os motivos. Aí eu decido o que corrigir e o que não corrigir.": chosen over fixing every finding up front, over exempting tests and stories, and over excepting every current finding so the rules apply only to new code.) Governs R7, R8, R9.
@@ -46,7 +47,7 @@ Nobody knows yet what these rules would find in sextou's code, so turning them o
 
 **The rules**
 
-- R1. The check enforces these 38 native oxlint rules. The counts are the projects that enable each rule, out of 26 repositories with a stack like sextou's, 59 repositories that lint with oxlint, and 32 products; a dash means the survey did not list it among its top rules.
+- R1. The check enforces these 37 native oxlint rules. The counts are the projects that enable each rule, out of 26 repositories with a stack like sextou's, 59 repositories that lint with oxlint, and 32 products; a dash means the survey did not list it among its top rules.
 
   | Rule                                                                                                                                                   | Stack | oxlint | Products |
   | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ----- | ------ | -------- |
@@ -59,7 +60,6 @@ Nobody knows yet what these rules would find in sextou's code, so turning them o
   | `eslint/prefer-const`                                                                                                                                  | 13    | 23     | 16       |
   | `eslint/no-regex-spaces`                                                                                                                               | 17    | 23     | –        |
   | `eslint/no-empty`                                                                                                                                      | 13    | 22     | –        |
-  | `eslint/no-console`                                                                                                                                    | 15    | 21     | 17       |
   | `import/no-duplicates`                                                                                                                                 | 15    | 21     | 14       |
   | `eslint/no-case-declarations`                                                                                                                          | 17    | 21     | –        |
   | `react/rules-of-hooks`                                                                                                                                 | 16    | 19     | 21       |
@@ -120,7 +120,7 @@ Nobody knows yet what these rules would find in sextou's code, so turning them o
 
 ### Dependencies / Assumptions
 
-- The report of R7 runs on the code after #56, which rebuilds `apps/web` and `apps/server` and removes `packages/contract`, `packages/core` and `packages/data`. The counts measured during the brainstorm came from `main` before #56 (for example 40 `eslint/curly` findings and 7 `eslint/no-console`), so the report's numbers will differ.
+- The report of R7 runs on the code after #56, which rebuilds `apps/web` and `apps/server` and removes `packages/contract`, `packages/core` and `packages/data`. The counts measured during the brainstorm came from `main` before #56 (for example 40 `eslint/curly` findings), so the report's numbers will differ.
 - None of the rules in R1 needs type information, so the check runs without tsgolint.
 - The organization's run uses oxlint 1.87.0 and the repository pins `^1.88.0`; the rule list was taken from oxlint 1.88.0.
 - Every rule in R1 except `eslint/no-restricted-globals` works without options; R3 covers that one.
