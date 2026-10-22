@@ -17,7 +17,7 @@ import {
   createTasksService,
   type NewTask,
   type TasksService,
-} from './modules/tasks/service';
+} from './modules/tasks';
 import { startServer } from './server';
 
 // main reads the home directory from node:os, which in a worker thread
@@ -47,7 +47,7 @@ vi.mock(import('./database'), async (importOriginal) => {
 
 // The real service, watched so each test can reach the one main created and
 // see when its start settled.
-vi.mock(import('./modules/tasks/service'), async (importOriginal) => {
+vi.mock(import('./modules/tasks'), async (importOriginal) => {
   const service = await importOriginal();
   return {
     createTasksService: vi.fn((path: string) => {

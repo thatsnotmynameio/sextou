@@ -12,10 +12,25 @@ export interface Actor {
 // 0 is the most urgent, 4 the least.
 export type Priority = 0 | 1 | 2 | 3 | 4;
 
-export type Status = 'open' | 'running' | 'succeeded' | 'failed' | 'skipped';
+// A task's states: open, then running, then how it ended.
+export const Status = {
+  open: 'open',
+  running: 'running',
+  succeeded: 'succeeded',
+  failed: 'failed',
+  skipped: 'skipped',
+} as const;
+
+export type Status = (typeof Status)[keyof typeof Status];
 
 // How a task ends.
-export type Outcome = 'succeeded' | 'failed' | 'skipped';
+export const Outcome = {
+  succeeded: Status.succeeded,
+  failed: Status.failed,
+  skipped: Status.skipped,
+} as const;
+
+export type Outcome = (typeof Outcome)[keyof typeof Outcome];
 
 export interface Task {
   id: string;
@@ -41,12 +56,16 @@ export interface NewTask {
   createdBy: Actor;
 }
 
-export type Refusal =
-  | 'invalid'
-  | 'not_found'
-  | 'not_open'
-  | 'blocked'
-  | 'not_running';
+// Why a call wrote nothing.
+export const Refusal = {
+  invalid: 'invalid',
+  notFound: 'not_found',
+  notOpen: 'not_open',
+  blocked: 'blocked',
+  notRunning: 'not_running',
+} as const;
+
+export type Refusal = (typeof Refusal)[keyof typeof Refusal];
 
 export interface Refused<R extends Refusal> {
   ok: false;
@@ -62,18 +81,29 @@ export interface TasksService {
   stop: () => Promise<void>;
   create: (
     task: NewTask,
-  ) => Promise<{ ok: true; task: Task } | Refused<'invalid' | 'not_found'>>;
+  ) => Promise<
+    | { ok: true; task: Task }
+    | Refused<typeof Refusal.invalid | typeof Refusal.notFound>
+  >;
   // The most urgent ready task assigned to one of the actors, then the
   // oldest, or null when none is ready.
   next: (
     actors: Actor[],
-  ) => Promise<{ ok: true; task: Task | null } | Refused<'invalid'>>;
+  ) => Promise<
+    { ok: true; task: Task | null } | Refused<typeof Refusal.invalid>
+  >;
   // The actor takes a ready task, which starts running.
   take: (take: {
     taskId: string;
     actor: Actor;
   }) => Promise<
-    { ok: true } | Refused<'invalid' | 'not_found' | 'not_open' | 'blocked'>
+    | { ok: true }
+    | Refused<
+        | typeof Refusal.invalid
+        | typeof Refusal.notFound
+        | typeof Refusal.notOpen
+        | typeof Refusal.blocked
+      >
   >;
   // The actor ends a running task.
   finish: (finish: {
@@ -82,7 +112,12 @@ export interface TasksService {
     outcome: Outcome;
     reason?: string;
   }) => Promise<
-    { ok: true } | Refused<'invalid' | 'not_found' | 'not_running'>
+    | { ok: true }
+    | Refused<
+        | typeof Refusal.invalid
+        | typeof Refusal.notFound
+        | typeof Refusal.notRunning
+      >
   >;
 }
 

@@ -8,7 +8,7 @@ import packageJson from '../package.json';
 import { createApp } from './app';
 import { loadConfig, type Config } from './config';
 import { createDatabase } from './database';
-import { createTasksService } from './modules/tasks/service';
+import { createTasksService } from './modules/tasks';
 import { startServer } from './server';
 
 const config = readConfig();

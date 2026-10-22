@@ -69,8 +69,7 @@ apps/server/
         index.ts               the module's entry point
         health.router.ts       its procedures
         health.schema.ts       their zod schemas
-      tasks/
-        service.ts             the tasks service, its types, the only way into @sextou/tasks
+      tasks.ts                 the tasks service and its types, the only way into @sextou/tasks
 apps/web/
   .env.example                 every variable the web app reads, with its default
   vite.config.ts               loads the variables, the router plugin, the CSP
@@ -91,13 +90,13 @@ apps/web/
 ```
 
 - `apps/server/src/`, at the top: what every feature shares. The process (`main.ts`, `config.ts`, `server.ts`), the HTTP app (`app.ts`, `trpc.ts`, `router.ts`) and the resources procedures reach through the context (`database.ts`, `timeout.ts`). `main.ts`, `config.ts`, `data-directory.ts`, `server.ts` and `database.ts` may use Node; the web app's typecheck follows `AppRouter` into `router.ts`, `trpc.ts` and the modules, so nothing they import may need Node's types. The tasks module is the exception: `@sextou/tasks` needs Node, so only `main.ts` imports the module, never `router.ts` or `trpc.ts`, not even for a type.
-- `apps/server/src/modules/<feature>/`: one feature's procedures and their schemas.
+- `apps/server/src/modules/<feature>/`: one feature's procedures and their schemas. A module that is a single file is `modules/<feature>.ts`, as `tasks.ts` is.
 - `apps/web/`, beside `vite.config.ts`: the build's own code, which runs in Node when Vite does and never reaches the bundle.
 - `apps/web/src/`, at the top: what every page shares, the client and the router.
 - `apps/web/src/routes/`: one file per URL, which only wires the URL to a module. The router plugin generates `src/routeTree.gen.ts` from it whenever Vite runs (dev, build or a test run); commit the file with the route. Lint and the formatter skip it.
 - `apps/web/src/modules/<feature>/`: one feature's components.
 
-Other code reaches a module only through its `index.ts`, the shared code at the top of `src/` and the route files included. The server's tasks module is the exception: it is one file, `service.ts`, which `main.ts` imports directly.
+Other code reaches a module only through its `index.ts`, the shared code at the top of `src/` and the route files included. A module that is a single file is its own entry point, as the server's `modules/tasks.ts` is.
 
 ## Building a feature
 

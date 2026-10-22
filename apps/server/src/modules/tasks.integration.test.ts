@@ -10,9 +10,12 @@ import { afterEach, beforeEach, expect, test } from 'vitest';
 import {
   createTasksService,
   type NewTask,
+  Outcome,
+  Refusal,
+  Status,
   type Task,
   type TasksService,
-} from './service';
+} from './tasks';
 
 const dev = { name: 'dev' };
 const alice = { name: 'alice' };
@@ -122,7 +125,7 @@ test('after a failed start, each call rejects with the error start rejected with
     error,
   );
   await expect(
-    tasks.finish({ taskId: unknownId, actor: dev, outcome: 'failed' }),
+    tasks.finish({ taskId: unknownId, actor: dev, outcome: Outcome.failed }),
   ).rejects.toBe(error);
 });
 
@@ -181,7 +184,7 @@ test('create returns the open task it created, with the fields it was given', as
       assignee: dev,
       description: 'Cover the service',
       source: '/specs/tests.md',
-      status: 'open',
+      status: Status.open,
     },
   });
 });
@@ -216,7 +219,7 @@ test('create refuses a blank title as invalid', async () => {
 
   expect(await tasks.create(newTask({ title: ' ' }))).toEqual({
     ok: false,
-    refusal: 'invalid',
+    refusal: Refusal.invalid,
   });
 });
 
@@ -225,7 +228,7 @@ test('create refuses an unknown parent as not_found', async () => {
 
   expect(await tasks.create(newTask({ parentId: unknownId }))).toEqual({
     ok: false,
-    refusal: 'not_found',
+    refusal: Refusal.notFound,
   });
 });
 
@@ -262,7 +265,7 @@ test('next leaves out a running task', async () => {
 test('next refuses an empty list of actors as invalid', async () => {
   const tasks = await startedService();
 
-  expect(await tasks.next([])).toEqual({ ok: false, refusal: 'invalid' });
+  expect(await tasks.next([])).toEqual({ ok: false, refusal: Refusal.invalid });
 });
 
 test('take moves the task to running, its assignee unchanged', async () => {
@@ -280,7 +283,7 @@ test('take moves the task to running, its assignee unchanged', async () => {
       'SELECT status, assignee FROM tasks WHERE id = ?',
       task.id,
     ),
-  ).toEqual({ status: 'running', assignee: 'dev' });
+  ).toEqual({ status: Status.running, assignee: 'dev' });
 });
 
 test('take records the actor as who runs the task and as who started it', async () => {
@@ -326,12 +329,16 @@ test('a task take refused as blocked comes back as next once its blocker succeed
 
   const result = await tasks.take({ taskId, actor: dev });
 
-  expect(result).toEqual({ ok: false, refusal: 'blocked' });
+  expect(result).toEqual({ ok: false, refusal: Refusal.blocked });
   await tasks.take({ taskId: blockerId, actor: dev });
-  await tasks.finish({ taskId: blockerId, actor: dev, outcome: 'succeeded' });
+  await tasks.finish({
+    taskId: blockerId,
+    actor: dev,
+    outcome: Outcome.succeeded,
+  });
   expect(await tasks.next([dev])).toMatchObject({
     ok: true,
-    task: { id: taskId, status: 'open' },
+    task: { id: taskId, status: Status.open },
   });
 });
 
@@ -340,7 +347,7 @@ test('take refuses an unknown task as not_found', async () => {
 
   expect(await tasks.take({ taskId: unknownId, actor: dev })).toEqual({
     ok: false,
-    refusal: 'not_found',
+    refusal: Refusal.notFound,
   });
 });
 
@@ -350,7 +357,7 @@ test('take refuses a running task as not_open', async () => {
 
   expect(await tasks.take({ taskId: task.id, actor: dev })).toEqual({
     ok: false,
-    refusal: 'not_open',
+    refusal: Refusal.notOpen,
   });
 });
 
@@ -360,11 +367,11 @@ test('take refuses a blank actor as invalid', async () => {
 
   expect(await tasks.take({ taskId: task.id, actor: { name: ' ' } })).toEqual({
     ok: false,
-    refusal: 'invalid',
+    refusal: Refusal.invalid,
   });
 });
 
-test.each(['succeeded', 'failed', 'skipped'] as const)(
+test.each(Object.values(Outcome))(
   'finish moves a running task to %s',
   async (outcome) => {
     const path = join(dir, 'tasks.db');
@@ -389,7 +396,7 @@ test('finish records the actor as who finished the task, with the reason given',
   await tasks.finish({
     taskId: task.id,
     actor: alice,
-    outcome: 'failed',
+    outcome: Outcome.failed,
     reason: 'The tests time out',
   });
   await tasks.stop();
@@ -408,14 +415,22 @@ test('finish refuses an open task as not_running', async () => {
   const task = await createOpen(tasks);
 
   expect(
-    await tasks.finish({ taskId: task.id, actor: dev, outcome: 'succeeded' }),
-  ).toEqual({ ok: false, refusal: 'not_running' });
+    await tasks.finish({
+      taskId: task.id,
+      actor: dev,
+      outcome: Outcome.succeeded,
+    }),
+  ).toEqual({ ok: false, refusal: Refusal.notRunning });
 });
 
 test('finish refuses an unknown task as not_found', async () => {
   const tasks = await startedService();
 
   expect(
-    await tasks.finish({ taskId: unknownId, actor: dev, outcome: 'succeeded' }),
-  ).toEqual({ ok: false, refusal: 'not_found' });
+    await tasks.finish({
+      taskId: unknownId,
+      actor: dev,
+      outcome: Outcome.succeeded,
+    }),
+  ).toEqual({ ok: false, refusal: Refusal.notFound });
 });

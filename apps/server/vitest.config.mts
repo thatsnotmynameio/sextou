@@ -13,7 +13,7 @@ import type { CoverageOptions } from 'vitest/node';
 export const integrationOnly = [
   'src/database.ts',
   'src/main.ts',
-  'src/modules/tasks/service.ts',
+  'src/modules/tasks.ts',
   'src/server.ts',
 ];
 
