@@ -11,12 +11,7 @@ export const integrationOnly: string[] = [];
 // mounts the app the tests render.
 export const coverage = {
   provider: 'v8',
-  exclude: [
-    '**/*.test.{ts,tsx}',
-    'src/**/*.d.ts',
-    'src/main.tsx',
-    'src/routeTree.gen.ts',
-  ],
+  exclude: ['src/**/*.d.ts', 'src/main.tsx', 'src/routeTree.gen.ts'],
   thresholds: {
     lines: 90,
     functions: 90,
@@ -26,7 +21,7 @@ export const coverage = {
   },
 } satisfies CoverageOptions;
 
-// The unit suite: *.test.ts(x) in jsdom, no browser, with fetch stubbed, and
+// The unit suite: tests/unit/ in jsdom, no browser, with fetch stubbed, and
 // the build's own modules beside vite.config.ts. The root vitest.config.ts
 // runs it with the integration suite. The Vite config is merged in, so the
 // router plugin generates src/routeTree.gen.ts here too.
@@ -41,8 +36,7 @@ export default mergeConfig(
       // clear fails on files another is writing (ENOTEMPTY).
       fsModuleCachePath: 'node_modules/.vitest-cache',
       environment: 'jsdom',
-      include: ['src/**/*.test.{ts,tsx}', '*.test.ts'],
-      exclude: ['src/**/*.integration.test.{ts,tsx}'],
+      include: ['tests/unit/**/*.test.{ts,tsx}'],
       setupFiles: ['./vitest.setup.ts'],
       coverage: {
         ...coverage,
