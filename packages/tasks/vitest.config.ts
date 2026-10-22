@@ -13,7 +13,7 @@ export const integrationOnly = ['src/open-tasks.ts', 'src/owner-only.ts'];
 // Each suite must reach this in every file it answers for, on its own.
 export const coverage = {
   provider: 'v8',
-  exclude: ['src/**/*.test.ts', 'src/**/*.d.ts', 'src/index.ts'],
+  exclude: ['src/**/*.d.ts', 'src/index.ts'],
   thresholds: {
     lines: 90,
     functions: 90,
@@ -23,7 +23,7 @@ export const coverage = {
   },
 } satisfies CoverageOptions;
 
-// The unit suite: *.test.ts in Node, on ':memory:', with no disk. The root
+// The unit suite: tests/unit/ in Node, on ':memory:', with no disk. The root
 // vitest.config.ts runs it with the integration suite.
 export default defineConfig({
   test: {
@@ -34,8 +34,7 @@ export default defineConfig({
     // clear fails on files another is writing (ENOTEMPTY).
     fsModuleCachePath: 'node_modules/.vitest-cache',
     environment: 'node',
-    include: ['src/**/*.test.ts'],
-    exclude: ['src/**/*.integration.test.ts'],
+    include: ['tests/unit/**/*.test.ts'],
     coverage: {
       ...coverage,
       include: ['src/**/*.ts'],
