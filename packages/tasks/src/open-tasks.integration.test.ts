@@ -135,11 +135,18 @@ test('openTasks in memory rejects an operation once closed', async () => {
   ).rejects.toThrow('The database connection is not open');
 });
 
-test('openTasks on a file creates the tables in a new file and records its migrations', async () => {
+test('openTasks on a file creates the tables in a new file', async () => {
   const path = join(dir, 'graph.db');
   await (await open(path)).close();
   await inspect(path, async (client) => {
     expect(await tables(client)).toEqual(taskTables);
+  });
+});
+
+test('openTasks on a file records the migrations it applied', async () => {
+  const path = join(dir, 'graph.db');
+  await (await open(path)).close();
+  await inspect(path, async (client) => {
     expect(await applied(client)).toEqual(migrations);
   });
 });
@@ -167,12 +174,18 @@ test('openTasks on a file runs in WAL mode, durable, with foreign keys on', asyn
 
 // A file whose tables no migration recorded: the initial migration fails on
 // the tasks table it finds.
-test('openTasks on a file rejects when a migration fails, and closes the connection', async () => {
+test('openTasks on a file rejects when a migration fails', async () => {
   const path = join(dir, 'graph.db');
   await inspect(path, (client) => client.exec('CREATE TABLE tasks (x)'));
   await expect(open(path)).rejects.toMatchObject({
     cause: { message: expect.stringContaining('already exists') },
   });
+});
+
+test('openTasks on a file closes its connection when a migration fails', async () => {
+  const path = join(dir, 'graph.db');
+  await inspect(path, (client) => client.exec('CREATE TABLE tasks (x)'));
+  await open(path).catch(() => {});
   // inspect's connection ran the first exec; openTasks's ran the last.
   expect((exec.mock.contexts.at(-1) as Database).open).toBe(false);
 });
