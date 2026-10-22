@@ -6,13 +6,7 @@ import viteConfig from './vite.config';
 export const coverage: CoverageOptions = {
   provider: 'v8',
   include: ['src/**/*.{ts,tsx}'],
-  exclude: [
-    'src/**/*.stories.tsx',
-    'src/**/*.test.tsx',
-    'src/test/**',
-    'src/**/*.d.ts',
-    'src/index.ts',
-  ],
+  exclude: ['src/**/*.stories.tsx', 'src/**/*.d.ts', 'src/index.ts'],
   thresholds: {
     lines: 90,
     functions: 90,
@@ -22,7 +16,7 @@ export const coverage: CoverageOptions = {
   },
 };
 
-// The unit suite: *.test.tsx in jsdom, no browser. CI runs it through the
+// The unit suite: tests/unit/ in jsdom, no browser. CI runs it through the
 // root vitest.config.ts. The stories run in vitest.component.config.ts.
 export default mergeConfig(
   viteConfig,
@@ -35,7 +29,7 @@ export default mergeConfig(
       // clear fails on files another is writing (ENOTEMPTY).
       fsModuleCachePath: 'node_modules/.vitest-cache',
       environment: 'jsdom',
-      include: ['src/**/*.test.tsx'],
+      include: ['tests/unit/**/*.test.tsx'],
       setupFiles: ['./vitest.setup.ts'],
       coverage,
     },
