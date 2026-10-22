@@ -75,6 +75,30 @@
       }
     },
     {
+      "files": ["apps/runner/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@sextou/server",
+                "message": "The runner takes only types from the server, which it reaches over HTTP: import type { … } from it.",
+                "allowTypeImports": true
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["@sextou/server/*"],
+                "message": "The runner takes only types from the server, which it reaches over HTTP: import type { … } from it.",
+                "allowTypeImports": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": ["apps/web/**"],
       "rules": {
         "no-restricted-imports": [

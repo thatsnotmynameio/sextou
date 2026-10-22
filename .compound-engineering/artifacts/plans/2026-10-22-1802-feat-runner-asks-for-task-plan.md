@@ -87,26 +87,28 @@ sextou has no way to send work to the user's machine. The server runs remotely, 
 - KTD4. **The runner makes one request at a time and waits the interval after each one settles.** The loop asks, logs the answer or the failure, then sleeps for `SEXTOU_RUNNER_POLL_INTERVAL_MS` before asking again. Against a server that hangs, requests never pile up: one fails per request timeout plus interval. One `AbortSignal` stops the loop: it ends the sleep, aborts the request in flight, and an abort the runner caused is not logged as a failure. Governs R2, R3.
 - KTD5. **Every runner setting is a `SEXTOU_RUNNER_*` environment variable with a default, read in `config.ts`, listed in `apps/runner/.env.example`.** An invalid value is logged at the default level, names the variable, sets the exit code to 1, and the runner never asks, as the server's `main.ts` does. The interval is one of them, as the user asked.
 
-  | Variable                            | Default                 | Meaning                                                |
-  | ----------------------------------- | ----------------------- | ------------------------------------------------------ |
-  | `SEXTOU_RUNNER_SERVER_URL`          | `http://127.0.0.1:4310` | The server's URL, http or https, trailing slash dropped |
-  | `SEXTOU_RUNNER_POLL_INTERVAL_MS`    | `1000`                  | The wait after each request, before the next           |
-  | `SEXTOU_RUNNER_REQUEST_TIMEOUT_MS`  | `30000`                 | How long a request may wait for the server             |
-  | `SEXTOU_RUNNER_LOG_LEVEL`           | `info`                  | Pino's level                                           |
-  | `SEXTOU_RUNNER_DEV`                 | `false`                 | Readable lines through pino-pretty instead of JSON     |
+  | Variable                           | Default                 | Meaning                                                 |
+  | ---------------------------------- | ----------------------- | ------------------------------------------------------- |
+  | `SEXTOU_RUNNER_SERVER_URL`         | `http://127.0.0.1:4310` | The server's URL, http or https, trailing slash dropped |
+  | `SEXTOU_RUNNER_POLL_INTERVAL_MS`   | `1000`                  | The wait after each request, before the next            |
+  | `SEXTOU_RUNNER_REQUEST_TIMEOUT_MS` | `30000`                 | How long a request may wait for the server              |
+  | `SEXTOU_RUNNER_LOG_LEVEL`          | `info`                  | Pino's level                                            |
+  | `SEXTOU_RUNNER_DEV`                | `false`                 | Readable lines through pino-pretty instead of JSON      |
 
   The request timeout stays above the server's own timeouts, `SEXTOU_SERVER_DATABASE_TIMEOUT_MS` (`20000`) today, so the server answers before the runner gives up. Both `.env.example` files and AGENTS.md's timeout rule say so. Governs R1, R2, R3.
+
 - KTD6. **The runner logs through one Pino logger, one JSON record per line on stdout, with a fixed `msg` per event.** `logger.ts` copies the server's `createLogger({ level, pretty }, destination?)`. The records:
 
-  | When                   | Level  | `msg`            | Fields                                                                          |
-  | ---------------------- | ------ | ---------------- | ------------------------------------------------------------------------------- |
-  | the runner starts      | `info` | `polling`        | `url`, `intervalMs`                                                             |
-  | the server answers     | `info` | `no task`        | none                                                                            |
-  | the server sends an error | `warn` | `request failed` | `kind: 'server-error'`, the tRPC `code`, the message                         |
-  | no answer comes        | `warn` | `request failed` | `kind: 'no-answer'`, the message (connection refused, timeout, a non-tRPC body) |
-  | a signal stops it      | `info` | `stopped`        | none                                                                            |
+  | When                      | Level  | `msg`            | Fields                                                                          |
+  | ------------------------- | ------ | ---------------- | ------------------------------------------------------------------------------- |
+  | the runner starts         | `info` | `polling`        | `url`, `intervalMs`                                                             |
+  | the server answers        | `info` | `no task`        | none                                                                            |
+  | the server sends an error | `warn` | `request failed` | `kind: 'server-error'`, the tRPC `code`, the message                            |
+  | no answer comes           | `warn` | `request failed` | `kind: 'no-answer'`, the message (connection refused, timeout, a non-tRPC body) |
+  | a signal stops it         | `info` | `stopped`        | none                                                                            |
 
   The two failure kinds follow AGENTS.md's split: a `TRPCClientError` with `data` is an error the server sent, one without `data` is no answer. A failure record carries no stack, since a down server would otherwise write one every second. A server of another version that lacks the procedure answers `NOT_FOUND`, which shows as a `server-error` on every attempt. Governs R2, R3.
+
 - KTD7. **The runner's unit suite answers for every file, and its integration suite runs the poll against the real server started as a child process.** The loop, the client, the config and `main.ts` are unit-tested with `fetch` stubbed and fake timers for the interval. `main.ts` reaches neither the disk nor a port, so it stays in the unit suite, with `process.on`, `off` and `exit` spied as the server's `tests/integration/main.test.ts` does. The integration test spawns the server as `apps/web/tests/integration/modules/health/health-page.test.tsx` does, but finds its folder through `import.meta.resolve('@sextou/server/router')` instead of a relative path, which breaks inside Stryker's sandbox (`.compound-engineering/artifacts/solutions/developer-experience/stryker-10-with-vitest-5-and-typescript-7.md`, item 3). `integrationOnly` stays empty, as in the web. Every config sets `fsModuleCachePath: 'node_modules/.vitest-cache'` (`vitest-shared-module-cache-race-under-pnpm-recursive.md`), and no test sits inside a `describe`. Governs R2, R3, R4.
 
 ### High-Level Technical Design
@@ -312,16 +314,16 @@ apps/runner/
 
 ## Verification Contract
 
-| Gate            | Command                                                                        | Proves                                                    |
-| --------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------- |
-| Format and lint | `pnpm lint`                                                                    | oxlint, with the runner's import override, and oxfmt      |
-| Lint gates      | `pnpm exec oxlint -c .oxlintrc.gates.json .`                                   | no `console` in the runner                                |
-| Types           | `pnpm typecheck`                                                               | the runner following `AppRouter` into the server          |
-| Unit            | `pnpm test:unit`                                                               | each unit suite at 90% per file, the runner's and server's included |
-| Integration     | `pnpm test:integration`                                                        | the runner against the real server (U5)                   |
-| Mutation        | `pnpm --filter @sextou/runner test:mutation`, then `@sextou/server`            | each package at 80%                                       |
-| Build           | `pnpm build`                                                                   | the runner's bundle beside the others                     |
-| Manual          | `pnpm --filter @sextou/server dev`, then `pnpm --filter @sextou/runner dev`    | AE1; stop the server for AE2, start it again for the return to `no task` |
+| Gate            | Command                                                                     | Proves                                                                   |
+| --------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Format and lint | `pnpm lint`                                                                 | oxlint, with the runner's import override, and oxfmt                     |
+| Lint gates      | `pnpm exec oxlint -c .oxlintrc.gates.json .`                                | no `console` in the runner                                               |
+| Types           | `pnpm typecheck`                                                            | the runner following `AppRouter` into the server                         |
+| Unit            | `pnpm test:unit`                                                            | each unit suite at 90% per file, the runner's and server's included      |
+| Integration     | `pnpm test:integration`                                                     | the runner against the real server (U5)                                  |
+| Mutation        | `pnpm --filter @sextou/runner test:mutation`, then `@sextou/server`         | each package at 80%                                                      |
+| Build           | `pnpm build`                                                                | the runner's bundle beside the others                                    |
+| Manual          | `pnpm --filter @sextou/server dev`, then `pnpm --filter @sextou/runner dev` | AE1; stop the server for AE2, start it again for the return to `no task` |
 
 `git push` runs `pnpm typecheck` and `pnpm test:unit` through the pre-push hook. CI's `tests.yml` runs `runner / unit`, `runner / integration` and `runner / mutation` as their own checks.
 

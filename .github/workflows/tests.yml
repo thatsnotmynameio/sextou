@@ -55,6 +55,8 @@ jobs:
       matrix:
         include:
           - { package: desktop, level: unit, dir: apps/desktop }
+          - { package: runner, level: unit, dir: apps/runner }
+          - { package: runner, level: integration, dir: apps/runner }
           - { package: server, level: unit, dir: apps/server }
           - { package: server, level: integration, dir: apps/server }
           - { package: web, level: unit, dir: apps/web }
@@ -104,6 +106,7 @@ jobs:
       matrix:
         include:
           - { package: desktop, dir: apps/desktop }
+          - { package: runner, dir: apps/runner }
           - { package: server, dir: apps/server }
           - { package: web, dir: apps/web }
           - { package: tasks, dir: packages/tasks }
