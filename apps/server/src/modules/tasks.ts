@@ -129,13 +129,16 @@ export interface TasksService {
 export interface TasksServiceOptions {
   // Where the tasks database logs: the server's logger.
   logger: Logger;
+  // Where @sextou/tasks' migrations are, when not in the package itself: the
+  // copy the production bundle carries.
+  migrationsFolder?: string;
 }
 
 // The service over the tasks database at an absolute path, or in memory for
 // ':memory:'. Nothing opens until start.
 export function createTasksService(
   path: string,
-  { logger }: TasksServiceOptions,
+  { logger, migrationsFolder }: TasksServiceOptions,
 ): TasksService {
   let database: Promise<Tasks> | undefined;
 
@@ -144,8 +147,7 @@ export function createTasksService(
 
   return {
     start: async () => {
-      // Stryker disable next-line ObjectLiteral: @sextou/tasks logs nothing yet, so which logger it gets changes no behavior.
-      database ??= openTasks(path, { logger });
+      database ??= openTasks(path, { logger, migrationsFolder });
       await database;
     },
     stop: async () => {

@@ -3,7 +3,7 @@
 // exists.
 import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import packageJson from '../package.json';
 import { createApp } from './app';
 import { loadConfig, type Config } from './config';
@@ -58,7 +58,10 @@ async function serve(config: Config) {
 
   // A tasks database that doesn't open doesn't stop the server either: it
   // logs why, and the service rejects every call until a restart.
-  const tasks = createTasksService(config.tasksDb, { logger });
+  const tasks = createTasksService(config.tasksDb, {
+    logger,
+    migrationsFolder: tasksMigrations(),
+  });
   await tasks.start().catch((error: unknown) => {
     logger.error(
       { path: config.tasksDb, err: error },
@@ -97,4 +100,13 @@ async function serve(config: Config) {
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
+}
+
+// Where @sextou/tasks' migrations are: beside server.mjs in the production
+// bundle, which vite.config.mts copies them into; from source, undefined, so
+// the package reads its own.
+function tasksMigrations() {
+  return typeof __TASKS_MIGRATIONS__ === 'string'
+    ? join(import.meta.dirname, __TASKS_MIGRATIONS__)
+    : undefined;
 }

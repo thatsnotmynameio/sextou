@@ -1,7 +1,6 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { connect } from '@tursodatabase/database';
 import type { Hono } from 'hono';
 import {
   afterEach,
@@ -165,6 +164,7 @@ afterEach(async () => {
   }
   process.exitCode = undefined;
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
   rmSync(dir, { recursive: true, force: true });
 });
@@ -277,18 +277,36 @@ test('starts the tasks service at SEXTOU_SERVER_TASKS_DB before listening', asyn
   expect(await tasksService().create(newTask)).toMatchObject({ ok: true });
 });
 
-// A tasks database a newer version wrote, which the service can't open.
-async function newerTasksDb() {
+// A tasks database file that is not a database, which the service can't open.
+function brokenTasksDb() {
   const path = join(dir, 'tasks.db');
-  const client = await connect(path);
-  await client.exec('PRAGMA user_version = 99');
-  await client.close();
+  writeFileSync(path, 'not a database, just some text that is long enough');
   vi.stubEnv('SEXTOU_SERVER_TASKS_DB', path);
   return path;
 }
 
+// The production build defines __TASKS_MIGRATIONS__ as the folder beside
+// server.mjs; from source, main.ts resolves it against src/, where there is
+// none, so the open fails on that exact folder.
+test('hands the tasks service the migrations folder the build defined', async () => {
+  vi.stubGlobal('__TASKS_MIGRATIONS__', 'bundled-migrations');
+
+  await import('../../src/main');
+
+  expect(records()).toContainEqual(
+    expect.objectContaining({
+      msg: 'Could not open the tasks database',
+      err: expect.objectContaining({
+        message: expect.stringContaining(
+          join(import.meta.dirname, '..', '..', 'src', 'bundled-migrations'),
+        ),
+      }),
+    }),
+  );
+});
+
 test('listens when the tasks database does not open, logging why', async () => {
-  const path = await newerTasksDb();
+  const path = brokenTasksDb();
 
   await import('../../src/main');
 
@@ -299,9 +317,7 @@ test('listens when the tasks database does not open, logging why', async () => {
       msg: 'Could not open the tasks database',
       path,
       err: expect.objectContaining({
-        message: expect.stringContaining(
-          'This tasks database was written by a newer version',
-        ),
+        message: expect.stringContaining('File is not a database'),
       }),
     }),
     expect.objectContaining({ msg: 'listening' }),
@@ -309,17 +325,17 @@ test('listens when the tasks database does not open, logging why', async () => {
 });
 
 test('the tasks service rejects its calls when the tasks database does not open', async () => {
-  await newerTasksDb();
+  brokenTasksDb();
 
   await import('../../src/main');
 
   await expect(tasksService().create(newTask)).rejects.toThrow(
-    'This tasks database was written by a newer version',
+    'File is not a database',
   );
 });
 
 test('a restart once the tasks database is fixed gives a service that works', async () => {
-  const path = await newerTasksDb();
+  const path = brokenTasksDb();
   await import('../../src/main');
   rmSync(path);
   rmSync(`${path}-wal`, { force: true });

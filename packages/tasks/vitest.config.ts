@@ -5,15 +5,23 @@ import type { CoverageOptions } from 'vitest/node';
 // for every other one, so a new file belongs to it until it is listed here.
 //
 // No unit test answers for these, on purpose. owner-only.ts sets the modes of
-// files on disk. open-tasks.ts takes ':memory:' or a path, and its in-memory
-// cases alone don't reach the floor, so they sit in its integration test
-// beside the cases on a file.
-export const integrationOnly = ['src/open-tasks.ts', 'src/owner-only.ts'];
+// files on disk. Opening the graph reads its migrations from disk, even for
+// ':memory:', so every test of open-tasks.ts and graph.ts is an integration
+// test.
+export const integrationOnly = [
+  'src/graph.ts',
+  'src/open-tasks.ts',
+  'src/owner-only.ts',
+];
 
 // Each suite must reach this in every file it answers for, on its own.
+// schema.ts answers to neither: only drizzle-kit runs its checks, indexes and
+// foreign keys, in a process coverage doesn't see, and the drift test in
+// tests/integration/schema.test.ts guards them. stryker.config.mjs leaves it
+// out too.
 export const coverage = {
   provider: 'v8',
-  exclude: ['src/**/*.d.ts', 'src/index.ts'],
+  exclude: ['src/**/*.d.ts', 'src/index.ts', 'src/schema.ts'],
   thresholds: {
     lines: 90,
     functions: 90,
@@ -23,8 +31,8 @@ export const coverage = {
   },
 } satisfies CoverageOptions;
 
-// The unit suite: tests/unit/ in Node, on ':memory:', with no disk. The root
-// vitest.config.ts runs it with the integration suite.
+// The unit suite: tests/unit/ in Node, with no disk. The root vitest.config.ts
+// runs it with the integration suite.
 export default defineConfig({
   test: {
     name: 'tasks/unit',

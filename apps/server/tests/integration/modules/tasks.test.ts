@@ -116,6 +116,16 @@ test('start rejects when the file is not a database', async () => {
   await expect(tasks.start()).rejects.toThrow();
 });
 
+test('start reads the migrations from the folder it was given', async () => {
+  const tasks = createTasksService(':memory:', {
+    logger,
+    migrationsFolder: join(dir, 'missing'),
+  });
+  services.push(tasks);
+
+  await expect(tasks.start()).rejects.toThrow(join(dir, 'missing'));
+});
+
 test('after a failed start, each call rejects with the error start rejected with', async () => {
   const tasks = createTasksService(notADatabase(), { logger });
   services.push(tasks);

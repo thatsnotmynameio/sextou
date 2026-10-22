@@ -1,7 +1,12 @@
+import { join } from 'node:path';
 import { connect } from '@tursodatabase/database';
+import { drizzle } from 'drizzle-orm/tursodatabase/database';
+import { migrate } from 'drizzle-orm/tursodatabase/migrator';
 import { createGraph, type Graph, type Logger } from './graph';
-import { migrate } from './migrations';
 import { restrictToOwner } from './owner-only';
+
+// The migrations drizzle-kit generates from schema.ts, in this package.
+const packageMigrations = join(import.meta.dirname, '..', 'drizzle');
 
 export interface Tasks extends Graph {
   // Closes the database; does nothing once closed.
@@ -11,6 +16,10 @@ export interface Tasks extends Graph {
 export interface OpenTasksOptions {
   // Where the graph logs: the caller's logger, such as the server's.
   logger: Logger;
+  // The absolute path of a copy of the package's drizzle folder, for a
+  // caller whose bundle carries this package without its files. The
+  // package's own folder by default.
+  migrationsFolder?: string;
 }
 
 // Opens the task graph kept in the database file at an absolute path, or in
@@ -20,25 +29,25 @@ export interface OpenTasksOptions {
 // while a write is in progress, and refuses a second process.
 export async function openTasks(
   path: string,
-  { logger }: OpenTasksOptions,
+  { logger, migrationsFolder = packageMigrations }: OpenTasksOptions,
 ): Promise<Tasks> {
   if (path !== ':memory:') {
     restrictToOwner(path);
   }
 
+  // Connecting here, not in drizzle, rejects a file that is not a database
+  // now rather than at the first query.
   const client = await connect(path);
+  const db = drizzle({ client });
   try {
     // Turso leaves foreign keys off. FULL makes a write survive a power cut
-    // once it returns.
+    // once it returns. Both hold for the connection, migrations included.
     await client.exec('PRAGMA foreign_keys = ON; PRAGMA synchronous = FULL');
-    await migrate(client);
+    await migrate(db, { migrationsFolder });
   } catch (error) {
     await client.close();
     throw error;
   }
 
-  return {
-    ...createGraph(client, logger),
-    close: () => client.close(),
-  };
+  return { ...createGraph(db, logger), close: () => client.close() };
 }
