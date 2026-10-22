@@ -24,7 +24,7 @@ pnpm test             # each package's levels in turn: unit, integration, compon
 pnpm --filter <package> test:<level>   # one level of one package, such as @sextou/tasks test:integration
 pnpm --filter <package> test           # every level of one package
 pnpm --filter <package> test:mutation  # Stryker over the package's unit and integration suites; fails below 80% of mutants killed
-pnpm exec vitest run --project '<pkg>/*' <path> # one module's unit and integration tests, such as 'server/*' apps/server/src/modules/health, with no coverage verdict
+pnpm exec vitest run --project '<pkg>/*' <path> # one module's unit and integration tests, such as 'server/*' modules/health, with no coverage verdict
 pnpm build            # electron-forge package, the web app, storybook build, then the server's bundle
 pnpm start            # the web dev server and the desktop app, in development
 pnpm storybook        # Storybook at http://localhost:6006
@@ -38,7 +38,7 @@ pnpm --filter @sextou/server dev # the server from source, at http://127.0.0.1:4
 - `apps/web` (`@sextou/web`): the React app, built by its own Vite config into `apps/web/dist`. It talks to the server through the tRPC client, at the URL it was built with (`SEXTOU_WEB_SERVER_URL`), and takes nothing from the server but its router's type. It reaches native features only through web APIs, which Electron maps to native ones in the desktop window, and through what the preload exposes. Lint fails on an `electron` import in `apps/web` or `packages/ui`.
 - `apps/desktop/src/main`: Electron's main process. Bundled by Vite into `.vite/build/main.cjs`.
 - `apps/desktop/src/preload`: the preload script, the only bridge between main and the web app (`contextBridge`).
-- `packages/ui` (`@sextou/ui`): shared React components, each in `src/<Name>/` with `<Name>.tsx`, `<Name>.test.tsx` and `<Name>.stories.tsx`, exported from `src/index.ts`. It ships sources, not a build: each app's Vite compiles it. Components take data and callbacks as props and never touch Electron, so they render in Storybook and in any app.
+- `packages/ui` (`@sextou/ui`): shared React components, each in `src/<Name>/` with `<Name>.tsx` and `<Name>.stories.tsx`, its test in `tests/unit/<Name>/<Name>.test.tsx`, exported from `src/index.ts`. It ships sources, not a build: each app's Vite compiles it. Components take data and callbacks as props and never touch Electron, so they render in Storybook and in any app.
 - The desktop loads the hosted web app by URL instead of bundling its build, from `SEXTOU_WEB_URL`, which `vite.main.config.mts` reads: in development from the environment or `apps/desktop/.env`, `apps/web`'s dev server (`http://localhost:5173`) by default; in production the deployed URL, from the environment at package time. When the URL can't load, the window shows the error page in `src/main/error-page.ts`, bundled into `main.cjs`. A web deploy reaches desktop users on their next reload; only shell changes (Electron, preload, native features) need a desktop release.
 - Forge's Vite plugin packages only `.vite/`: everything the shell runs (main, preload, the error page) must be bundled.
 - The backend is two packages, and dependencies point one way: `@sextou/server` imports nothing from `@sextou/tasks` yet, the web app imports the server's router type, and `@sextou/tasks` imports no other sextou package. CI's knip fails on an import a package doesn't declare.
@@ -69,6 +69,9 @@ apps/server/
         index.ts               the module's entry point
         health.router.ts       its procedures
         health.schema.ts       their zod schemas
+  tests/
+    unit/                      mirrors src/: modules/health/health.router.test.ts
+    integration/               mirrors src/: database.test.ts, main.test.ts, server.test.ts
 apps/web/
   .env.example                 every variable the web app reads, with its default
   vite.config.ts               loads the variables, the router plugin, the CSP
@@ -86,6 +89,9 @@ apps/web/
       health/
         index.ts               the module's entry point
         health-page.tsx        the page
+  tests/
+    unit/                      mirrors src/, and settings.test.ts, content-security-policy.test.ts
+    integration/               mirrors src/: modules/health/health-page.test.tsx
 ```
 
 - `apps/server/src/`, at the top: what every feature shares. The process (`main.ts`, `config.ts`, `server.ts`), the HTTP app (`app.ts`, `trpc.ts`, `router.ts`) and the resources procedures reach through the context (`database.ts`, `timeout.ts`). `main.ts`, `config.ts`, `data-directory.ts`, `server.ts` and `database.ts` may use Node; the web app's typecheck follows `AppRouter` into `router.ts`, `trpc.ts` and the modules, so nothing they import may need Node's types.
@@ -115,7 +121,7 @@ A feature is a module of the server and a module of the web app under the same n
     - What only HTTP shows (the status, CORS, the error's shape): unit, through `createApp(…).request(…)`.
     - Code that reaches the disk, a listening port or a child process: integration, its file listed in `integrationOnly` with the reason.
     - A page: unit, rendering `createAppRouter({ serverUrl, requestTimeoutMs, history: createMemoryHistory(…) })` in a `RouterProvider`, with `fetch` stubbed (`vi.stubGlobal`) for each way the request can end.
-    - A page against the real server: integration, with the server started as a child process, as `health-page.integration.test.tsx` does.
+    - A page against the real server: integration, with the server started as a child process, as `tests/integration/modules/health/health-page.test.tsx` does.
 11. **Imports.** Lint enforces three rules, in `.ts` and `.tsx` files alike: a module reaches another module only through its `index.ts`, in the server and in the web app; the web app imports from the server only types, written as a whole `import type` statement from `@sextou/server/router` (lint refuses `import { type … }` everywhere, since it can leave a side-effect import behind); and nothing in `apps/web` or `packages/ui` imports `electron`.
 
 ## Desktop security
@@ -140,10 +146,12 @@ The window runs remote content, so a script injected into the web app, or a comp
 
 Tests are organized by package, then by level. Each package has only the levels its code needs, and each pair of package and level runs on its own.
 
+**Where they live.** Out of `src/`, in the package's `tests/<level>/`, which mirrors `src/`: the unit test of `src/modules/health/health.router.ts` is `tests/unit/modules/health/health.router.test.ts`, the integration test of `src/database.ts` is `tests/integration/database.test.ts`. The folder names the level, so every test ends in `.test.ts(x)`. The web's tests of its build modules, beside `vite.config.ts`, sit at the top of `tests/unit/`. A helper that tests share sits at the top of `tests/` (`packages/ui`'s `render.tsx`). The stories stay beside their component in `src/`, since Storybook shows them too.
+
 **Levels.** Decide a new test's level by what it reaches:
 
-- **unit** (`*.test.ts(x)`): one unit of a package through its public API, in one process, touching neither the disk nor the network. Real in-memory collaborators are fine, an in-memory SQLite database (`':memory:'`) included. Runs in Node, or in jsdom for `apps/web` and `packages/ui`.
-- **integration** (`*.integration.test.ts`): real parts working together: the package with a real resource (a file on disk, a server listening on localhost, a child process), or two or more sextou packages used for real, whether the test imports the other package or the code under test does.
+- **unit** (`tests/unit/`): one unit of a package through its public API, in one process, touching neither the disk nor the network. Real in-memory collaborators are fine, an in-memory SQLite database (`':memory:'`) included. Runs in Node, or in jsdom for `apps/web` and `packages/ui`.
+- **integration** (`tests/integration/`): real parts working together: the package with a real resource (a file on disk, a server listening on localhost, a child process), or two or more sextou packages used for real, whether the test imports the other package or the code under test does.
 - **component** (the stories, `*.stories.tsx`): a UI component rendered in a real browser, Chromium through Playwright; each story must pass its `play` function, which checks what needs a real browser (layout, focus, truncation). Only `packages/ui` has one.
 - **e2e**: a flow the way a person uses sextou, the web app in a browser or the desktop window talking to a real server process, acting only through the interface and replacing no part with a test double. None exists yet; the first one must meet this.
 
@@ -160,17 +168,17 @@ Every package has a unit suite, an integration suite wherever its code reaches a
 
 The desktop suite covers the main process's pure modules in Node; `main.ts` imports Electron and stays out of it. The web's suites cover `src/` and the build's own modules beside `vite.config.ts`, and leave out `src/main.tsx`, which only mounts what the tests render, and the generated `src/routeTree.gen.ts`.
 
-**Running part of it.** `pnpm --filter <package> test:<level>` runs one level of one package and `pnpm test:<level>` that level everywhere. To run one module, filter by its path through the root config: `pnpm exec vitest run --project 'server/*' apps/server/src/modules/health`. It reports the tests and never fails on coverage, which only the full run of a level judges; a path passed to `test:<level>` fails on every file it leaves out. A component filter runs inside `packages/ui` with `pnpm exec vitest run --config vitest.component.config.ts <path>`. Install Chromium once per machine with `pnpm --filter @sextou/ui exec playwright install chromium`.
+**Running part of it.** `pnpm --filter <package> test:<level>` runs one level of one package and `pnpm test:<level>` that level everywhere. To run one module, filter by its path through the root config: `pnpm exec vitest run --project 'server/*' modules/health`. It reports the tests and never fails on coverage, which only the full run of a level judges; a path passed to `test:<level>` fails on every file it leaves out. A component filter runs inside `packages/ui` with `pnpm exec vitest run --config vitest.component.config.ts <path>`. Install Chromium once per machine with `pnpm --filter @sextou/ui exec playwright install chromium`.
 
 **Mutation.** StrykerJS changes the code one mutant at a time and runs the package's unit and integration suites against each. `stryker.parent.conf.json` at the root holds what every package shares, and each package's `stryker.config.mjs` adds only its own: the Vitest config it runs (`vitest.mutation.config.ts` gathers both suites where a package has two) and the files it leaves out. Stryker fails the run when the package's score is below 80% (`thresholds.break`); it has no threshold per file. A mutant that changes no behavior gets `// Stryker disable next-line <mutator>: <reason>`, never a lower floor. Code excluded from coverage is excluded from `mutate` too. Three things to know:
 
 - Tests sit at the top level of their file, with no `describe`. Stryker 10.0.0's Vitest runner names a test inside a `describe` the way Vitest 4 did, so under Vitest 5 that test runs for no mutant and every mutant only it would kill survives (issue #54 brings `describe` back once a release fixes it). The file groups its tests; `test.each` runs one test over several values, `test.skipIf` skips one on a platform, and a helper the test calls sets up what only some tests need.
-- Stryker runs the tests in worker threads, where `os.homedir()` ignores a changed `HOME`: mock `homedir` from `node:os` instead, as `main.integration.test.ts` does.
+- Stryker runs the tests in worker threads, where `os.homedir()` ignores a changed `HOME`: mock `homedir` from `node:os` instead, as `apps/server`'s `tests/integration/main.test.ts` does.
 - `stryker.parent.conf.json` names a `tsconfigFile` that doesn't exist: Stryker rewrites `tsconfig.json` in its sandbox through TypeScript 6's API, which TypeScript 7 lacks (stryker-js#6111).
 
 **Writing tests.** For people and agents alike:
 
-- Before writing tests, read the source file, the tests beside it and the package's Vitest configs, and follow their conventions.
+- Before writing tests, read the source file, its tests under `tests/` and the package's Vitest configs, and follow their conventions.
 - Test the contract: inputs, return values, side effects and errors, through the public API. A test that breaks when the internals change but the result stays the same tests implementation.
 - One behavior per test, with a name that states its subject and the behavior (`openTasks on a file rejects a file that is not a database`); an "and" in the name means two tests.
 - Arrange, act, assert.

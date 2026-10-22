@@ -13,11 +13,11 @@ export default defineConfig({
     // clear fails on files another is writing (ENOTEMPTY).
     fsModuleCachePath: 'node_modules/.vitest-cache',
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    include: ['tests/unit/**/*.test.ts'],
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
-      exclude: ['src/**/*.test.ts', 'src/**/*.d.ts', 'src/main/main.ts'],
+      exclude: ['src/**/*.d.ts', 'src/main/main.ts'],
       thresholds: {
         lines: 90,
         functions: 90,

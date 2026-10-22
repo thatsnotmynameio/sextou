@@ -17,16 +17,11 @@ export const integrationOnly = [
 // Each suite must reach this in every file it answers for, on its own.
 // schema.ts answers to neither: only drizzle-kit runs its checks, indexes and
 // foreign keys, in a process coverage doesn't see, and the drift test in
-// schema.integration.test.ts guards them. stryker.config.mjs leaves it out
-// too.
+// tests/integration/schema.test.ts guards them. stryker.config.mjs leaves it
+// out too.
 export const coverage = {
   provider: 'v8',
-  exclude: [
-    'src/**/*.test.ts',
-    'src/**/*.d.ts',
-    'src/index.ts',
-    'src/schema.ts',
-  ],
+  exclude: ['src/**/*.d.ts', 'src/index.ts', 'src/schema.ts'],
   thresholds: {
     lines: 90,
     functions: 90,
@@ -36,7 +31,7 @@ export const coverage = {
   },
 } satisfies CoverageOptions;
 
-// The unit suite: *.test.ts in Node, with no disk. The root vitest.config.ts
+// The unit suite: tests/unit/ in Node, with no disk. The root vitest.config.ts
 // runs it with the integration suite.
 export default defineConfig({
   test: {
@@ -47,8 +42,7 @@ export default defineConfig({
     // clear fails on files another is writing (ENOTEMPTY).
     fsModuleCachePath: 'node_modules/.vitest-cache',
     environment: 'node',
-    include: ['src/**/*.test.ts'],
-    exclude: ['src/**/*.integration.test.ts'],
+    include: ['tests/unit/**/*.test.ts'],
     coverage: {
       ...coverage,
       include: ['src/**/*.ts'],
