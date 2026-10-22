@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { connect, Database } from '@tursodatabase/database';
+import { pino } from 'pino';
 import {
   afterEach,
   beforeEach,
@@ -24,15 +25,15 @@ import {
   type MockInstance,
 } from 'vitest';
 import { steps } from './migrations';
-import { openTasks, type Tasks } from './open-tasks';
+import { openTasks, type OpenTasksOptions, type Tasks } from './open-tasks';
 import { Status } from './status';
 
 let dir: string;
 let exec: MockInstance<Database['exec']>;
 const opened: Tasks[] = [];
 
-async function open(path: string) {
-  const tasks = await openTasks(path);
+async function open(path: string, options?: OpenTasksOptions) {
+  const tasks = await openTasks(path, options);
   opened.push(tasks);
   return tasks;
 }
@@ -278,3 +279,78 @@ test.skipIf(process.platform === 'win32')(
     expect(mode(`${path}-wal`)).toBe(0o600);
   },
 );
+
+// Covers AE4. Its own process, so whatever the graph writes to stdout or
+// stderr reaches the test; tsx loads the sources.
+test('openTasks with only a path writes nothing to stdout or stderr', () => {
+  const child = spawnSync(
+    process.execPath,
+    [
+      '--import',
+      'tsx',
+      '--input-type=module',
+      '--eval',
+      `
+      import { openTasks } from './open-tasks';
+      const tasks = await openTasks(process.argv[1]);
+      const created = [];
+      for (const title of ['A', 'B']) {
+        const result = await tasks.createTask({
+          title, kind: 'task', priority: 2, assignee: 'dev', createdBy: 'planner',
+        });
+        if (!result.ok) throw new Error(result.reason);
+        created.push(result.task.id);
+      }
+      const linked = await tasks.link({ taskId: created[0], blockerId: created[1] });
+      if (!linked.ok) throw new Error(linked.reason);
+      const ready = await tasks.listReady({ assignees: ['dev'], limit: 10 });
+      if (!ready.ok || ready.tasks.length !== 1) throw new Error('ready');
+      await tasks.close();
+      `,
+      join(dir, 'graph.db'),
+    ],
+    { cwd: import.meta.dirname, encoding: 'utf8' },
+  );
+  expect(child.status).toBe(0);
+  expect(child.stdout).toBe('');
+  expect(child.stderr).toBe('');
+});
+
+// The graph has the logger, and nothing it does yet logs.
+test('openTasks with a Pino logger writes nothing to it', async () => {
+  const lines: string[] = [];
+  const logger = pino(
+    { level: 'trace' },
+    {
+      write: (line: string) => {
+        lines.push(line);
+      },
+    },
+  );
+  const tasks = await open(join(dir, 'graph.db'), { logger });
+  const a = await tasks.createTask({
+    title: 'A',
+    kind: 'task',
+    priority: 2,
+    assignee: 'dev',
+    createdBy: 'planner',
+  });
+  const b = await tasks.createTask({
+    title: 'B',
+    kind: 'task',
+    priority: 2,
+    assignee: 'dev',
+    createdBy: 'planner',
+  });
+  if (!a.ok || !b.ok) {
+    throw new Error('createTask refused');
+  }
+  expect(await tasks.link({ taskId: a.task.id, blockerId: b.task.id })).toEqual(
+    { ok: true },
+  );
+  expect(
+    await tasks.listReady({ assignees: ['dev'], limit: 10 }),
+  ).toMatchObject({ ok: true, tasks: [{ title: 'B' }] });
+  await tasks.close();
+  expect(lines).toEqual([]);
+});

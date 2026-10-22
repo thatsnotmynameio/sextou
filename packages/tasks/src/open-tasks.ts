@@ -1,5 +1,5 @@
 import { connect } from '@tursodatabase/database';
-import { createGraph, type Graph } from './graph';
+import { createGraph, type Graph, type Logger } from './graph';
 import { migrate } from './migrations';
 import { restrictToOwner } from './owner-only';
 
@@ -8,12 +8,20 @@ export interface Tasks extends Graph {
   close: () => Promise<void>;
 }
 
+export interface OpenTasksOptions {
+  // Where the graph logs. Without one, it writes nothing anywhere.
+  logger?: Logger;
+}
+
 // Opens the task graph kept in the database file at an absolute path, or in
 // memory for ':memory:', and applies the migrations the file doesn't have
 // yet. Rejects when it can't, with the error from the file system, Turso or
 // the migrations. Turso opens every file in WAL mode, which lets reads run
 // while a write is in progress, and refuses a second process.
-export async function openTasks(path: string): Promise<Tasks> {
+export async function openTasks(
+  path: string,
+  options?: OpenTasksOptions,
+): Promise<Tasks> {
   if (path !== ':memory:') {
     restrictToOwner(path);
   }
@@ -29,5 +37,8 @@ export async function openTasks(path: string): Promise<Tasks> {
     throw error;
   }
 
-  return { ...createGraph(client), close: () => client.close() };
+  return {
+    ...createGraph(client, options?.logger),
+    close: () => client.close(),
+  };
 }
