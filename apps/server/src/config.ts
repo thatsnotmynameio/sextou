@@ -81,7 +81,9 @@ function invalid(name: string, value: string, expected: string) {
 // Node binds an empty host to every interface: an empty value is an error,
 // not a way to reach the server from the network.
 function parseHost(value: string, name: string): string {
-  if (value === '') throw invalid(name, value, 'a host name or address');
+  if (value === '') {
+    throw invalid(name, value, 'a host name or address');
+  }
   return value;
 }
 
@@ -98,14 +100,18 @@ function parsePort(value: string, name: string): number {
 // path is made absolute, so the data doesn't move with the directory the
 // server starts from.
 function parseDataDir(value: string, name: string, cwd: string): string {
-  if (value === '') throw invalid(name, value, 'a folder path');
+  if (value === '') {
+    throw invalid(name, value, 'a folder path');
+  }
   return path.resolve(cwd, value);
 }
 
 // SQLite opens an empty path as a temporary database it deletes on close, so
 // an empty value is an error. A relative path is made absolute, as above.
 function parseDatabase(value: string, name: string, cwd: string): string {
-  if (value === '') throw invalid(name, value, 'a file path or :memory:');
+  if (value === '') {
+    throw invalid(name, value, 'a file path or :memory:');
+  }
   return value === ':memory:' ? value : path.resolve(cwd, value);
 }
 

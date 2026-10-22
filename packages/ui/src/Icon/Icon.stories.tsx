@@ -30,7 +30,10 @@ export const InheritsColor: Story = {
   ),
   play: async ({ canvasElement }) => {
     const parent = within(canvasElement).getByTestId('parent');
-    const svg = parent.querySelector('svg')!;
+    const svg = parent.querySelector('svg');
+    if (!svg) {
+      throw new Error('HomeIcon rendered no svg');
+    }
     await expect(getComputedStyle(svg).stroke).toBe(
       getComputedStyle(parent).color,
     );

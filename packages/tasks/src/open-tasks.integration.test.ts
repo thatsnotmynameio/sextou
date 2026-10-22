@@ -76,7 +76,9 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  for (const tasks of opened.splice(0)) await tasks.close();
+  for (const tasks of opened.splice(0)) {
+    await tasks.close();
+  }
   vi.restoreAllMocks();
   rmSync(dir, { recursive: true, force: true });
 });
@@ -268,7 +270,9 @@ test.skipIf(process.platform === 'win32')(
   async () => {
     const path = join(dir, 'graph.db');
     await (await open(path)).close();
-    for (const file of [path, `${path}-wal`]) chmodSync(file, 0o644);
+    for (const file of [path, `${path}-wal`]) {
+      chmodSync(file, 0o644);
+    }
     await open(path);
     expect(mode(path)).toBe(0o600);
     expect(mode(`${path}-wal`)).toBe(0o600);
