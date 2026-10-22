@@ -1,22 +1,33 @@
-// The tasks module runs @sextou/tasks for real, two sextou packages
+// The tasks service runs @sextou/tasks for real, two sextou packages
 // together, so its tests are integration tests and no unit test answers for
 // it, even on ':memory:'.
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type NewTask, openTasks, type Task } from '@sextou/tasks';
+import { openTasks } from '@sextou/tasks';
 import { connect } from '@tursodatabase/database';
 import { afterEach, beforeEach, expect, test } from 'vitest';
-import { initTasks } from './index';
-import type { TasksService } from './service';
+import {
+  createTasksService,
+  type NewTask,
+  type Task,
+  type TasksService,
+} from './service';
+
+const dev = { name: 'dev' };
+const alice = { name: 'alice' };
+const planner = { name: 'planner' };
+const unknownId = `tsk_${'0'.repeat(32)}`;
 
 let dir: string;
-const opened: TasksService[] = [];
+const services: TasksService[] = [];
 
-async function init(path = ':memory:') {
-  const service = await initTasks(path);
-  opened.push(service);
-  return service;
+// A started service, stopped after the test.
+async function startedService(path = ':memory:') {
+  const tasks = createTasksService(path);
+  services.push(tasks);
+  await tasks.start();
+  return tasks;
 }
 
 function newTask(fields: Partial<NewTask> = {}): NewTask {
@@ -24,36 +35,34 @@ function newTask(fields: Partial<NewTask> = {}): NewTask {
     title: 'Write the tests',
     kind: 'task',
     priority: 2,
-    assignee: 'dev',
-    createdBy: 'planner',
+    assignee: dev,
+    createdBy: planner,
     ...fields,
   };
 }
 
-async function created(
-  service: TasksService,
+async function createOpen(
+  tasks: TasksService,
   fields: Partial<NewTask> = {},
 ): Promise<Task> {
-  const result = await service.createTask(newTask(fields));
+  const result = await tasks.create(newTask(fields));
   if (!result.ok) {
-    throw new Error(`createTask refused: ${result.reason}`);
+    throw new Error(`create refused: ${result.refusal}`);
   }
   return result.task;
 }
 
-async function started(service: TasksService, id: string) {
-  const result = await service.startTask({
-    id,
-    changedBy: 'dev',
-    actor: 'dev',
-  });
+async function createRunning(tasks: TasksService): Promise<Task> {
+  const task = await createOpen(tasks);
+  const result = await tasks.take({ taskId: task.id, actor: dev });
   if (!result.ok) {
-    throw new Error(`startTask refused: ${result.reason}`);
+    throw new Error(`take refused: ${result.refusal}`);
   }
+  return task;
 }
 
-// A row from the task graph's file, read once the service closed it.
-async function stored(path: string, sql: string, ...params: string[]) {
+// A row of the tasks database's file, read once the service stopped.
+async function readRow(path: string, sql: string, ...params: string[]) {
   const client = await connect(path);
   try {
     return await client.get(sql, ...params);
@@ -62,23 +71,102 @@ async function stored(path: string, sql: string, ...params: string[]) {
   }
 }
 
+// A path holding a file that is not a database, which start rejects.
+function notADatabase() {
+  const path = join(dir, 'tasks.db');
+  writeFileSync(path, 'not a database, just some text that is long enough');
+  return path;
+}
+
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'sextou-tasks-service-'));
 });
 
 afterEach(async () => {
-  await Promise.all(opened.splice(0).map((service) => service.close()));
+  await Promise.all(services.splice(0).map((tasks) => tasks.stop()));
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('createTask returns the open task it created, with the fields it was given', async () => {
-  const service = await init();
+test('start on a file creates the file and its missing folder', async () => {
+  const path = join(dir, 'data', 'tasks.db');
 
-  const result = await service.createTask(
+  await startedService(path);
+
+  expect(existsSync(path)).toBe(true);
+});
+
+test('start a second time keeps the tasks database it opened', async () => {
+  const tasks = await startedService();
+  const task = await createOpen(tasks);
+
+  await tasks.start();
+
+  expect(await tasks.next([dev])).toEqual({ ok: true, task });
+});
+
+test('start rejects when the file is not a database', async () => {
+  const tasks = createTasksService(notADatabase());
+  services.push(tasks);
+
+  await expect(tasks.start()).rejects.toThrow();
+});
+
+test('after a failed start, each call rejects with the error start rejected with', async () => {
+  const tasks = createTasksService(notADatabase());
+  services.push(tasks);
+  const error: unknown = await tasks.start().catch((error: unknown) => error);
+
+  await expect(tasks.create(newTask())).rejects.toBe(error);
+  await expect(tasks.next([dev])).rejects.toBe(error);
+  await expect(tasks.take({ taskId: unknownId, actor: dev })).rejects.toBe(
+    error,
+  );
+  await expect(
+    tasks.finish({ taskId: unknownId, actor: dev, outcome: 'failed' }),
+  ).rejects.toBe(error);
+});
+
+test('stop after a failed start resolves', async () => {
+  const tasks = createTasksService(notADatabase());
+  await tasks.start().catch(() => undefined);
+
+  await expect(tasks.stop()).resolves.toBeUndefined();
+});
+
+test('a call before start rejects, saying the service is not started', async () => {
+  const tasks = createTasksService(':memory:');
+
+  await expect(tasks.create(newTask())).rejects.toThrow(
+    'The tasks service is not started',
+  );
+});
+
+test('stop before start resolves', async () => {
+  await expect(createTasksService(':memory:').stop()).resolves.toBeUndefined();
+});
+
+test('a call after stop rejects', async () => {
+  const tasks = await startedService();
+  await tasks.stop();
+
+  await expect(tasks.create(newTask())).rejects.toThrow();
+});
+
+test('stop a second time resolves', async () => {
+  const tasks = await startedService();
+  await tasks.stop();
+
+  await expect(tasks.stop()).resolves.toBeUndefined();
+});
+
+test('create returns the open task it created, with the fields it was given', async () => {
+  const tasks = await startedService();
+
+  const result = await tasks.create(
     newTask({
       priority: 1,
       description: 'Cover the service',
-      sourcePath: '/specs/tests.md',
+      source: '/specs/tests.md',
     }),
   );
 
@@ -90,125 +178,142 @@ test('createTask returns the open task it created, with the fields it was given'
       kind: 'task',
       priority: 1,
       parentId: null,
-      assignee: 'dev',
+      assignee: dev,
       description: 'Cover the service',
-      sourcePath: '/specs/tests.md',
+      source: '/specs/tests.md',
       status: 'open',
     },
   });
 });
 
-test('createTask returns the invalid refusal for a blank title', async () => {
-  const service = await init();
+test('create keeps the parent it was given', async () => {
+  const tasks = await startedService();
+  const parent = await createOpen(tasks);
 
-  expect(await service.createTask(newTask({ title: ' ' }))).toEqual({
-    ok: false,
-    reason: 'invalid',
+  expect(await tasks.create(newTask({ parentId: parent.id }))).toMatchObject({
+    ok: true,
+    task: { parentId: parent.id },
   });
 });
 
-test('createTask returns the not_found refusal for an unknown parent', async () => {
-  const service = await init();
+test('create records who created the task', async () => {
+  const path = join(dir, 'tasks.db');
+  const tasks = await startedService(path);
+  const task = await createOpen(tasks, { createdBy: planner });
+  await tasks.stop();
 
   expect(
-    await service.createTask(newTask({ parentId: `tsk_${'0'.repeat(32)}` })),
-  ).toEqual({ ok: false, reason: 'not_found' });
+    await readRow(
+      path,
+      'SELECT changed_by FROM task_status_changes WHERE task_id = ?',
+      task.id,
+    ),
+  ).toEqual({ changed_by: 'planner' });
 });
 
-test('createTask takes any name as the assignee and the creator, unchecked', async () => {
-  const service = await init();
+test('create refuses a blank title as invalid', async () => {
+  const tasks = await startedService();
 
-  const result = await service.createTask(
-    newTask({ assignee: 'nobody has this name', createdBy: '?' }),
-  );
-
-  expect(result).toMatchObject({
-    ok: true,
-    task: { assignee: 'nobody has this name' },
+  expect(await tasks.create(newTask({ title: ' ' }))).toEqual({
+    ok: false,
+    refusal: 'invalid',
   });
 });
 
-// Covers AE2.
-test('nextTask returns the most urgent ready task among the names given', async () => {
-  const service = await init();
-  const urgent = await created(service, { priority: 0, assignee: 'dev' });
-  await created(service, { priority: 2, assignee: 'alice' });
+test('create refuses an unknown parent as not_found', async () => {
+  const tasks = await startedService();
 
-  expect(await service.nextTask(['alice', 'dev'])).toEqual({
-    ok: true,
-    task: urgent,
+  expect(await tasks.create(newTask({ parentId: unknownId }))).toEqual({
+    ok: false,
+    refusal: 'not_found',
   });
 });
 
-test('nextTask returns the older of two ready tasks at the same priority', async () => {
-  const service = await init();
-  const older = await created(service, { title: 'First' });
-  await created(service, { title: 'Second' });
+test('next returns the most urgent ready task among the actors given', async () => {
+  const tasks = await startedService();
+  const urgent = await createOpen(tasks, { priority: 0, assignee: dev });
+  await createOpen(tasks, { priority: 2, assignee: alice });
 
-  expect(await service.nextTask(['dev'])).toEqual({ ok: true, task: older });
+  expect(await tasks.next([alice, dev])).toEqual({ ok: true, task: urgent });
 });
 
-// Covers AE3.
-test('nextTask returns a null task when none is ready for the names given', async () => {
-  const service = await init();
-  await created(service, { assignee: 'dev' });
+test('next returns the older of two ready tasks at the same priority', async () => {
+  const tasks = await startedService();
+  const older = await createOpen(tasks, { title: 'First' });
+  await createOpen(tasks, { title: 'Second' });
 
-  expect(await service.nextTask(['alice'])).toEqual({ ok: true, task: null });
+  expect(await tasks.next([dev])).toEqual({ ok: true, task: older });
 });
 
-test('nextTask returns the invalid refusal for an empty list of names', async () => {
-  const service = await init();
+test('next returns a null task when none is ready for the actors given', async () => {
+  const tasks = await startedService();
+  await createOpen(tasks, { assignee: dev });
 
-  expect(await service.nextTask([])).toEqual({ ok: false, reason: 'invalid' });
+  expect(await tasks.next([alice])).toEqual({ ok: true, task: null });
 });
 
-test('nextTask leaves out a running task', async () => {
-  const service = await init();
-  const task = await created(service);
-  await started(service, task.id);
+test('next leaves out a running task', async () => {
+  const tasks = await startedService();
+  await createRunning(tasks);
 
-  expect(await service.nextTask(['dev'])).toEqual({ ok: true, task: null });
+  expect(await tasks.next([dev])).toEqual({ ok: true, task: null });
 });
 
-// Covers AE4.
-test('startTask runs the task as its actor and keeps its assignee', async () => {
+test('next refuses an empty list of actors as invalid', async () => {
+  const tasks = await startedService();
+
+  expect(await tasks.next([])).toEqual({ ok: false, refusal: 'invalid' });
+});
+
+test('take moves the task to running, its assignee unchanged', async () => {
   const path = join(dir, 'tasks.db');
-  const service = await init(path);
-  const task = await created(service, { assignee: 'dev' });
+  const tasks = await startedService(path);
+  const task = await createOpen(tasks, { assignee: dev });
 
-  const result = await service.startTask({
-    id: task.id,
-    changedBy: 'planner',
-    actor: 'alice',
-    logPath: '/logs/run.log',
-  });
-  await service.close();
+  const result = await tasks.take({ taskId: task.id, actor: alice });
+  await tasks.stop();
 
   expect(result).toEqual({ ok: true });
   expect(
-    await stored(
+    await readRow(
       path,
       'SELECT status, assignee FROM tasks WHERE id = ?',
       task.id,
     ),
   ).toEqual({ status: 'running', assignee: 'dev' });
-  expect(
-    await stored(
-      path,
-      'SELECT actor, log_path FROM task_executions WHERE task_id = ?',
-      task.id,
-    ),
-  ).toEqual({ actor: 'alice', log_path: '/logs/run.log' });
 });
 
-// Covers AE5. The graph is seeded through the library, since the service has
-// no way to link tasks.
-test('startTask returns the blocked refusal for a blocked task, which stays open', async () => {
+test('take records the actor as who runs the task and as who started it', async () => {
+  const path = join(dir, 'tasks.db');
+  const tasks = await startedService(path);
+  const task = await createOpen(tasks, { assignee: dev });
+
+  await tasks.take({ taskId: task.id, actor: alice });
+  await tasks.stop();
+
+  expect(
+    await readRow(
+      path,
+      "SELECT e.actor, c.changed_by FROM task_executions e JOIN task_status_changes c ON c.task_id = e.task_id AND c.to_status = 'running' WHERE e.task_id = ?",
+      task.id,
+    ),
+  ).toEqual({ actor: 'alice', changed_by: 'alice' });
+});
+
+// The database is seeded through the library, since the service can't link
+// tasks.
+test('a task take refused as blocked comes back as next once its blocker succeeds', async () => {
   const path = join(dir, 'tasks.db');
   const seed = await openTasks(path);
   const ids: string[] = [];
   for (const title of ['Blocker', 'Blocked']) {
-    const result = await seed.createTask(newTask({ title }));
+    const result = await seed.createTask({
+      title,
+      kind: 'task',
+      priority: 2,
+      assignee: 'dev',
+      createdBy: 'planner',
+    });
     if (!result.ok) {
       throw new Error(`createTask refused: ${result.reason}`);
     }
@@ -217,95 +322,100 @@ test('startTask returns the blocked refusal for a blocked task, which stays open
   const [blockerId, taskId] = ids;
   await seed.link({ taskId, blockerId });
   await seed.close();
-  const service = await init(path);
+  const tasks = await startedService(path);
 
-  const result = await service.startTask({
-    id: taskId,
-    changedBy: 'dev',
-    actor: 'dev',
-  });
+  const result = await tasks.take({ taskId, actor: dev });
 
-  expect(result).toEqual({ ok: false, reason: 'blocked' });
-  await started(service, blockerId);
-  await service.finishTask({
-    id: blockerId,
-    changedBy: 'dev',
-    status: 'succeeded',
-  });
-  expect(await service.nextTask(['dev'])).toMatchObject({
+  expect(result).toEqual({ ok: false, refusal: 'blocked' });
+  await tasks.take({ taskId: blockerId, actor: dev });
+  await tasks.finish({ taskId: blockerId, actor: dev, outcome: 'succeeded' });
+  expect(await tasks.next([dev])).toMatchObject({
     ok: true,
     task: { id: taskId, status: 'open' },
   });
 });
 
-test('startTask returns the not_found refusal for an unknown task', async () => {
-  const service = await init();
+test('take refuses an unknown task as not_found', async () => {
+  const tasks = await startedService();
 
-  expect(
-    await service.startTask({
-      id: `tsk_${'0'.repeat(32)}`,
-      changedBy: 'dev',
-      actor: 'dev',
-    }),
-  ).toEqual({ ok: false, reason: 'not_found' });
+  expect(await tasks.take({ taskId: unknownId, actor: dev })).toEqual({
+    ok: false,
+    refusal: 'not_found',
+  });
 });
 
-test('startTask returns the not_open refusal for a running task', async () => {
-  const service = await init();
-  const task = await created(service);
-  await started(service, task.id);
+test('take refuses a running task as not_open', async () => {
+  const tasks = await startedService();
+  const task = await createRunning(tasks);
 
-  expect(
-    await service.startTask({ id: task.id, changedBy: 'dev', actor: 'dev' }),
-  ).toEqual({ ok: false, reason: 'not_open' });
+  expect(await tasks.take({ taskId: task.id, actor: dev })).toEqual({
+    ok: false,
+    refusal: 'not_open',
+  });
+});
+
+test('take refuses a blank actor as invalid', async () => {
+  const tasks = await startedService();
+  const task = await createOpen(tasks);
+
+  expect(await tasks.take({ taskId: task.id, actor: { name: ' ' } })).toEqual({
+    ok: false,
+    refusal: 'invalid',
+  });
 });
 
 test.each(['succeeded', 'failed', 'skipped'] as const)(
-  'finishTask moves a running task to %s',
-  async (status) => {
+  'finish moves a running task to %s',
+  async (outcome) => {
     const path = join(dir, 'tasks.db');
-    const service = await init(path);
-    const task = await created(service);
-    await started(service, task.id);
+    const tasks = await startedService(path);
+    const task = await createRunning(tasks);
 
-    const result = await service.finishTask({
-      id: task.id,
-      changedBy: 'dev',
-      status,
-    });
-    await service.close();
+    const result = await tasks.finish({ taskId: task.id, actor: dev, outcome });
+    await tasks.stop();
 
     expect(result).toEqual({ ok: true });
     expect(
-      await stored(path, 'SELECT status FROM tasks WHERE id = ?', task.id),
-    ).toEqual({ status });
+      await readRow(path, 'SELECT status FROM tasks WHERE id = ?', task.id),
+    ).toEqual({ status: outcome });
   },
 );
 
-test('finishTask returns the not_running refusal for an open task', async () => {
-  const service = await init();
-  const task = await created(service);
+test('finish records the actor as who finished the task, with the reason given', async () => {
+  const path = join(dir, 'tasks.db');
+  const tasks = await startedService(path);
+  const task = await createRunning(tasks);
+
+  await tasks.finish({
+    taskId: task.id,
+    actor: alice,
+    outcome: 'failed',
+    reason: 'The tests time out',
+  });
+  await tasks.stop();
 
   expect(
-    await service.finishTask({
-      id: task.id,
-      changedBy: 'dev',
-      status: 'succeeded',
-    }),
-  ).toEqual({ ok: false, reason: 'not_running' });
+    await readRow(
+      path,
+      "SELECT changed_by, reason FROM task_status_changes WHERE task_id = ? AND to_status = 'failed'",
+      task.id,
+    ),
+  ).toEqual({ changed_by: 'alice', reason: 'The tests time out' });
 });
 
-// A closed graph is one way to make the library reject rather than refuse.
-test('createTask rejects when the library rejects', async () => {
-  const service = await init();
-  await service.close();
+test('finish refuses an open task as not_running', async () => {
+  const tasks = await startedService();
+  const task = await createOpen(tasks);
 
-  await expect(service.createTask(newTask())).rejects.toThrow();
+  expect(
+    await tasks.finish({ taskId: task.id, actor: dev, outcome: 'succeeded' }),
+  ).toEqual({ ok: false, refusal: 'not_running' });
 });
 
-test('close resolves a second time', async () => {
-  const service = await init();
-  await service.close();
+test('finish refuses an unknown task as not_found', async () => {
+  const tasks = await startedService();
 
-  await expect(service.close()).resolves.toBeUndefined();
+  expect(
+    await tasks.finish({ taskId: unknownId, actor: dev, outcome: 'succeeded' }),
+  ).toEqual({ ok: false, refusal: 'not_found' });
 });

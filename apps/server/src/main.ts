@@ -8,7 +8,7 @@ import packageJson from '../package.json';
 import { createApp } from './app';
 import { loadConfig, type Config } from './config';
 import { createDatabase } from './database';
-import { initTasks } from './modules/tasks/index';
+import { createTasksService } from './modules/tasks/service';
 import { startServer } from './server';
 
 const config = readConfig();
@@ -45,9 +45,14 @@ async function serve(config: Config) {
     }
   }
 
-  // A task graph that doesn't open doesn't stop the server either: the
-  // module prints why, and its service rejects until a restart.
-  const tasks = await initTasks(config.taskGraph);
+  // A tasks database that doesn't open doesn't stop the server either: it
+  // prints why, and the service rejects every call until a restart.
+  const tasks = createTasksService(config.tasksDb);
+  await tasks.start().catch((error: unknown) => {
+    console.error(
+      `Could not open the tasks database ${config.tasksDb}: ${(error as Error).message}`,
+    );
+  });
   const database = createDatabase(config.database, config.databaseTimeoutMs);
   const app = createApp({
     version: packageJson.version,
@@ -57,7 +62,7 @@ async function serve(config: Config) {
   });
   const server = await startServer(app, config).catch(
     async (error: unknown) => {
-      await tasks.close();
+      await tasks.stop();
       await database.close();
       throw error;
     },
@@ -72,7 +77,7 @@ async function serve(config: Config) {
     process.off('SIGINT', shutdown);
     process.off('SIGTERM', shutdown);
     await server.close();
-    await tasks.close();
+    await tasks.stop();
     await database.close();
     process.exit(0);
   };

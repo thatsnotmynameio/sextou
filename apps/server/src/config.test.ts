@@ -16,7 +16,7 @@ test('loadConfig uses every default when no variable is set', () => {
     host: '127.0.0.1',
     port: 4310,
     database: '/home/ana/.local/share/sextou/sextou.db',
-    taskGraph: '/home/ana/.local/share/sextou/tasks.db',
+    tasksDb: '/home/ana/.local/share/sextou/tasks.db',
     webOrigin: 'http://localhost:5173',
     databaseTimeoutMs: 20000,
     dev: false,
@@ -29,7 +29,7 @@ test('loadConfig takes every variable that is set', () => {
       SEXTOU_SERVER_HOST: '0.0.0.0',
       SEXTOU_SERVER_PORT: '8080',
       SEXTOU_SERVER_DATABASE: '/a.db',
-      SEXTOU_SERVER_TASK_GRAPH: '/t.db',
+      SEXTOU_SERVER_TASKS_DB: '/t.db',
       SEXTOU_SERVER_WEB_ORIGIN: 'https://app.example',
       SEXTOU_SERVER_DATABASE_TIMEOUT_MS: '500',
       SEXTOU_SERVER_DEV: 'true',
@@ -38,7 +38,7 @@ test('loadConfig takes every variable that is set', () => {
     host: '0.0.0.0',
     port: 8080,
     database: '/a.db',
-    taskGraph: '/t.db',
+    tasksDb: '/t.db',
     webOrigin: 'https://app.example',
     databaseTimeoutMs: 500,
     dev: true,
@@ -71,10 +71,10 @@ test('loadConfig puts the database in the data directory by default', () => {
   );
 });
 
-test('loadConfig puts the database and the task graph in SEXTOU_SERVER_DATA_DIR', () => {
+test('loadConfig puts the database and the tasks database in SEXTOU_SERVER_DATA_DIR', () => {
   expect(load({ SEXTOU_SERVER_DATA_DIR: '/d' })).toMatchObject({
     database: '/d/sextou.db',
-    taskGraph: '/d/tasks.db',
+    tasksDb: '/d/tasks.db',
   });
 });
 
@@ -103,21 +103,19 @@ test('loadConfig keeps :memory: as it is', () => {
   );
 });
 
-test('loadConfig resolves a relative task graph path against the working directory', () => {
-  expect(load({ SEXTOU_SERVER_TASK_GRAPH: 'tasks.db' }).taskGraph).toBe(
+test('loadConfig resolves a relative tasks database path against the working directory', () => {
+  expect(load({ SEXTOU_SERVER_TASKS_DB: 'tasks.db' }).tasksDb).toBe(
     '/work/tasks.db',
   );
 });
 
-test('loadConfig keeps a task graph of :memory: as it is', () => {
-  expect(load({ SEXTOU_SERVER_TASK_GRAPH: ':memory:' }).taskGraph).toBe(
-    ':memory:',
-  );
+test('loadConfig keeps a tasks database of :memory: as it is', () => {
+  expect(load({ SEXTOU_SERVER_TASKS_DB: ':memory:' }).tasksDb).toBe(':memory:');
 });
 
 test('loadConfig does not read the home directory when both paths are given', () => {
   const config = loadConfig(
-    { SEXTOU_SERVER_DATABASE: '/b.db', SEXTOU_SERVER_TASK_GRAPH: '/t.db' },
+    { SEXTOU_SERVER_DATABASE: '/b.db', SEXTOU_SERVER_TASKS_DB: '/t.db' },
     {
       ...paths,
       homedir: () => {
@@ -125,7 +123,7 @@ test('loadConfig does not read the home directory when both paths are given', ()
       },
     },
   );
-  expect(config).toMatchObject({ database: '/b.db', taskGraph: '/t.db' });
+  expect(config).toMatchObject({ database: '/b.db', tasksDb: '/t.db' });
 });
 
 test.each([
@@ -136,7 +134,7 @@ test.each([
   const config = loadConfig(env, { ...paths, homedir });
   expect(config).toMatchObject({
     database,
-    taskGraph: '/home/ana/.local/share/sextou/tasks.db',
+    tasksDb: '/home/ana/.local/share/sextou/tasks.db',
   });
   expect(homedir).toHaveBeenCalledOnce();
 });
@@ -154,9 +152,9 @@ test('loadConfig rejects an empty database path', () => {
   );
 });
 
-test('loadConfig rejects an empty task graph path', () => {
-  expect(() => load({ SEXTOU_SERVER_TASK_GRAPH: '' })).toThrow(
-    'Invalid SEXTOU_SERVER_TASK_GRAPH: "" (expected a file path or :memory:)',
+test('loadConfig rejects an empty tasks database path', () => {
+  expect(() => load({ SEXTOU_SERVER_TASKS_DB: '' })).toThrow(
+    'Invalid SEXTOU_SERVER_TASKS_DB: "" (expected a file path or :memory:)',
   );
 });
 

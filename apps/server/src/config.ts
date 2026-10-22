@@ -6,8 +6,8 @@ export interface Config {
   port: number;
   // An absolute file path, or ':memory:'.
   database: string;
-  // The task graph's file: an absolute path, or ':memory:'.
-  taskGraph: string;
+  // The tasks database's file: an absolute path, or ':memory:'.
+  tasksDb: string;
   // The web app's origin, the one CORS lets call the server.
   webOrigin: string;
   // How long a database query may take before the server counts the
@@ -64,8 +64,8 @@ export function loadConfig(
       (value, name) => parseDatabase(value, name, cwd),
       () => inDataDirectory('sextou.db'),
     ),
-    taskGraph: read(
-      'SEXTOU_SERVER_TASK_GRAPH',
+    tasksDb: read(
+      'SEXTOU_SERVER_TASKS_DB',
       (value, name) => parseDatabase(value, name, cwd),
       () => inDataDirectory('tasks.db'),
     ),
@@ -117,7 +117,7 @@ function parseDataDir(value: string, name: string, cwd: string): string {
   return path.resolve(cwd, value);
 }
 
-// A database file, the server's or the task graph's. SQLite opens an empty
+// A database file: the server's, or the tasks database. SQLite opens an empty
 // path as a temporary database it deletes on close, so an empty value is an
 // error. A relative path is made absolute, as above.
 function parseDatabase(value: string, name: string, cwd: string): string {

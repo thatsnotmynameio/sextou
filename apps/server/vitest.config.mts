@@ -8,13 +8,11 @@ import type { CoverageOptions } from 'vitest/node';
 // a path, and its in-memory cases alone don't reach the floor, so they sit in
 // its integration test beside the cases on a file. server.ts listens on a
 // port, and main.ts creates folders on disk and opens the database. The tasks
-// module runs @sextou/tasks for real, two sextou packages together, even on
+// service runs @sextou/tasks for real, two sextou packages together, even on
 // ':memory:'.
 export const integrationOnly = [
   'src/database.ts',
   'src/main.ts',
-  'src/modules/tasks/index.ts',
-  'src/modules/tasks/init.ts',
   'src/modules/tasks/service.ts',
   'src/server.ts',
 ];
