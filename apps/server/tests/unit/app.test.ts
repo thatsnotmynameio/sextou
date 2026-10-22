@@ -35,6 +35,22 @@ test('the app answers a batched GET, as the web app’s client sends it', async 
   ]);
 });
 
+test('the app answers GET /trpc/runner.next with no task, to a caller that sends no origin', async () => {
+  const response = await app().request('/trpc/runner.next');
+
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ result: { data: { task: null } } });
+});
+
+test('the app answers a batched GET /trpc/runner.next', async () => {
+  const response = await app().request(
+    '/trpc/runner.next?batch=1&input=%7B%7D',
+  );
+
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual([{ result: { data: { task: null } } }]);
+});
+
 test('the app answers an unknown path under /trpc with NOT_FOUND', async () => {
   const response = await app().request('/trpc/nothing');
 

@@ -1,10 +1,12 @@
 // The API: each module's router under the module's name. The web app imports
 // only the type, through the package's "./router" export.
 import { healthRouter } from './modules/health/index';
+import { runnerRouter } from './modules/runner/index';
 import { router } from './trpc';
 
 export const appRouter = router({
   health: healthRouter,
+  runner: runnerRouter,
 });
 
 export type AppRouter = typeof appRouter;
