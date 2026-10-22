@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { openTasks } from '@sextou/tasks';
 import { connect } from '@tursodatabase/database';
 import { afterEach, beforeEach, expect, test } from 'vitest';
+import { createLogger } from '../../../src/logger';
 import {
   createTasksService,
   type NewTask,
@@ -21,13 +22,14 @@ const dev = { name: 'dev' };
 const alice = { name: 'alice' };
 const planner = { name: 'planner' };
 const unknownId = `tsk_${'0'.repeat(32)}`;
+const logger = createLogger({ level: 'silent', pretty: false });
 
 let dir: string;
 const services: TasksService[] = [];
 
 // A started service, stopped after the test.
 async function startedService(path = ':memory:') {
-  const tasks = createTasksService(path);
+  const tasks = createTasksService(path, { logger });
   services.push(tasks);
   await tasks.start();
   return tasks;
@@ -108,14 +110,14 @@ test('start a second time keeps the tasks database it opened', async () => {
 });
 
 test('start rejects when the file is not a database', async () => {
-  const tasks = createTasksService(notADatabase());
+  const tasks = createTasksService(notADatabase(), { logger });
   services.push(tasks);
 
   await expect(tasks.start()).rejects.toThrow();
 });
 
 test('after a failed start, each call rejects with the error start rejected with', async () => {
-  const tasks = createTasksService(notADatabase());
+  const tasks = createTasksService(notADatabase(), { logger });
   services.push(tasks);
   const error: unknown = await tasks.start().catch((error: unknown) => error);
 
@@ -130,14 +132,14 @@ test('after a failed start, each call rejects with the error start rejected with
 });
 
 test('stop after a failed start resolves', async () => {
-  const tasks = createTasksService(notADatabase());
+  const tasks = createTasksService(notADatabase(), { logger });
   await tasks.start().catch(() => undefined);
 
   await expect(tasks.stop()).resolves.toBeUndefined();
 });
 
 test('a call before start rejects, saying the service is not started', async () => {
-  const tasks = createTasksService(':memory:');
+  const tasks = createTasksService(':memory:', { logger });
 
   await expect(tasks.create(newTask())).rejects.toThrow(
     'The tasks service is not started',
@@ -145,7 +147,9 @@ test('a call before start rejects, saying the service is not started', async () 
 });
 
 test('stop before start resolves', async () => {
-  await expect(createTasksService(':memory:').stop()).resolves.toBeUndefined();
+  await expect(
+    createTasksService(':memory:', { logger }).stop(),
+  ).resolves.toBeUndefined();
 });
 
 test('a call after stop rejects', async () => {
@@ -307,7 +311,7 @@ test('take records the actor as who runs the task and as who started it', async 
 // tasks.
 test('a task take refused as blocked comes back as next once its blocker succeeds', async () => {
   const path = join(dir, 'tasks.db');
-  const seed = await openTasks(path);
+  const seed = await openTasks(path, { logger });
   const ids: string[] = [];
   for (const title of ['Blocker', 'Blocked']) {
     const result = await seed.createTask({

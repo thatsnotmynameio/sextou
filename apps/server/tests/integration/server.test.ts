@@ -1,11 +1,13 @@
 import { afterEach, expect, test } from 'vitest';
 import { createApp } from '../../src/app';
+import { createLogger } from '../../src/logger';
 import { startServer, type RunningServer } from '../../src/server';
 
 const app = createApp({
   version: '1.2.3',
   database: { ping: async () => true },
   dev: false,
+  logger: createLogger({ level: 'silent', pretty: false }),
   webOrigin: 'http://localhost:5173',
 });
 

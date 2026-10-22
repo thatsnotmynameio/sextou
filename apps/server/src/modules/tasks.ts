@@ -1,4 +1,9 @@
-import { openTasks, type Task as StoredTask, type Tasks } from '@sextou/tasks';
+import {
+  type Logger,
+  openTasks,
+  type Task as StoredTask,
+  type Tasks,
+} from '@sextou/tasks';
 
 // The server's tasks: the only code that talks to @sextou/tasks, and only
 // main.ts creates it. Its types are its own, not the library's: the
@@ -121,9 +126,17 @@ export interface TasksService {
   >;
 }
 
+export interface TasksServiceOptions {
+  // Where the tasks database logs: the server's logger.
+  logger: Logger;
+}
+
 // The service over the tasks database at an absolute path, or in memory for
 // ':memory:'. Nothing opens until start.
-export function createTasksService(path: string): TasksService {
+export function createTasksService(
+  path: string,
+  { logger }: TasksServiceOptions,
+): TasksService {
   let database: Promise<Tasks> | undefined;
 
   const opened = () =>
@@ -131,7 +144,8 @@ export function createTasksService(path: string): TasksService {
 
   return {
     start: async () => {
-      database ??= openTasks(path);
+      // Stryker disable next-line ObjectLiteral: @sextou/tasks logs nothing yet, so which logger it gets changes no behavior.
+      database ??= openTasks(path, { logger });
       await database;
     },
     stop: async () => {

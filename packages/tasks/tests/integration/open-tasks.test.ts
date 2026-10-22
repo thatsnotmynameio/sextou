@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { connect, Database } from '@tursodatabase/database';
+import { pino } from 'pino';
 import {
   afterEach,
   beforeEach,
@@ -32,7 +33,7 @@ let exec: MockInstance<Database['exec']>;
 const opened: Tasks[] = [];
 
 async function open(path: string) {
-  const tasks = await openTasks(path);
+  const tasks = await openTasks(path, { logger: pino({ level: 'silent' }) });
   opened.push(tasks);
   return tasks;
 }
