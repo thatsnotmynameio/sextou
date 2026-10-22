@@ -9,6 +9,7 @@ import { createApp } from './app';
 import { loadConfig, type Config } from './config';
 import { createDatabase } from './database';
 import { createLogger } from './logger';
+import { createTasksService } from './modules/tasks';
 import { startServer } from './server';
 
 const config = readConfig();
@@ -55,6 +56,15 @@ async function serve(config: Config) {
     }
   }
 
+  // A tasks database that doesn't open doesn't stop the server either: it
+  // logs why, and the service rejects every call until a restart.
+  const tasks = createTasksService(config.tasksDb, { logger });
+  await tasks.start().catch((error: unknown) => {
+    logger.error(
+      { path: config.tasksDb, err: error },
+      'Could not open the tasks database',
+    );
+  });
   const database = createDatabase(config.database, config.databaseTimeoutMs);
   const app = createApp({
     version: packageJson.version,
@@ -65,6 +75,7 @@ async function serve(config: Config) {
   });
   const server = await startServer(app, config).catch(
     async (error: unknown) => {
+      await tasks.stop();
       await database.close();
       throw error;
     },
@@ -80,6 +91,7 @@ async function serve(config: Config) {
     process.off('SIGINT', shutdown);
     process.off('SIGTERM', shutdown);
     await server.close();
+    await tasks.stop();
     await database.close();
     process.exit(0);
   };

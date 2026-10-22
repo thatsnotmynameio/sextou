@@ -94,6 +94,9 @@ importers:
       '@hono/node-server':
         specifier: ^2.1.5
         version: 2.1.5(hono@4.13.13)
+      '@sextou/tasks':
+        specifier: workspace:*
+        version: link:../../packages/tasks
       '@trpc/server':
         specifier: ^11.19.0
         version: 11.19.0(typescript@7.0.2)

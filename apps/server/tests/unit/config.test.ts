@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { loadConfig, type PathContext } from '../../src/config';
 
 const paths: PathContext = {
@@ -16,6 +16,7 @@ test('loadConfig uses every default when no variable is set', () => {
     host: '127.0.0.1',
     port: 4310,
     database: '/home/ana/.local/share/sextou/sextou.db',
+    tasksDb: '/home/ana/.local/share/sextou/tasks.db',
     webOrigin: 'http://localhost:5173',
     databaseTimeoutMs: 20000,
     dev: false,
@@ -29,6 +30,7 @@ test('loadConfig takes every variable that is set', () => {
       SEXTOU_SERVER_HOST: '0.0.0.0',
       SEXTOU_SERVER_PORT: '8080',
       SEXTOU_SERVER_DATABASE: '/a.db',
+      SEXTOU_SERVER_TASKS_DB: '/t.db',
       SEXTOU_SERVER_WEB_ORIGIN: 'https://app.example',
       SEXTOU_SERVER_DATABASE_TIMEOUT_MS: '500',
       SEXTOU_SERVER_DEV: 'true',
@@ -38,6 +40,7 @@ test('loadConfig takes every variable that is set', () => {
     host: '0.0.0.0',
     port: 8080,
     database: '/a.db',
+    tasksDb: '/t.db',
     webOrigin: 'https://app.example',
     databaseTimeoutMs: 500,
     dev: true,
@@ -71,8 +74,11 @@ test('loadConfig puts the database in the data directory by default', () => {
   );
 });
 
-test('loadConfig puts the database in SEXTOU_SERVER_DATA_DIR', () => {
-  expect(load({ SEXTOU_SERVER_DATA_DIR: '/d' }).database).toBe('/d/sextou.db');
+test('loadConfig puts the database and the tasks database in SEXTOU_SERVER_DATA_DIR', () => {
+  expect(load({ SEXTOU_SERVER_DATA_DIR: '/d' })).toMatchObject({
+    database: '/d/sextou.db',
+    tasksDb: '/d/tasks.db',
+  });
 });
 
 test('loadConfig keeps a configured database outside the data directory', () => {
@@ -100,9 +106,19 @@ test('loadConfig keeps :memory: as it is', () => {
   );
 });
 
-test('loadConfig does not read the home directory when the database is given', () => {
+test('loadConfig resolves a relative tasks database path against the working directory', () => {
+  expect(load({ SEXTOU_SERVER_TASKS_DB: 'tasks.db' }).tasksDb).toBe(
+    '/work/tasks.db',
+  );
+});
+
+test('loadConfig keeps a tasks database of :memory: as it is', () => {
+  expect(load({ SEXTOU_SERVER_TASKS_DB: ':memory:' }).tasksDb).toBe(':memory:');
+});
+
+test('loadConfig does not read the home directory when both paths are given', () => {
   const config = loadConfig(
-    { SEXTOU_SERVER_DATABASE: '/b.db' },
+    { SEXTOU_SERVER_DATABASE: '/b.db', SEXTOU_SERVER_TASKS_DB: '/t.db' },
     {
       ...paths,
       homedir: () => {
@@ -110,7 +126,20 @@ test('loadConfig does not read the home directory when the database is given', (
       },
     },
   );
-  expect(config.database).toBe('/b.db');
+  expect(config).toMatchObject({ database: '/b.db', tasksDb: '/t.db' });
+});
+
+test.each([
+  [{}, '/home/ana/.local/share/sextou/sextou.db'],
+  [{ SEXTOU_SERVER_DATABASE: '/b.db' }, '/b.db'],
+])('loadConfig with %j reads the home directory once', (env, database) => {
+  const homedir = vi.fn(() => '/home/ana');
+  const config = loadConfig(env, { ...paths, homedir });
+  expect(config).toMatchObject({
+    database,
+    tasksDb: '/home/ana/.local/share/sextou/tasks.db',
+  });
+  expect(homedir).toHaveBeenCalledOnce();
 });
 
 test('loadConfig rejects an empty data directory', () => {
@@ -123,6 +152,12 @@ test('loadConfig rejects an empty data directory', () => {
 test('loadConfig rejects an empty database path', () => {
   expect(() => load({ SEXTOU_SERVER_DATABASE: '' })).toThrow(
     'Invalid SEXTOU_SERVER_DATABASE: ""',
+  );
+});
+
+test('loadConfig rejects an empty tasks database path', () => {
+  expect(() => load({ SEXTOU_SERVER_TASKS_DB: '' })).toThrow(
+    'Invalid SEXTOU_SERVER_TASKS_DB: "" (expected a file path or :memory:)',
   );
 });
 

@@ -20,6 +20,8 @@ export interface Config {
   port: number;
   // An absolute file path, or ':memory:'.
   database: string;
+  // The tasks database's file: an absolute path, or ':memory:'.
+  tasksDb: string;
   // The web app's origin, the one CORS lets call the server.
   webOrigin: string;
   // How long a database query may take before the server counts the
@@ -57,6 +59,18 @@ export function loadConfig(
     return value === undefined ? fallback() : parse(value, name);
   };
 
+  // A file in the data directory, which is read only when a default needs
+  // it, and at most once.
+  let dataDirectory: string | undefined;
+  const inDataDirectory = (file: string) => {
+    dataDirectory ??= read(
+      'SEXTOU_SERVER_DATA_DIR',
+      (value, name) => parseDataDir(value, name, cwd),
+      () => defaultDataDirectory(platform, env, homedir()),
+    );
+    return path.join(dataDirectory, file);
+  };
+
   return {
     // Loopback by default: there is no authentication yet.
     host: read('SEXTOU_SERVER_HOST', parseHost, () => '127.0.0.1'),
@@ -64,15 +78,12 @@ export function loadConfig(
     database: read(
       'SEXTOU_SERVER_DATABASE',
       (value, name) => parseDatabase(value, name, cwd),
-      () =>
-        path.join(
-          read(
-            'SEXTOU_SERVER_DATA_DIR',
-            (value, name) => parseDataDir(value, name, cwd),
-            () => defaultDataDirectory(platform, env, homedir()),
-          ),
-          'sextou.db',
-        ),
+      () => inDataDirectory('sextou.db'),
+    ),
+    tasksDb: read(
+      'SEXTOU_SERVER_TASKS_DB',
+      (value, name) => parseDatabase(value, name, cwd),
+      () => inDataDirectory('tasks.db'),
     ),
     webOrigin: read(
       'SEXTOU_SERVER_WEB_ORIGIN',
@@ -123,8 +134,9 @@ function parseDataDir(value: string, name: string, cwd: string): string {
   return path.resolve(cwd, value);
 }
 
-// SQLite opens an empty path as a temporary database it deletes on close, so
-// an empty value is an error. A relative path is made absolute, as above.
+// A database file: the server's, or the tasks database. SQLite opens an empty
+// path as a temporary database it deletes on close, so an empty value is an
+// error. A relative path is made absolute, as above.
 function parseDatabase(value: string, name: string, cwd: string): string {
   if (value === '') {
     throw invalid(name, value, 'a file path or :memory:');

@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.5",
+    "@sextou/tasks": "workspace:*",
     "@trpc/server": "^11.19.0",
     "@tursodatabase/database": "0.8.3",
     "drizzle-orm": "1.0.0-rc.4",
