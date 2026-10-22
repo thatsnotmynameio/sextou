@@ -72,6 +72,10 @@ test.each(
   );
 });
 
+test('loadConfig takes false for dev', () => {
+  expect(loadConfig({ SEXTOU_RUNNER_DEV: 'false' }).dev).toBe(false);
+});
+
 test.each(['yes', 'TRUE', '1', ''])('loadConfig rejects dev %j', (value) => {
   expect(() => loadConfig({ SEXTOU_RUNNER_DEV: value })).toThrow(
     `Invalid SEXTOU_RUNNER_DEV: ${JSON.stringify(value)} (expected true or false)`,

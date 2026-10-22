@@ -52,7 +52,9 @@ function failure(error: unknown) {
 function wait(ms: number, signal: AbortSignal) {
   return new Promise<void>((resolve) => {
     const done = () => {
+      // Stryker disable next-line CallExpression: a timer left after an abort would only resolve a promise already resolved.
       clearTimeout(timer);
+      // Stryker disable next-line StringLiteral,CallExpression: a listener left after the timer would only resolve a promise already resolved.
       signal.removeEventListener('abort', done);
       resolve();
     };
