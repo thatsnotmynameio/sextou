@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { Database } from '@tursodatabase/database';
 import { generate } from 'drizzle-kit/cli';
+import { pino } from 'pino';
 import {
   afterEach,
   beforeEach,
@@ -25,7 +26,7 @@ function connection() {
 
 beforeEach(async () => {
   exec = vi.spyOn(Database.prototype, 'exec');
-  tasks = await openTasks(':memory:');
+  tasks = await openTasks(':memory:', { logger: pino({ level: 'silent' }) });
 });
 
 afterEach(async () => {

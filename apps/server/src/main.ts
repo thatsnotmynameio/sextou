@@ -8,6 +8,7 @@ import packageJson from '../package.json';
 import { createApp } from './app';
 import { loadConfig, type Config } from './config';
 import { createDatabase } from './database';
+import { createLogger } from './logger';
 import { startServer } from './server';
 
 const config = readConfig();
@@ -15,7 +16,9 @@ if (config) {
   await serve(config);
 }
 
-// An invalid variable stops the server before it listens.
+// An invalid variable stops the server before it listens. The error goes
+// through a logger at the default level: the configured one isn't read yet,
+// and may be the invalid variable.
 function readConfig(): Config | undefined {
   try {
     return loadConfig(process.env, {
@@ -24,13 +27,20 @@ function readConfig(): Config | undefined {
       cwd: process.cwd(),
     });
   } catch (error) {
-    console.error((error as Error).message);
+    createLogger({ level: 'info', pretty: false }).error(
+      (error as Error).message,
+    );
     process.exitCode = 1;
     return undefined;
   }
 }
 
 async function serve(config: Config) {
+  const logger = createLogger({
+    level: config.logLevel,
+    pretty: config.dev,
+  });
+
   // Turso creates the file but not its folder. A folder it can't create
   // doesn't stop the server: health reports the database down.
   if (config.database !== ':memory:') {
@@ -38,8 +48,9 @@ async function serve(config: Config) {
     try {
       mkdirSync(folder, { recursive: true });
     } catch (error) {
-      console.error(
-        `Could not create the database's folder ${folder}: ${(error as Error).message}`,
+      logger.error(
+        { folder, err: error },
+        "Could not create the database's folder",
       );
     }
   }
@@ -49,6 +60,7 @@ async function serve(config: Config) {
     version: packageJson.version,
     database: { ping: database.ping },
     dev: config.dev,
+    logger,
     webOrigin: config.webOrigin,
   });
   const server = await startServer(app, config).catch(
@@ -57,9 +69,10 @@ async function serve(config: Config) {
       throw error;
     },
   );
-  // A URL needs an IPv6 address in brackets.
+  // A URL needs an IPv6 address in brackets. A process that starts the server
+  // reads the URL from this record.
   const urlHost = server.host.includes(':') ? `[${server.host}]` : server.host;
-  console.log(`listening on http://${urlHost}:${server.port}`);
+  logger.info({ url: `http://${urlHost}:${server.port}` }, 'listening');
 
   // The first signal shuts down once; a second one gets Node's default exit,
   // which ends a shutdown stuck on a request in flight.

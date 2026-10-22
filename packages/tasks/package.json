@@ -25,6 +25,7 @@
     "@types/node": "^24.19.2",
     "@vitest/coverage-v8": "^5.0.5",
     "drizzle-kit": "1.0.0-rc.5",
+    "pino": "^10.4.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
   }

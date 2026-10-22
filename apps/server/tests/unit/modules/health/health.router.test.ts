@@ -1,7 +1,8 @@
 import { TRPCError } from '@trpc/server';
 import { expect, test } from 'vitest';
-import { createCallerFactory, type Context } from '../../../../src/trpc';
+import { createLogger } from '../../../../src/logger';
 import { healthRouter } from '../../../../src/modules/health/health.router';
+import { createCallerFactory, type Context } from '../../../../src/trpc';
 
 const createCaller = createCallerFactory(healthRouter);
 
@@ -10,6 +11,7 @@ function caller(context: Partial<Context> = {}) {
     version: '1.2.3',
     database: { ping: async () => true },
     dev: false,
+    logger: createLogger({ level: 'silent', pretty: false }),
     ...context,
   });
 }

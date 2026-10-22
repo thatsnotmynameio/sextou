@@ -12,7 +12,7 @@ export interface RunningServer {
 // Serves the app on the configured host and port. Resolves once listening;
 // rejects when listening fails, as on a port already in use.
 export function startServer(
-  app: Hono,
+  app: Pick<Hono, 'fetch'>,
   { host, port }: Pick<Config, 'host' | 'port'>,
 ): Promise<RunningServer> {
   return new Promise((resolve, reject) => {
