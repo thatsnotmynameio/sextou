@@ -7,8 +7,13 @@ import type { CoverageOptions } from 'vitest/node';
 // No unit test answers for these, on purpose. owner-only.ts sets the modes of
 // files on disk. open-tasks.ts takes ':memory:' or a path, and its in-memory
 // cases alone don't reach the floor, so they sit in its integration test
-// beside the cases on a file.
-export const integrationOnly = ['src/open-tasks.ts', 'src/owner-only.ts'];
+// beside the cases on a file. Only drizzle-kit reads schema.ts's checks,
+// indexes and foreign keys, from the package's config on disk.
+export const integrationOnly = [
+  'src/open-tasks.ts',
+  'src/owner-only.ts',
+  'src/schema.ts',
+];
 
 // Each suite must reach this in every file it answers for, on its own.
 export const coverage = {
