@@ -4,7 +4,15 @@ import {
   type Task as StoredTask,
   type Tasks as TasksDb,
 } from '@sextou/tasks';
-import type { Actor, Priority, Refusal, Refused, Task, Tasks } from './tasks';
+import type {
+  Actor,
+  ExpiredAttempt,
+  Priority,
+  Refusal,
+  Refused,
+  Task,
+  Tasks,
+} from './tasks';
 
 // The server's tasks service: the only code that talks to @sextou/tasks, and
 // only main.ts creates it. Its types are tasks.ts's, not the library's: the
@@ -18,11 +26,11 @@ export interface TasksService extends Tasks {
   stop: () => Promise<void>;
   // Ends every attempt whose lease expired, as the actor: its task opens
   // again while attempts are left, else fails, or is cancelled when someone
-  // asked for it. expired counts the attempts it ended.
+  // asked for it. expired lists the attempts it ended.
   expire: (
     actor: Actor,
   ) => Promise<
-    | { ok: true; expired: number }
+    | { ok: true; expired: ExpiredAttempt[] }
     | Refused<typeof Refusal.invalid | typeof Refusal.timeout>
   >;
 }

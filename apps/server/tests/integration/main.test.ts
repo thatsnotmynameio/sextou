@@ -531,12 +531,12 @@ test('serves the tasks and the runners procedures over the tasks service', async
 // The sweep starts ending leases a whole lease after the server starts, and
 // takes a sweep a third of a lease late as a pause: the lease is long enough
 // that a timer's jitter never counts as one.
-test('ends expired leases every SEXTOU_SERVER_LEASE_SWEEP_MS, logging how many', async () => {
+test('ends expired leases every SEXTOU_SERVER_LEASE_SWEEP_MS, logging each task it failed', async () => {
   vi.stubEnv('SEXTOU_SERVER_LEASE_MS', '300');
   vi.stubEnv('SEXTOU_SERVER_LEASE_SWEEP_MS', '20');
   await import('../../src/main');
   const tasks = tasksService();
-  await tasks.create(newTask);
+  const created = await tasks.create(newTask);
   await tasks.claim({
     claimId: 'claim-1',
     runner: { name: 'runner-1' },
@@ -545,7 +545,13 @@ test('ends expired leases every SEXTOU_SERVER_LEASE_SWEEP_MS, logging how many',
 
   await vi.waitFor(() => {
     expect(records()).toContainEqual(
-      expect.objectContaining({ msg: 'Ended expired leases', expired: 1 }),
+      expect.objectContaining({
+        level: 40,
+        msg: 'Failed a task whose lease expired',
+        taskId: created.ok && created.task.id,
+        attempt: 1,
+        status: 'failed',
+      }),
     );
   });
   await handler('SIGTERM')();

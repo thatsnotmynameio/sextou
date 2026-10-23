@@ -649,7 +649,12 @@ test('expire fails a task whose lease ran out, with one attempt, as the actor gi
   const executionId = await claimed(tasks);
   now.mockReturnValue(1_700_000_000_000 + leaseMs);
 
-  expect(await tasks.expire(server)).toEqual({ ok: true, expired: 1 });
+  expect(await tasks.expire(server)).toEqual({
+    ok: true,
+    expired: [
+      { taskId: task.id, executionId, attempt: 1, status: Status.failed },
+    ],
+  });
   expect(await tasks.renew(executionId)).toEqual({
     ok: false,
     refusal: Refusal.leaseLost,
@@ -668,10 +673,15 @@ test('expire opens a task again while the configured attempts allow', async () =
   const now = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
   const tasks = await startedService(':memory:', { maxAttempts: 2 });
   const task = await createOpen(tasks);
-  await claimed(tasks);
+  const executionId = await claimed(tasks);
   now.mockReturnValue(1_700_000_000_000 + leaseMs);
 
-  expect(await tasks.expire(server)).toEqual({ ok: true, expired: 1 });
+  expect(await tasks.expire(server)).toEqual({
+    ok: true,
+    expired: [
+      { taskId: task.id, executionId, attempt: 1, status: Status.open },
+    ],
+  });
   expect(
     await tasks.claim({ claimId: newClaim(), runner, assignees: [dev] }),
   ).toMatchObject({

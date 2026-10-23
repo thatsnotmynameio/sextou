@@ -2,7 +2,8 @@ import { Writable } from 'node:stream';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { startLeaseSweep } from '../../src/lease-sweep';
 import { createLogger } from '../../src/logger';
-import { Refusal } from '../../src/tasks';
+import { Refusal, Status } from '../../src/tasks';
+import type { ExpiredAttempt } from '../../src/tasks';
 
 let lines: string[];
 
@@ -33,7 +34,7 @@ function sweep(
   });
 }
 
-const nothingExpired = async () => ({ ok: true as const, expired: 0 });
+const nothingExpired = async () => ({ ok: true as const, expired: [] });
 
 function records(): unknown[] {
   return lines.map((line) => JSON.parse(line));
@@ -49,7 +50,7 @@ afterEach(() => {
 });
 
 test('startLeaseSweep calls expire once per interval, not before the first', async () => {
-  const expire = vi.fn(async () => ({ ok: true as const, expired: 0 }));
+  const expire = vi.fn(async () => ({ ok: true as const, expired: [] }));
   const running = sweep(expire);
 
   await vi.advanceTimersByTimeAsync(99);
@@ -65,8 +66,8 @@ test('startLeaseSweep counts the interval from the end of the last call', async 
   let finish = () => {};
   const expire = vi.fn(
     () =>
-      new Promise<{ ok: true; expired: number }>((resolve) => {
-        finish = () => resolve({ ok: true, expired: 0 });
+      new Promise<{ ok: true; expired: ExpiredAttempt[] }>((resolve) => {
+        finish = () => resolve({ ok: true, expired: [] });
       }),
   );
   const running = sweep(expire);
@@ -133,23 +134,55 @@ test.each([
   },
 );
 
-test('startLeaseSweep logs how many attempts a sweep ended', async () => {
-  const running = sweep(async () => ({ ok: true, expired: 2 }));
+const opened: ExpiredAttempt = {
+  taskId: 'tsk_a',
+  executionId: 'exe_a',
+  attempt: 1,
+  status: Status.open,
+};
+
+test('startLeaseSweep logs each attempt a sweep ended with its task, at info when the task opens again or is cancelled', async () => {
+  const cancelled = { ...opened, taskId: 'tsk_b', status: Status.cancelled };
+  const running = sweep(async () => ({
+    ok: true,
+    expired: [opened, cancelled],
+  }));
 
   await vi.advanceTimersByTimeAsync(100);
 
   expect(records()).toEqual([
     expect.objectContaining({
       level: 30,
-      msg: 'Ended expired leases',
-      expired: 2,
+      msg: 'Ended an expired lease',
+      ...opened,
+    }),
+    expect.objectContaining({
+      level: 30,
+      msg: 'Ended an expired lease',
+      ...cancelled,
+    }),
+  ]);
+  await running.stop();
+});
+
+test('startLeaseSweep warns of each task a sweep failed', async () => {
+  const failed = { ...opened, attempt: 3, status: Status.failed };
+  const running = sweep(async () => ({ ok: true, expired: [failed] }));
+
+  await vi.advanceTimersByTimeAsync(100);
+
+  expect(records()).toEqual([
+    expect.objectContaining({
+      level: 40,
+      msg: 'Failed a task whose lease expired',
+      ...failed,
     }),
   ]);
   await running.stop();
 });
 
 test('startLeaseSweep logs nothing for a sweep that ended no attempt', async () => {
-  const running = sweep(async () => ({ ok: true, expired: 0 }));
+  const running = sweep(async () => ({ ok: true, expired: [] }));
 
   await vi.advanceTimersByTimeAsync(100);
 
@@ -195,7 +228,7 @@ test('startLeaseSweep logs a sweep that rejects and sweeps again', async () => {
 });
 
 test('stop ends the sweeps before the first one runs', async () => {
-  const expire = vi.fn(async () => ({ ok: true as const, expired: 0 }));
+  const expire = vi.fn(async () => ({ ok: true as const, expired: [] }));
   const running = sweep(expire);
 
   await running.stop();
@@ -208,8 +241,8 @@ test('stop waits for the sweep in progress, and none runs after it', async () =>
   let finish = () => {};
   const expire = vi.fn(
     () =>
-      new Promise<{ ok: true; expired: number }>((resolve) => {
-        finish = () => resolve({ ok: true, expired: 0 });
+      new Promise<{ ok: true; expired: ExpiredAttempt[] }>((resolve) => {
+        finish = () => resolve({ ok: true, expired: [] });
       }),
   );
   const running = sweep(expire);

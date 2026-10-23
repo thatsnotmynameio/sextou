@@ -106,6 +106,15 @@ export interface Execution {
   expiresAt: number;
 }
 
+// An attempt expireExecutions ended, and the status its task took: open
+// again, failed, or cancelled.
+export interface ExpiredExecution {
+  taskId: string;
+  executionId: string;
+  attempt: number;
+  status: typeof Status.open | typeof Status.failed | typeof Status.cancelled;
+}
+
 // Every operation that writes runs in one transaction: a refusal writes
 // nothing, and an error from Turso or the file system rejects. Each change of
 // a task's status is recorded in that transaction, with when it happened and
@@ -243,13 +252,13 @@ export interface Graph {
   >;
   // Ends every attempt whose lease expired. Its task is cancelled when
   // someone asked for it, recorded as theirs; else it opens again while the
-  // attempt is below maxAttempts; else it fails. expired counts the attempts
+  // attempt is below maxAttempts; else it fails. expired lists the attempts
   // it ended.
   expireExecutions: (expire: {
     maxAttempts: number;
     changedBy: string;
   }) => Promise<
-    | { ok: true; expired: number }
+    | { ok: true; expired: ExpiredExecution[] }
     | Refused<typeof Reason.invalid | typeof Reason.timeout>
   >;
   // The open tasks no blocker holds whose assignee is one of assignees,
@@ -869,10 +878,10 @@ export function createGraph(
         .limit(1)
         .get();
       if (any === undefined) {
-        return { ok: true, expired: 0 };
+        return { ok: true, expired: [] };
       }
       return write(async (tx) => {
-        const expired = await tx
+        const ending = await tx
           .select({
             id: taskExecutions.id,
             taskId: taskExecutions.taskId,
@@ -882,7 +891,8 @@ export function createGraph(
           })
           .from(taskExecutions)
           .where(due());
-        for (const execution of expired) {
+        const expired: ExpiredExecution[] = [];
+        for (const execution of ending) {
           const attempt = {
             taskId: execution.taskId,
             executionId: execution.id,
@@ -894,20 +904,27 @@ export function createGraph(
               changedBy: execution.cancelRequestedBy,
               reason: execution.cancelReason,
             });
+            expired.push({
+              ...attempt,
+              attempt: execution.attempt,
+              status: Status.cancelled,
+            });
           } else {
             // Back to open while attempts are left. It was ready when it
             // started, and no link reaches a task past open, so it is ready
             // again.
+            const status =
+              execution.attempt < maxAttempts ? Status.open : Status.failed;
             await end(tx, {
               ...attempt,
-              status:
-                execution.attempt < maxAttempts ? Status.open : Status.failed,
+              status,
               changedBy,
               reason: leaseExpired,
             });
+            expired.push({ ...attempt, attempt: execution.attempt, status });
           }
         }
-        return { ok: true, expired: expired.length };
+        return { ok: true, expired };
       });
     },
 

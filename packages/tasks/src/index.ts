@@ -1,5 +1,6 @@
 export {
   type Execution,
+  type ExpiredExecution,
   type Link,
   type Logger,
   type NewTask,

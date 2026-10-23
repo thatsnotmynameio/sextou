@@ -1435,7 +1435,10 @@ test('expireExecutions fails a task whose lease expired on its last attempt, kee
   await link(b, a);
   const executionId = await startedAttempt(a);
   now.mockReturnValue(1_700_000_000_000 + lease);
-  expect(await expire(1)).toEqual({ ok: true, expired: 1 });
+  expect(await expire(1)).toEqual({
+    ok: true,
+    expired: [{ taskId: a, executionId, attempt: 1, status: Status.failed }],
+  });
   expect(await status(a)).toBe(Status.failed);
   expect((await history(a))[2]).toEqual({
     from_status: Status.running,
@@ -1458,8 +1461,14 @@ test('expireExecutions opens a task again while attempts are left, then fails it
   const b = await create('B');
   await link(b, a);
   await claim();
+  const first = await latest(a);
   now.mockReturnValue(1_700_000_000_000 + lease);
-  expect(await expire(2)).toEqual({ ok: true, expired: 1 });
+  expect(await expire(2)).toEqual({
+    ok: true,
+    expired: [
+      { taskId: a, executionId: first, attempt: 1, status: Status.open },
+    ],
+  });
   expect(await status(a)).toBe(Status.open);
   expect(await ready()).toEqual(['A']);
   expect(await counter(b)).toBe(1);
@@ -1470,8 +1479,14 @@ test('expireExecutions opens a task again while attempts are left, then fails it
     reason: 'lease expired',
   });
   expect(await claim()).toMatchObject({ execution: { attempt: 2 } });
+  const second = await latest(a);
   now.mockReturnValue(1_700_000_000_000 + lease * 2);
-  expect(await expire(2)).toEqual({ ok: true, expired: 1 });
+  expect(await expire(2)).toEqual({
+    ok: true,
+    expired: [
+      { taskId: a, executionId: second, attempt: 2, status: Status.failed },
+    ],
+  });
   expect(await status(a)).toBe(Status.failed);
   expect(await execution(a)).toHaveLength(2);
 });
@@ -1482,7 +1497,17 @@ test('expireExecutions cancels a task someone asked to cancel, recording it as t
   await start(a);
   await tasks.cancelTask({ id: a, changedBy: 'planner', reason: 'dup' });
   now.mockReturnValue(1_700_000_000_000 + lease);
-  expect(await expire(3)).toEqual({ ok: true, expired: 1 });
+  expect(await expire(3)).toEqual({
+    ok: true,
+    expired: [
+      {
+        taskId: a,
+        executionId: await latest(a),
+        attempt: 1,
+        status: Status.cancelled,
+      },
+    ],
+  });
   expect(await status(a)).toBe(Status.cancelled);
   expect((await history(a))[2]).toMatchObject({
     to_status: Status.cancelled,
@@ -1496,10 +1521,12 @@ test('expireExecutions leaves a lease that has not expired, and expires one that
   const a = await create('A');
   await start(a);
   now.mockReturnValue(1_700_000_000_000 + lease - 1);
-  expect(await expire(1)).toEqual({ ok: true, expired: 0 });
+  expect(await expire(1)).toEqual({ ok: true, expired: [] });
   expect(await status(a)).toBe(Status.running);
   now.mockReturnValue(1_700_000_000_000 + lease);
-  expect(await expire(1)).toEqual({ ok: true, expired: 1 });
+  expect(await expire(1)).toMatchObject({
+    expired: [{ taskId: a, status: Status.failed }],
+  });
 });
 
 test('expireExecutions ends several expired leases in one call, and none of the finished', async () => {
@@ -1511,7 +1538,10 @@ test('expireExecutions ends several expired leases in one call, and none of the 
   await start(b);
   await moveTo(c, Status.succeeded);
   now.mockReturnValue(1_700_000_000_000 + lease);
-  expect(await expire(1)).toEqual({ ok: true, expired: 2 });
+  const result = await expire(1);
+  expect(
+    result.ok && result.expired.map(({ taskId }) => taskId).toSorted(),
+  ).toEqual([a, b].toSorted());
   expect([await status(a), await status(b), await status(c)]).toEqual([
     Status.failed,
     Status.failed,

@@ -68,6 +68,16 @@ export interface Execution {
   leaseMs: number;
 }
 
+// An attempt whose lease expired, which the server ended, and the status its
+// task took: open again while attempts are left, else failed, or cancelled
+// when someone asked for it.
+export interface ExpiredAttempt {
+  taskId: string;
+  executionId: string;
+  attempt: number;
+  status: typeof Status.open | typeof Status.failed | typeof Status.cancelled;
+}
+
 // Why a call wrote nothing.
 export const Refusal = {
   invalid: 'invalid',

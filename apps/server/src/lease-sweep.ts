@@ -1,4 +1,5 @@
-import type { Refusal, Refused } from './tasks';
+import { Status } from './tasks';
+import type { ExpiredAttempt, Refusal, Refused } from './tasks';
 import type { Logger } from './trpc';
 
 export interface LeaseSweep {
@@ -8,8 +9,9 @@ export interface LeaseSweep {
 
 // Calls expire every intervalMs, counted from the end of the last call, so
 // a slow database never piles sweeps up. A call that rejects or is refused
-// is logged and the next one still runs; a sweep that ended attempts says
-// how many.
+// is logged and the next one still runs. Each attempt a sweep ended is
+// logged with its task: as a warning when the task failed, which no runner
+// reports.
 //
 // A lease expires by the wall clock, which runs on while the server answers
 // no heartbeat: before it starts, while the host sleeps, when its clock
@@ -23,7 +25,9 @@ export function startLeaseSweep({
   leaseMs,
   logger,
 }: {
-  expire: () => Promise<{ ok: true; expired: number } | Refused<Refusal>>;
+  expire: () => Promise<
+    { ok: true; expired: ExpiredAttempt[] } | Refused<Refusal>
+  >;
   intervalMs: number;
   leaseMs: number;
   logger: Logger;
@@ -42,8 +46,14 @@ export function startLeaseSweep({
           { refusal: result.refusal },
           'Could not end expired leases',
         );
-      } else if (result.expired > 0) {
-        logger.info({ expired: result.expired }, 'Ended expired leases');
+      } else {
+        for (const attempt of result.expired) {
+          if (attempt.status === Status.failed) {
+            logger.warn(attempt, 'Failed a task whose lease expired');
+          } else {
+            logger.info(attempt, 'Ended an expired lease');
+          }
+        }
       }
     } catch (error) {
       logger.error({ err: error }, 'Could not end expired leases');
