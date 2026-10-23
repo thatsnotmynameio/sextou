@@ -2,7 +2,9 @@
 # named after the package: "<package> / <level>" judges every file that level
 # answers for at 90% coverage, "<package> / mutation" judges every file of its
 # unit and integration suites: Stryker fails it below 80% of mutants
-# killed in the package. The organization's
+# killed in the package. The checks come from each package's scripts, so a
+# new package or level runs here once its "test:<level>" script exists, and
+# a package with "test:mutation" gets a mutation check. The organization's
 # typescript.yml still runs the unit and integration suites through the root
 # vitest.config.ts; this moves there later. No check here is required yet.
 #
@@ -44,8 +46,54 @@ env:
   pnpm_config_registry: https://registry.npmjs.org/
 
 jobs:
+  # The matrices of the jobs below, read from each workspace package's
+  # package.json: a "test:<level>" script is a level, "test:mutation" a
+  # mutation run. The root's scripts run every package, so it is left out.
+  packages:
+    name: packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      levels: ${{ steps.matrix.outputs.levels }}
+      mutation: ${{ steps.matrix.outputs.mutation }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: Matrix
+        id: matrix
+        run: |
+          # $root and $p are jq's variables, not the shell's.
+          # shellcheck disable=SC2016
+          matrix=$(
+            pnpm ls -r --depth -1 --json \
+              | jq -r --arg root "$PWD" '.[] | select(.path != $root) | .path | ltrimstr($root + "/") + "/package.json"' \
+              | xargs jq -nc '
+                  [inputs | {
+                    package: (.name | sub("^@sextou/"; "")),
+                    dir: (input_filename | rtrimstr("/package.json")),
+                    scripts: (.scripts // {} | keys)
+                  }]
+                  | {
+                      levels: [.[] | . as $p | .scripts[] | capture("^test:(?<level>.+)$").level
+                        | select(. != "mutation") | {package: $p.package, level: ., dir: $p.dir}],
+                      mutation: [.[] | select(.scripts | index("test:mutation")) | {package, dir}]
+                    }'
+          )
+          echo "$matrix" | jq .
+          {
+            echo "levels=$(echo "$matrix" | jq -c .levels)"
+            echo "mutation=$(echo "$matrix" | jq -c .mutation)"
+          } >> "$GITHUB_OUTPUT"
+
   level:
     name: ${{ matrix.package }} / ${{ matrix.level }}
+    needs: packages
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -53,16 +101,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { package: desktop, level: unit, dir: apps/desktop }
-          - { package: server, level: unit, dir: apps/server }
-          - { package: server, level: integration, dir: apps/server }
-          - { package: web, level: unit, dir: apps/web }
-          - { package: web, level: integration, dir: apps/web }
-          - { package: tasks, level: unit, dir: packages/tasks }
-          - { package: tasks, level: integration, dir: packages/tasks }
-          - { package: ui, level: unit, dir: packages/ui }
-          - { package: ui, level: component, dir: packages/ui }
+        include: ${{ fromJSON(needs.packages.outputs.levels) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -82,10 +121,12 @@ jobs:
           } >> "$GITHUB_ENV"
       - name: pnpm install
         run: pnpm install --frozen-lockfile --ignore-scripts
-      # Only the component suite renders in a browser.
+      # Only a component suite renders in a browser.
       - name: Chromium
         if: ${{ matrix.level == 'component' }}
-        run: pnpm --filter @sextou/ui exec playwright install --with-deps chromium
+        env:
+          DIR: ${{ matrix.dir }}
+        run: pnpm --dir "$DIR" exec playwright install --with-deps chromium
       - name: Tests
         env:
           DIR: ${{ matrix.dir }}
@@ -94,6 +135,7 @@ jobs:
 
   mutation:
     name: ${{ matrix.package }} / mutation
+    needs: packages
     runs-on: ubuntu-latest
     # A run with no cached result mutates every file of the package.
     timeout-minutes: 60
@@ -102,12 +144,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { package: desktop, dir: apps/desktop }
-          - { package: server, dir: apps/server }
-          - { package: web, dir: apps/web }
-          - { package: tasks, dir: packages/tasks }
-          - { package: ui, dir: packages/ui }
+        include: ${{ fromJSON(needs.packages.outputs.mutation) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
