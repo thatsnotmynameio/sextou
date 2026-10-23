@@ -2,10 +2,11 @@ import type { AppRouter } from '@sextou/server/router';
 import { createTRPCClient, httpLink, type TRPCClientError } from '@trpc/client';
 
 // How a call ended without the answer the runner asked for: the server
-// refused it because the attempt lost its lease, the server refused it for
-// another reason, or no answer from the server arrived (the connection
-// failed, the call timed out, or something else answered).
-export type Failure = 'lease_lost' | 'refused' | 'no_answer';
+// refused it because the attempt lost its lease, the server didn't serve it
+// in time and wrote nothing, the server refused it for another reason, or
+// no answer from the server arrived (the connection failed, the call timed
+// out, or something else answered).
+export type Failure = 'lease_lost' | 'timeout' | 'refused' | 'no_answer';
 
 export type Answer<T> =
   | { ok: true; value: T }
@@ -52,6 +53,9 @@ async function answer<T>(call: Promise<T>): Promise<Answer<T>> {
     const { data, message } = error as TRPCClientError<AppRouter>;
     if (!data) {
       return { ok: false, failure: 'no_answer', message };
+    }
+    if (data.code === 'TIMEOUT') {
+      return { ok: false, failure: 'timeout', message };
     }
     const leaseLost = data.code === 'CONFLICT' && message === 'lease_lost';
     return {

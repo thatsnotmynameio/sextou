@@ -125,10 +125,10 @@ test('a CONFLICT whose message is lease_lost answers lease_lost', async () => {
 
 test.each([
   ['CONFLICT', 409, 'not_running'],
-  ['TIMEOUT', 408, 'timeout'],
   ['BAD_REQUEST', 400, 'lease_lost'],
+  ['NOT_FOUND', 404, 'not_found'],
 ])(
-  'an error the server sent with code %s and message %s answers refused',
+  'an error the server sent with code %s, status %s and message %s answers refused',
   async (code, status, message) => {
     stubFetch(() => trpcError(code, status, message));
 
@@ -137,6 +137,18 @@ test.each([
     expect(answer).toEqual({ ok: false, failure: 'refused', message });
   },
 );
+
+test('a TIMEOUT the server sent answers timeout', async () => {
+  stubFetch(() => trpcError('TIMEOUT', 408, 'timeout'));
+
+  const answer = await createRunnerClient(serverUrl, 1000).complete({
+    runner: 'r1',
+    executionId: 'exe_1',
+    outcome: 'succeeded',
+  });
+
+  expect(answer).toEqual({ ok: false, failure: 'timeout', message: 'timeout' });
+});
 
 test('a connection that fails answers no_answer', async () => {
   vi.stubGlobal('fetch', () => Promise.reject(new TypeError('fetch failed')));

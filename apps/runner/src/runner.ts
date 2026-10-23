@@ -16,7 +16,8 @@ export interface RunnerOptions {
   newId: () => string;
 }
 
-type Claimed = Extract<
+// What a claim answers: a task and its attempt, or no task.
+export type Claimed = Extract<
   Awaited<ReturnType<RunnerClient['claim']>>,
   { ok: true }
 >['value'];
@@ -45,6 +46,7 @@ async function run(options: RunnerOptions, signal: AbortSignal) {
   // which gets the same attempt back: a new one only after an answer.
   let claimId = newId();
   while (!signal.aborted) {
+    const sentAt = Date.now();
     const claimed = await client.claim({ claimId, runner: name, assignees });
     if (!claimed.ok) {
       logger.warn(
@@ -59,11 +61,20 @@ async function run(options: RunnerOptions, signal: AbortSignal) {
       await sleep(pollMs, signal);
       continue;
     }
-    await hold(options, claimed.value, signal);
+    await hold(options, claimed.value, sentAt, signal);
   }
 }
 
-async function hold(options: RunnerOptions, held: Held, signal: AbortSignal) {
+// The lease runs from when the server renewed it, which is before its answer
+// arrives: each heartbeat goes a third of a lease after the last call was
+// sent, the claim or a heartbeat, however long that call took to answer. A
+// heartbeat that failed after a long wait is sent again at once.
+async function hold(
+  options: RunnerOptions,
+  held: Held,
+  claimSentAt: number,
+  signal: AbortSignal,
+) {
   const { client, holdMs, logger } = options;
   const ids = {
     taskId: held.task.id,
@@ -75,12 +86,13 @@ async function hold(options: RunnerOptions, held: Held, signal: AbortSignal) {
   // Each answer carries the lease the server has now, which paces the next
   // heartbeat.
   let leaseMs = held.execution.leaseMs;
-  let next = Date.now() + leaseMs / 3;
+  let next = claimSentAt + leaseMs / 3;
   while (next < deadline) {
     await sleep(next - Date.now(), signal);
     if (signal.aborted) {
       return;
     }
+    const sentAt = Date.now();
     const beat = await client.heartbeat(ids.executionId);
     if (beat.ok) {
       leaseMs = beat.value.leaseMs;
@@ -97,14 +109,16 @@ async function hold(options: RunnerOptions, held: Held, signal: AbortSignal) {
         'heartbeat failed',
       );
     }
-    next = Date.now() + leaseMs / 3;
+    next = sentAt + leaseMs / 3;
   }
   await sleep(deadline - Date.now(), signal);
   await complete(options, ids, 'succeeded', signal);
 }
 
-// A completion whose answer didn't arrive is sent again as it was, which the
-// server accepts once more, until it answers or the lease is lost.
+// A completion whose answer didn't arrive, or that the server didn't serve in
+// time, is sent again as it was, which the server accepts once more. One the
+// server refused, the lease lost included, is dropped: sending it again gets
+// the same answer.
 async function complete(
   { client, name, pollMs, logger }: RunnerOptions,
   ids: { taskId: string; executionId: string; attempt: number },
@@ -123,6 +137,13 @@ async function complete(
     }
     if (done.failure === 'lease_lost') {
       logger.warn(ids, 'lease lost');
+      return;
+    }
+    if (done.failure === 'refused') {
+      logger.warn(
+        { ...ids, outcome, message: done.message },
+        'complete refused',
+      );
       return;
     }
     logger.warn(

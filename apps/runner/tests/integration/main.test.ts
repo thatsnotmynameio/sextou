@@ -25,7 +25,8 @@ const serverDir = dirname(
 );
 
 // The real logger, writing to memory instead of stdout, so each test reads
-// the records main wrote.
+// the records main wrote. Each logger gets a stream of its own, as pino-pretty
+// pipes into it and ends it with the logger.
 const output = vi.hoisted(() => ({ lines: [] as string[] }));
 vi.mock(import('../../src/logger'), async (importOriginal) => {
   const logger = await importOriginal();
@@ -63,17 +64,6 @@ function logged(msg: string): Promise<LogRecord> {
     { timeout: 10_000, interval: 20 },
   );
 }
-
-const variables = [
-  'SEXTOU_RUNNER_SERVER_URL',
-  'SEXTOU_RUNNER_NAME',
-  'SEXTOU_RUNNER_ASSIGNEES',
-  'SEXTOU_RUNNER_REQUEST_TIMEOUT_MS',
-  'SEXTOU_RUNNER_POLL_MS',
-  'SEXTOU_RUNNER_HOLD_MS',
-  'SEXTOU_RUNNER_DEV',
-  'SEXTOU_RUNNER_LOG_LEVEL',
-];
 
 let dir: string;
 let server: ChildProcess;
@@ -172,8 +162,11 @@ afterAll(async () => {
 beforeEach(() => {
   vi.resetModules();
   output.lines = [];
-  for (const name of variables) {
-    vi.stubEnv(name, undefined);
+  // No runner variable from the shell reaches main.
+  for (const name of Object.keys(process.env)) {
+    if (name.startsWith('SEXTOU_RUNNER_')) {
+      vi.stubEnv(name, undefined);
+    }
   }
   on = vi.spyOn(process, 'on').mockImplementation(() => process);
   off = vi.spyOn(process, 'off').mockImplementation(() => process);
