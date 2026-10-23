@@ -44,7 +44,7 @@ beforeEach(() => {
   for (const name of variables) {
     vi.stubEnv(name, undefined);
   }
-  // Signal handlers are captured, not registered, and exit doesn't end the
+  // Signal handlers are captured, not registered, and an exit wouldn't end the
   // test run.
   on = vi.spyOn(process, 'on').mockReturnValue(process);
   off = vi.spyOn(process, 'off').mockReturnValue(process);
@@ -87,7 +87,7 @@ test('main with an invalid variable logs it, exits with 1 and never asks the ser
   expect(on).not.toHaveBeenCalled();
 });
 
-test('main logs where it polls, asks the server, and stops with exit 0 on SIGTERM', async () => {
+test('main logs where it polls, asks the server, and returns on SIGTERM with no error code', async () => {
   const fetch = vi.fn(async (_input: RequestInfo | URL) =>
     Response.json({ result: { data: { task: null } } }),
   );
@@ -110,7 +110,8 @@ test('main logs where it polls, asks the server, and stops with exit 0 on SIGTER
     'http://server.test:4310/trpc/runner.next',
   );
   expect(messages().at(-1)).toBe('stopped');
-  expect(exit).toHaveBeenCalledWith(0);
+  expect(exit).not.toHaveBeenCalled();
+  expect(process.exitCode).toBeUndefined();
 });
 
 test('main on SIGINT aborts the request in flight without logging it as failed', async () => {
@@ -130,7 +131,8 @@ test('main on SIGINT aborts the request in flight without logging it as failed',
   await running;
 
   expect(messages()).toEqual(['polling', 'stopped']);
-  expect(exit).toHaveBeenCalledWith(0);
+  expect(exit).not.toHaveBeenCalled();
+  expect(process.exitCode).toBeUndefined();
 });
 
 test('main removes both signal handlers on the first signal', async () => {

@@ -39,8 +39,8 @@ export async function poll({
 // What a failure record says, with no stack: a down server would write one
 // every interval. An error the server sent carries data, with its tRPC code;
 // without data there was no answer: the connection failed, the request timed
-// out, or something other than the server answered.
-// The client rejects only with a TRPCClientError.
+// out, or something other than the server answered. The client rejects only
+// with a TRPCClientError.
 function failure(error: unknown) {
   const { message, data } = error as TRPCClientError<AppRouter>;
   return data

@@ -50,6 +50,6 @@ async function run(config: Config) {
     logger,
     signal: controller.signal,
   });
+  // Nothing else keeps the process alive: it ends here, with exit code 0.
   logger.info('stopped');
-  process.exit(0);
 }
