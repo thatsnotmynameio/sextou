@@ -2,6 +2,7 @@ import { Writable } from 'node:stream';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { startLeaseSweep } from '../../src/lease-sweep';
 import { createLogger } from '../../src/logger';
+import { Refusal } from '../../src/tasks';
 
 let lines: string[];
 
@@ -16,6 +17,11 @@ function memoryLogger() {
       },
     }),
   );
+}
+
+// A sweep every 100 ms that logs to lines.
+function sweep(expire: Parameters<typeof startLeaseSweep>[0]['expire']) {
+  return startLeaseSweep({ expire, intervalMs: 100, logger: memoryLogger() });
 }
 
 function records(): unknown[] {
@@ -33,11 +39,7 @@ afterEach(() => {
 
 test('startLeaseSweep calls expire once per interval, not before the first', async () => {
   const expire = vi.fn(async () => ({ ok: true as const, expired: 0 }));
-  const running = startLeaseSweep({
-    expire,
-    intervalMs: 100,
-    logger: memoryLogger(),
-  });
+  const running = sweep(expire);
 
   await vi.advanceTimersByTimeAsync(99);
   expect(expire).not.toHaveBeenCalled();
@@ -56,11 +58,7 @@ test('startLeaseSweep counts the interval from the end of the last call', async 
         finish = () => resolve({ ok: true, expired: 0 });
       }),
   );
-  const running = startLeaseSweep({
-    expire,
-    intervalMs: 100,
-    logger: memoryLogger(),
-  });
+  const running = sweep(expire);
 
   await vi.advanceTimersByTimeAsync(500);
   expect(expire).toHaveBeenCalledTimes(1);
@@ -74,11 +72,7 @@ test('startLeaseSweep counts the interval from the end of the last call', async 
 });
 
 test('startLeaseSweep logs how many attempts a sweep ended', async () => {
-  const running = startLeaseSweep({
-    expire: async () => ({ ok: true, expired: 2 }),
-    intervalMs: 100,
-    logger: memoryLogger(),
-  });
+  const running = sweep(async () => ({ ok: true, expired: 2 }));
 
   await vi.advanceTimersByTimeAsync(100);
 
@@ -93,11 +87,7 @@ test('startLeaseSweep logs how many attempts a sweep ended', async () => {
 });
 
 test('startLeaseSweep logs nothing for a sweep that ended no attempt', async () => {
-  const running = startLeaseSweep({
-    expire: async () => ({ ok: true, expired: 0 }),
-    intervalMs: 100,
-    logger: memoryLogger(),
-  });
+  const running = sweep(async () => ({ ok: true, expired: 0 }));
 
   await vi.advanceTimersByTimeAsync(100);
 
@@ -108,13 +98,9 @@ test('startLeaseSweep logs nothing for a sweep that ended no attempt', async () 
 test('startLeaseSweep logs a refused sweep and sweeps again', async () => {
   const expire = vi.fn(async () => ({
     ok: false as const,
-    refusal: 'invalid',
+    refusal: Refusal.invalid,
   }));
-  const running = startLeaseSweep({
-    expire,
-    intervalMs: 100,
-    logger: memoryLogger(),
-  });
+  const running = sweep(expire);
 
   await vi.advanceTimersByTimeAsync(200);
 
@@ -131,11 +117,7 @@ test('startLeaseSweep logs a refused sweep and sweeps again', async () => {
 
 test('startLeaseSweep logs a sweep that rejects and sweeps again', async () => {
   const expire = vi.fn(() => Promise.reject(new Error('disk I/O error')));
-  const running = startLeaseSweep({
-    expire,
-    intervalMs: 100,
-    logger: memoryLogger(),
-  });
+  const running = sweep(expire);
 
   await vi.advanceTimersByTimeAsync(200);
 
@@ -152,11 +134,7 @@ test('startLeaseSweep logs a sweep that rejects and sweeps again', async () => {
 
 test('stop ends the sweeps before the first one runs', async () => {
   const expire = vi.fn(async () => ({ ok: true as const, expired: 0 }));
-  const running = startLeaseSweep({
-    expire,
-    intervalMs: 100,
-    logger: memoryLogger(),
-  });
+  const running = sweep(expire);
 
   await running.stop();
   await vi.advanceTimersByTimeAsync(1000);
@@ -172,11 +150,7 @@ test('stop waits for the sweep in progress, and none runs after it', async () =>
         finish = () => resolve({ ok: true, expired: 0 });
       }),
   );
-  const running = startLeaseSweep({
-    expire,
-    intervalMs: 100,
-    logger: memoryLogger(),
-  });
+  const running = sweep(expire);
   await vi.advanceTimersByTimeAsync(100);
 
   let stopped = false;

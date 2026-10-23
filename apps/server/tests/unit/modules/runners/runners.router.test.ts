@@ -1,40 +1,17 @@
 import { TRPCError } from '@trpc/server';
 import { expect, test, vi } from 'vitest';
-import { createLogger } from '../../../../src/logger';
 import { runnersRouter } from '../../../../src/modules/runners/runners.router';
-import {
-  Outcome,
-  Refusal,
-  Status,
-  type Task,
-  type Tasks,
-} from '../../../../src/tasks';
+import { Outcome, Refusal, Status, type Tasks } from '../../../../src/tasks';
 import { createCallerFactory } from '../../../../src/trpc';
-import { fakeTasks } from '../../../tasks';
+import { aTask, fakeTasks, testContext } from '../../../tasks';
 
 const createCaller = createCallerFactory(runnersRouter);
 
 function caller(tasks: Partial<Tasks>) {
-  return createCaller({
-    version: '1.2.3',
-    database: { ping: async () => true },
-    dev: false,
-    logger: createLogger({ level: 'silent', pretty: false }),
-    tasks: fakeTasks(tasks),
-  });
+  return createCaller(testContext({ tasks: fakeTasks(tasks) }));
 }
 
-const task: Task = {
-  id: 'tsk_1',
-  title: 'Write the tests',
-  kind: 'task',
-  priority: 2,
-  parentId: null,
-  assignee: { name: 'dev' },
-  description: null,
-  source: null,
-  status: Status.running,
-};
+const task = aTask({ status: Status.running });
 
 const execution = { id: 'exe_1', attempt: 1, leaseMs: 30000 };
 

@@ -1,33 +1,16 @@
 import { expect, test, vi } from 'vitest';
-import { createLogger } from '../../../../src/logger';
 import { tasksRouter } from '../../../../src/modules/tasks/tasks.router';
-import { Refusal, Status, type Task, type Tasks } from '../../../../src/tasks';
+import { Refusal, Status, type Tasks } from '../../../../src/tasks';
 import { createCallerFactory } from '../../../../src/trpc';
-import { fakeTasks } from '../../../tasks';
+import { aTask, fakeTasks, testContext } from '../../../tasks';
 
 const createCaller = createCallerFactory(tasksRouter);
 
 function caller(tasks: Partial<Tasks>) {
-  return createCaller({
-    version: '1.2.3',
-    database: { ping: async () => true },
-    dev: false,
-    logger: createLogger({ level: 'silent', pretty: false }),
-    tasks: fakeTasks(tasks),
-  });
+  return createCaller(testContext({ tasks: fakeTasks(tasks) }));
 }
 
-const task: Task = {
-  id: 'tsk_1',
-  title: 'Write the tests',
-  kind: 'task',
-  priority: 2,
-  parentId: null,
-  assignee: { name: 'dev' },
-  description: null,
-  source: null,
-  status: Status.open,
-};
+const task = aTask();
 
 test('tasks.create creates the task with the names it was given', async () => {
   const child = { ...task, parentId: 'tsk_0' };

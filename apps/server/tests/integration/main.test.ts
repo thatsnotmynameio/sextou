@@ -341,6 +341,17 @@ test('the tasks service rejects its calls when the tasks database does not open'
   );
 });
 
+test('sweeps no lease when the tasks database does not open', async () => {
+  brokenTasksDb();
+  vi.stubEnv('SEXTOU_SERVER_LEASE_SWEEP_MS', '5');
+  await import('../../src/main');
+  const expire = vi.spyOn(tasksService(), 'expire');
+
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  expect(expire).not.toHaveBeenCalled();
+});
+
 test('a restart once the tasks database is fixed gives a service that works', async () => {
   const path = brokenTasksDb();
   await import('../../src/main');

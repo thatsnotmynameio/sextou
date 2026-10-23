@@ -166,7 +166,7 @@ export interface Graph {
     executionId: string;
     leaseMs: number;
   }) => Promise<
-    | { ok: true; expiresAt: number; cancelRequested: boolean }
+    | { ok: true; cancelRequested: boolean }
     | Refused<typeof Reason.invalid | typeof Reason.leaseLost>
   >;
   // Ends the attempt and moves its task to a final state, judging the lease
@@ -259,6 +259,11 @@ class Refusal {
 
 function refuse<R extends Reason>(reason: R): Refused<R> {
   return { ok: false, reason };
+}
+
+// A new id: the prefix, an underscore and 32 hex digits.
+function newId(prefix: string) {
+  return `${prefix}_${randomBytes(16).toString('hex')}`;
 }
 
 function find(tx: Transaction, id: string) {
@@ -380,6 +385,22 @@ export function createGraph(
     });
   }
 
+  // Moves a task from one status to another and records the change.
+  async function move(
+    tx: Transaction,
+    taskId: string,
+    fromStatus: Status,
+    toStatus: Status,
+    changedBy: string,
+    reason: string | null = null,
+  ) {
+    await tx
+      .update(tasks)
+      .set({ status: toStatus })
+      .where(eq(tasks.id, taskId));
+    await recordChange(tx, taskId, fromStatus, toStatus, changedBy, reason);
+  }
+
   // Moves a ready task to running and starts its next attempt, run by the
   // actor.
   async function begin(
@@ -394,32 +415,33 @@ export function createGraph(
       .where(eq(taskExecutions.taskId, taskId))
       .get();
     const execution: Execution = {
-      id: `exe_${randomBytes(16).toString('hex')}`,
+      id: newId('exe'),
       attempt: (last?.attempt ?? 0) + 1,
       expiresAt: now() + leaseMs,
     };
-    await tx
-      .update(tasks)
-      .set({ status: Status.running })
-      .where(eq(tasks.id, taskId));
-    await recordChange(tx, taskId, Status.open, Status.running, actor);
+    await move(tx, taskId, Status.open, Status.running, actor);
     await tx.insert(taskExecutions).values({ ...execution, taskId, actor });
     return execution;
   }
 
-  // Ends a running task's attempt in a final state. The tasks it blocks are
-  // open or cancelled: a task it held never started since.
+  // Ends a running task's attempt: in a final state, or back in open when
+  // its lease expired with attempts left, which holds the tasks it blocks as
+  // running did. The tasks it blocks are open or cancelled: a task it held
+  // never started since.
   async function end(
     tx: Transaction,
-    taskId: string,
-    executionId: string,
-    status: FinalStatus,
-    changedBy: string,
-    reason: string | null,
-    resultPath?: string | null,
+    attempt: {
+      taskId: string;
+      executionId: string;
+      status: FinalStatus | typeof Status.open;
+      changedBy: string;
+      reason: string | null;
+      resultPath?: string | null;
+    },
   ) {
-    await tx.update(tasks).set({ status }).where(eq(tasks.id, taskId));
-    await recordChange(tx, taskId, Status.running, status, changedBy, reason);
+    const { taskId, executionId, status, changedBy, reason, resultPath } =
+      attempt;
+    await move(tx, taskId, Status.running, status, changedBy, reason);
     await tx
       .update(taskExecutions)
       .set({ expiresAt: null, resultPath })
@@ -455,7 +477,7 @@ export function createGraph(
           return refuse(Reason.notFound);
         }
         const task: Task = {
-          id: `tsk_${randomBytes(16).toString('hex')}`,
+          id: newId('tsk'),
           ...fields,
           parentId: parentId ?? null,
           status: Status.open,
@@ -580,23 +602,19 @@ export function createGraph(
         return refuse(Reason.invalid);
       }
       const { executionId, leaseMs } = parsed.data;
+      // One statement, since every runner sends one every few seconds.
       return write(async (tx) => {
         const execution = await tx
-          .select({ cancelRequestedBy: taskExecutions.cancelRequestedBy })
-          .from(taskExecutions)
+          .update(taskExecutions)
+          .set({ expiresAt: now() + leaseMs })
           .where(leased(executionId))
+          .returning({ cancelRequestedBy: taskExecutions.cancelRequestedBy })
           .get();
         if (execution === undefined) {
           return refuse(Reason.leaseLost);
         }
-        const expiresAt = now() + leaseMs;
-        await tx
-          .update(taskExecutions)
-          .set({ expiresAt })
-          .where(eq(taskExecutions.id, executionId));
         return {
           ok: true,
-          expiresAt,
           cancelRequested: execution.cancelRequestedBy !== null,
         };
       });
@@ -618,15 +636,14 @@ export function createGraph(
         if (execution === undefined) {
           return refuse(Reason.leaseLost);
         }
-        await end(
-          tx,
-          execution.taskId,
+        await end(tx, {
+          taskId: execution.taskId,
           executionId,
           status,
           changedBy,
           reason,
           resultPath,
-        );
+        });
         return { ok: true };
       });
     },
@@ -645,18 +662,7 @@ export function createGraph(
         if (task.status === Status.open) {
           // Cancelled holds the tasks it blocks, as open did: no counter
           // moves.
-          await tx
-            .update(tasks)
-            .set({ status: Status.cancelled })
-            .where(eq(tasks.id, id));
-          await recordChange(
-            tx,
-            id,
-            Status.open,
-            Status.cancelled,
-            changedBy,
-            reason,
-          );
+          await move(tx, id, Status.open, Status.cancelled, changedBy, reason);
           return { ok: true, status: Status.cancelled };
         }
         if (task.status === Status.running) {
@@ -701,8 +707,24 @@ export function createGraph(
         return refuse(Reason.invalid);
       }
       const { maxAttempts, changedBy } = parsed.data;
+      // The attempts whose lease ran out by now. The condition holds
+      // task_execution_lease's, so Turso searches it.
+      const due = () =>
+        and(
+          isNotNull(taskExecutions.expiresAt),
+          lte(taskExecutions.expiresAt, now()),
+        );
+      // A read first, which takes no write lock: most sweeps find nothing.
+      const any = await db
+        .select({ id: taskExecutions.id })
+        .from(taskExecutions)
+        .where(due())
+        .limit(1)
+        .get();
+      if (any === undefined) {
+        return { ok: true, expired: 0 };
+      }
       return write(async (tx) => {
-        // The condition holds task_execution_lease's, so Turso searches it.
         const expired = await tx
           .select({
             id: taskExecutions.id,
@@ -712,51 +734,30 @@ export function createGraph(
             cancelReason: taskExecutions.cancelReason,
           })
           .from(taskExecutions)
-          .where(
-            and(
-              isNotNull(taskExecutions.expiresAt),
-              lte(taskExecutions.expiresAt, now()),
-            ),
-          );
+          .where(due());
         for (const execution of expired) {
+          const attempt = {
+            taskId: execution.taskId,
+            executionId: execution.id,
+          };
           if (execution.cancelRequestedBy !== null) {
-            await end(
-              tx,
-              execution.taskId,
-              execution.id,
-              Status.cancelled,
-              execution.cancelRequestedBy,
-              execution.cancelReason,
-            );
-          } else if (execution.attempt < maxAttempts) {
-            // Back to open, still holding the tasks it blocks, as running
-            // did: no counter moves. It was ready when it started, and no
-            // link reaches a task past open, so it is ready again.
-            await tx
-              .update(tasks)
-              .set({ status: Status.open })
-              .where(eq(tasks.id, execution.taskId));
-            await recordChange(
-              tx,
-              execution.taskId,
-              Status.running,
-              Status.open,
-              changedBy,
-              leaseExpired,
-            );
-            await tx
-              .update(taskExecutions)
-              .set({ expiresAt: null })
-              .where(eq(taskExecutions.id, execution.id));
+            await end(tx, {
+              ...attempt,
+              status: Status.cancelled,
+              changedBy: execution.cancelRequestedBy,
+              reason: execution.cancelReason,
+            });
           } else {
-            await end(
-              tx,
-              execution.taskId,
-              execution.id,
-              Status.failed,
+            // Back to open while attempts are left. It was ready when it
+            // started, and no link reaches a task past open, so it is ready
+            // again.
+            await end(tx, {
+              ...attempt,
+              status:
+                execution.attempt < maxAttempts ? Status.open : Status.failed,
               changedBy,
-              leaseExpired,
-            );
+              reason: leaseExpired,
+            });
           }
         }
         return { ok: true, expired: expired.length };

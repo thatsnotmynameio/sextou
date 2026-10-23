@@ -770,8 +770,8 @@ test('claimTask hands two tasks to two claims that run at once, one each', async
   const b = await create('B');
   const results = await Promise.all([claim(), claim()]);
   expect(
-    results.map((result) => (result.ok ? result.task?.id : undefined)).sort(),
-  ).toEqual([a, b].sort());
+    new Set(results.map((result) => (result.ok ? result.task?.id : undefined))),
+  ).toEqual(new Set([a, b]));
 });
 
 test.each([
@@ -805,10 +805,20 @@ test('renewExecution pushes the lease to leaseMs from now', async () => {
   now.mockReturnValue(1_700_000_010_000);
   expect(await renew(executionId, 5_000)).toEqual({
     ok: true,
-    expiresAt: 1_700_000_015_000,
     cancelRequested: false,
   });
   expect(await expiry(executionId)).toBe(1_700_000_015_000);
+});
+
+test('renewExecution renews no other attempt', async () => {
+  const now = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+  const a = await create('A');
+  const b = await create('B');
+  const renewed = await startedAttempt(a);
+  const other = await startedAttempt(b);
+  now.mockReturnValue(1_700_000_010_000);
+  await renew(renewed);
+  expect(await expiry(other)).toBe(1_700_000_000_000 + lease);
 });
 
 test('renewExecution still renews a lease past its expiry that was not swept', async () => {
@@ -816,10 +826,8 @@ test('renewExecution still renews a lease past its expiry that was not swept', a
   const a = await create('A');
   const executionId = await startedAttempt(a);
   now.mockReturnValue(1_700_000_000_000 + lease * 2);
-  expect(await renew(executionId)).toMatchObject({
-    ok: true,
-    expiresAt: 1_700_000_000_000 + lease * 3,
-  });
+  expect(await renew(executionId)).toMatchObject({ ok: true });
+  expect(await expiry(executionId)).toBe(1_700_000_000_000 + lease * 3);
 });
 
 test('renewExecution reports a cancel asked for while the task runs', async () => {

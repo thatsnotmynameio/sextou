@@ -1,3 +1,4 @@
+import type { Refusal, Refused } from './tasks';
 import type { Logger } from './trpc';
 
 export interface LeaseSweep {
@@ -14,9 +15,7 @@ export function startLeaseSweep({
   intervalMs,
   logger,
 }: {
-  expire: () => Promise<
-    { ok: true; expired: number } | { ok: false; refusal: string }
-  >;
+  expire: () => Promise<{ ok: true; expired: number } | Refused<Refusal>>;
   intervalMs: number;
   logger: Logger;
 }): LeaseSweep {

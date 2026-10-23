@@ -17,12 +17,12 @@ const prioritySchema = z.union([
 
 // A task as every procedure answers it.
 export const taskSchema = z.object({
-  id: z.string().min(1),
+  id: idSchema,
   title: z.string().min(1),
   kind: z.string().min(1),
   priority: prioritySchema,
-  parentId: z.string().min(1).nullable(),
-  assignee: z.object({ name: z.string().min(1) }),
+  parentId: idSchema.nullable(),
+  assignee: z.object({ name: nameSchema }),
   description: z.string().nullable(),
   source: z.string().nullable(),
   status: z.enum(Status),

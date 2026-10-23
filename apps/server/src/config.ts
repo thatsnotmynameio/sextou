@@ -168,32 +168,38 @@ function parseOrigin(value: string, name: string): string {
   return url.origin;
 }
 
-// Only digits, from 1 millisecond to the longest delay setTimeout takes: a
-// longer one fires after 1 ms, which would report the database down or sweep
-// leases nonstop.
-function parseTimeout(value: string, name: string): number {
-  const ms = Number(value);
-  if (!/^\d+$/.test(value) || ms === 0 || ms > 2147483647) {
-    throw invalid(
-      name,
-      value,
-      'a whole number of milliseconds from 1 to 2147483647',
-    );
+// Only digits, from 1 to max.
+function parseCount(
+  value: string,
+  name: string,
+  max: number,
+  expected: string,
+): number {
+  const count = Number(value);
+  if (!/^\d+$/.test(value) || count === 0 || count > max) {
+    throw invalid(name, value, expected);
   }
-  return ms;
+  return count;
 }
 
-// Only digits, from 1 attempt to the largest safe integer.
+// Up to the longest delay setTimeout takes: a longer one fires after 1 ms,
+// which would report the database down or sweep leases nonstop.
+function parseTimeout(value: string, name: string): number {
+  return parseCount(
+    value,
+    name,
+    2147483647,
+    'a whole number of milliseconds from 1 to 2147483647',
+  );
+}
+
 function parseAttempts(value: string, name: string): number {
-  const attempts = Number(value);
-  if (
-    !/^\d+$/.test(value) ||
-    attempts === 0 ||
-    !Number.isSafeInteger(attempts)
-  ) {
-    throw invalid(name, value, 'a whole number of attempts from 1');
-  }
-  return attempts;
+  return parseCount(
+    value,
+    name,
+    Number.MAX_SAFE_INTEGER,
+    'a whole number of attempts from 1',
+  );
 }
 
 function parseBoolean(value: string, name: string): boolean {

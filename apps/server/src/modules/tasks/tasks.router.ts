@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { procedure, refusalError, router } from '../../trpc';
+import { accepted, procedure, router } from '../../trpc';
 import {
   assignInputSchema,
   cancelInputSchema,
@@ -13,48 +13,44 @@ export const tasksRouter = router({
   create: procedure
     .input(createInputSchema)
     .output(taskSchema)
-    .mutation(async ({ ctx, input }) => {
-      const result = await ctx.tasks.create({
-        ...input,
-        assignee: { name: input.assignee },
-        createdBy: { name: input.createdBy },
-      });
-      if (!result.ok) {
-        throw refusalError(result.refusal);
-      }
-      return result.task;
-    }),
+    .mutation(
+      async ({ ctx, input }) =>
+        accepted(
+          await ctx.tasks.create({
+            ...input,
+            assignee: { name: input.assignee },
+            createdBy: { name: input.createdBy },
+          }),
+        ).task,
+    ),
 
   // Cancels an open task at once; for a running one, the runner learns of
   // it on its next heartbeat and ends the task.
   cancel: procedure
     .input(cancelInputSchema)
     .output(cancelOutputSchema)
-    .mutation(async ({ ctx, input }) => {
-      const result = await ctx.tasks.cancel({
-        taskId: input.taskId,
-        actor: { name: input.actor },
-        reason: input.reason,
-      });
-      if (!result.ok) {
-        throw refusalError(result.refusal);
-      }
-      return { status: result.status };
-    }),
+    .mutation(async ({ ctx, input }) => ({
+      status: accepted(
+        await ctx.tasks.cancel({
+          taskId: input.taskId,
+          actor: { name: input.actor },
+          reason: input.reason,
+        }),
+      ).status,
+    })),
 
   // Hands an open task to another assignee.
   assign: procedure
     .input(assignInputSchema)
     .output(z.null())
     .mutation(async ({ ctx, input }) => {
-      const result = await ctx.tasks.assign({
-        taskId: input.taskId,
-        assignee: { name: input.assignee },
-        actor: { name: input.actor },
-      });
-      if (!result.ok) {
-        throw refusalError(result.refusal);
-      }
+      accepted(
+        await ctx.tasks.assign({
+          taskId: input.taskId,
+          assignee: { name: input.assignee },
+          actor: { name: input.actor },
+        }),
+      );
       return null;
     }),
 });

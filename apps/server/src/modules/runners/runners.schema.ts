@@ -14,7 +14,7 @@ export const claimOutputSchema = z.union([
   z.object({
     task: taskSchema,
     execution: z.object({
-      id: z.string().min(1),
+      id: idSchema,
       attempt: z.number().int().min(1),
       // Renew before it runs out: a third of it is a safe interval.
       leaseMs: z.number().int().min(1),

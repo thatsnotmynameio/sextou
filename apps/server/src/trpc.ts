@@ -1,5 +1,5 @@
 import { initTRPC, TRPCError, type TRPC_ERROR_CODE_KEY } from '@trpc/server';
-import type { Refusal, Tasks } from './tasks';
+import type { Refusal, Refused, Tasks } from './tasks';
 
 // One level of a logger: a message, or fields and then a message.
 interface LogMethod {
@@ -46,10 +46,19 @@ const refusalCodes = {
   already_finished: 'CONFLICT',
 } as const satisfies Record<Refusal, TRPC_ERROR_CODE_KEY>;
 
-// The error a procedure throws for a refusal from the tasks, with the
-// refusal as its message, so a caller tells two conflicts apart.
-export function refusalError(refusal: Refusal) {
-  return new TRPCError({ code: refusalCodes[refusal], message: refusal });
+// A call's result when the tasks accepted it. A refusal throws its HTTP
+// error instead, with the refusal as the message, so a caller tells two
+// conflicts apart.
+export function accepted<T extends { ok: true }>(
+  result: T | Refused<Refusal>,
+): T {
+  if (!result.ok) {
+    throw new TRPCError({
+      code: refusalCodes[result.refusal],
+      message: result.refusal,
+    });
+  }
+  return result;
 }
 
 // isDev is false because tRPC's default reads NODE_ENV, which the bundle

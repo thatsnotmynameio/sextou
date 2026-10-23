@@ -1,21 +1,13 @@
 import { TRPCError } from '@trpc/server';
 import { expect, test } from 'vitest';
-import { createLogger } from '../../../../src/logger';
 import { healthRouter } from '../../../../src/modules/health/health.router';
 import { createCallerFactory, type Context } from '../../../../src/trpc';
-import { fakeTasks } from '../../../tasks';
+import { testContext } from '../../../tasks';
 
 const createCaller = createCallerFactory(healthRouter);
 
 function caller(context: Partial<Context> = {}) {
-  return createCaller({
-    version: '1.2.3',
-    database: { ping: async () => true },
-    dev: false,
-    logger: createLogger({ level: 'silent', pretty: false }),
-    tasks: fakeTasks(),
-    ...context,
-  });
+  return createCaller(testContext(context));
 }
 
 test('health.check reports the version and the database up when it answers', async () => {
