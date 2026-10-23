@@ -22,17 +22,21 @@ function trpcError(code: string, httpStatus: number, message: string) {
   );
 }
 
-// fetch answering as `respond` says, keeping each request it got.
+// fetch answering as `respond` says, keeping each request it got. httpLink
+// calls it with the URL and the JSON body as strings.
 function stubFetch(respond: () => Response | Promise<Response>) {
-  const requests: { url: string; method?: string; body: unknown }[] = [];
-  vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
-    requests.push({
-      url: String(input),
-      method: init?.method,
-      body: JSON.parse(String(init?.body)),
-    });
-    return Promise.resolve(respond());
-  });
+  const requests: { url: string; method: string; body: unknown }[] = [];
+  vi.stubGlobal(
+    'fetch',
+    (input: string, init: { method: string; body: string }) => {
+      requests.push({
+        url: input,
+        method: init.method,
+        body: JSON.parse(init.body),
+      });
+      return Promise.resolve(respond());
+    },
+  );
   return requests;
 }
 
