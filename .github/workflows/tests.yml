@@ -2,9 +2,7 @@
 # named after the package: "<package> / <level>" judges every file that level
 # answers for at 90% coverage, "<package> / mutation" judges every file of its
 # unit and integration suites: Stryker fails it below 80% of mutants
-# killed in the package. The checks come from each package's scripts, so a
-# new package or level runs here once its "test:<level>" script exists, and
-# a package with "test:mutation" gets a mutation check. The organization's
+# killed in the package. The packages job lists the checks. The organization's
 # typescript.yml still runs the unit and integration suites through the root
 # vitest.config.ts; this moves there later. No check here is required yet.
 #
@@ -48,7 +46,8 @@ env:
 jobs:
   # The matrices of the jobs below, read from each workspace package's
   # package.json: a "test:<level>" script is a level, "test:mutation" a
-  # mutation run. The root's scripts run every package, so it is left out.
+  # mutation run. The root, whose scripts run every package, is no workspace
+  # package.
   packages:
     name: packages
     runs-on: ubuntu-latest
@@ -62,34 +61,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        with:
-          version: ${{ env.PNPM_VERSION }}
+      # The shell expands pnpm-workspace.yaml's globs, read with yq; $dir is
+      # jq's variable, not the shell's.
       - name: Matrix
         id: matrix
         run: |
-          # $root and $p are jq's variables, not the shell's.
-          # shellcheck disable=SC2016
-          matrix=$(
-            pnpm ls -r --depth -1 --json \
-              | jq -r --arg root "$PWD" '.[] | select(.path != $root) | .path | ltrimstr($root + "/") + "/package.json"' \
-              | xargs jq -nc '
-                  [inputs | {
-                    package: (.name | sub("^@sextou/"; "")),
-                    dir: (input_filename | rtrimstr("/package.json")),
-                    scripts: (.scripts // {} | keys)
-                  }]
-                  | {
-                      levels: [.[] | . as $p | .scripts[] | capture("^test:(?<level>.+)$").level
-                        | select(. != "mutation") | {package: $p.package, level: ., dir: $p.dir}],
-                      mutation: [.[] | select(.scripts | index("test:mutation")) | {package, dir}]
-                    }'
-          )
-          echo "$matrix" | jq .
-          {
-            echo "levels=$(echo "$matrix" | jq -c .levels)"
-            echo "mutation=$(echo "$matrix" | jq -c .mutation)"
-          } >> "$GITHUB_OUTPUT"
+          # shellcheck disable=SC2016,SC2046
+          jq -nr '
+              [inputs | (input_filename | rtrimstr("/package.json")) as $dir
+                | .scripts // {} | keys[] | capture("^test:(?<level>.+)$").level
+                | {package: ($dir | split("/")[-1]), level: ., dir: $dir}]
+              | "levels=\(map(select(.level != "mutation")) | tojson)",
+                "mutation=\(map(select(.level == "mutation") | del(.level)) | tojson)"' \
+            $(yq '.packages[] + "/package.json"' pnpm-workspace.yaml) \
+            | tee -a "$GITHUB_OUTPUT"
 
   level:
     name: ${{ matrix.package }} / ${{ matrix.level }}
@@ -180,9 +165,9 @@ jobs:
           FULL: ${{ github.event_name != 'pull_request' }}
         run: |
           if [ "$FULL" = true ]; then
-            pnpm --dir "$DIR" exec stryker run --incremental --force
+            pnpm --dir "$DIR" run test:mutation --incremental --force
           else
-            pnpm --dir "$DIR" exec stryker run --incremental
+            pnpm --dir "$DIR" run test:mutation --incremental
           fi
       - name: Save the result
         if: ${{ !cancelled() && github.actor != 'dependabot[bot]' }}
