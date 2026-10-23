@@ -107,6 +107,30 @@
       }
     },
     {
+      "files": ["apps/runner/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@sextou/server",
+                "message": "The runner takes only types from the server: import type { … } from it.",
+                "allowTypeImports": true
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["@sextou/server/*"],
+                "message": "The runner takes only types from the server: import type { … } from it.",
+                "allowTypeImports": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": ["apps/web/src/modules/*/*.{ts,tsx}"],
       "rules": {
         "no-restricted-imports": [
