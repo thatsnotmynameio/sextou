@@ -10,18 +10,29 @@ export interface LeaseSweep {
 // a slow database never piles sweeps up. A call that rejects or is refused
 // is logged and the next one still runs; a sweep that ended attempts says
 // how many.
+//
+// A lease expires by the wall clock, which runs on while the server answers
+// no heartbeat: before it starts, while the host sleeps, when its clock
+// jumps ahead. So no sweep runs until the server has been up a whole lease,
+// leaseMs, and a sweep that comes later than a heartbeat's interval, a third
+// of the lease, past its time waits a whole lease again: the runners that
+// still hold their tasks renew them first.
 export function startLeaseSweep({
   expire,
   intervalMs,
+  leaseMs,
   logger,
 }: {
   expire: () => Promise<{ ok: true; expired: number } | Refused<Refusal>>;
   intervalMs: number;
+  leaseMs: number;
   logger: Logger;
 }): LeaseSweep {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let running: Promise<void> = Promise.resolve();
   let stopped = false;
+  let upSince = Date.now();
+  let scheduledAt = upSince;
 
   const sweep = async () => {
     try {
@@ -39,9 +50,25 @@ export function startLeaseSweep({
     }
   };
 
+  const tick = async () => {
+    const now = Date.now();
+    const lateMs = now - scheduledAt - intervalMs;
+    if (lateMs > leaseMs / 3) {
+      upSince = now;
+      logger.warn(
+        { lateMs },
+        'The lease sweep ran late: ending no lease until the runners renew',
+      );
+    }
+    if (now - upSince >= leaseMs) {
+      await sweep();
+    }
+  };
+
   const schedule = () => {
+    scheduledAt = Date.now();
     timer = setTimeout(() => {
-      running = sweep().then(() => {
+      running = tick().then(() => {
         if (!stopped) {
           schedule();
         }

@@ -279,6 +279,7 @@ test('starts the tasks service at SEXTOU_SERVER_TASKS_DB before listening', asyn
     logger: expect.objectContaining({ error: expect.any(Function) }),
     leaseMs: 30000,
     maxAttempts: 1,
+    timeoutMs: 20000,
   });
   expect(startedAtListen).toBe('fulfilled');
   expect(await tasksService().create(newTask)).toMatchObject({ ok: true });
@@ -343,6 +344,7 @@ test('the tasks service rejects its calls when the tasks database does not open'
 
 test('sweeps no lease when the tasks database does not open', async () => {
   brokenTasksDb();
+  vi.stubEnv('SEXTOU_SERVER_LEASE_MS', '20');
   vi.stubEnv('SEXTOU_SERVER_LEASE_SWEEP_MS', '5');
   await import('../../src/main');
   const expire = vi.spyOn(tasksService(), 'expire');
@@ -477,15 +479,20 @@ test.each([
   },
 );
 
-test('hands the tasks service the lease length and the attempts from the environment', async () => {
+test('hands the tasks service the lease length, the attempts and the timeout from the environment', async () => {
   vi.stubEnv('SEXTOU_SERVER_LEASE_MS', '60000');
   vi.stubEnv('SEXTOU_SERVER_MAX_ATTEMPTS', '3');
+  vi.stubEnv('SEXTOU_SERVER_TASKS_TIMEOUT_MS', '1500');
 
   await import('../../src/main');
 
   expect(createTasksService).toHaveBeenCalledWith(
     ':memory:',
-    expect.objectContaining({ leaseMs: 60000, maxAttempts: 3 }),
+    expect.objectContaining({
+      leaseMs: 60000,
+      maxAttempts: 3,
+      timeoutMs: 1500,
+    }),
   );
 });
 
@@ -510,6 +517,7 @@ test('serves the tasks and the runners procedures over the tasks service', async
     createdBy: 'planner',
   })) as { id: string };
   const claimed = await mutate('runners.claim', {
+    claimId: 'claim-1',
     runner: 'runner-1',
     assignees: ['dev'],
   });
@@ -520,13 +528,17 @@ test('serves the tasks and the runners procedures over the tasks service', async
   });
 });
 
+// The sweep starts ending leases a whole lease after the server starts, and
+// takes a sweep a third of a lease late as a pause: the lease is long enough
+// that a timer's jitter never counts as one.
 test('ends expired leases every SEXTOU_SERVER_LEASE_SWEEP_MS, logging how many', async () => {
-  vi.stubEnv('SEXTOU_SERVER_LEASE_MS', '1');
+  vi.stubEnv('SEXTOU_SERVER_LEASE_MS', '300');
   vi.stubEnv('SEXTOU_SERVER_LEASE_SWEEP_MS', '20');
   await import('../../src/main');
   const tasks = tasksService();
   await tasks.create(newTask);
   await tasks.claim({
+    claimId: 'claim-1',
     runner: { name: 'runner-1' },
     assignees: [{ name: 'dev' }],
   });
@@ -540,6 +552,7 @@ test('ends expired leases every SEXTOU_SERVER_LEASE_SWEEP_MS, logging how many',
 });
 
 test('stops sweeping on shutdown', async () => {
+  vi.stubEnv('SEXTOU_SERVER_LEASE_MS', '150');
   vi.stubEnv('SEXTOU_SERVER_LEASE_SWEEP_MS', '5');
   await import('../../src/main');
   const tasks = tasksService();

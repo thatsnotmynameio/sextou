@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import {
   and,
+  desc,
   type EmptyRelations,
   eq,
   inArray,
@@ -16,7 +17,6 @@ import type {
   TursoDatabaseRunResult,
 } from 'drizzle-orm/tursodatabase';
 import {
-  openStatus,
   ready,
   taskExecutions,
   taskLinks,
@@ -46,6 +46,7 @@ export const Reason = {
   cycle: 'cycle',
   leaseLost: 'lease_lost',
   alreadyFinished: 'already_finished',
+  timeout: 'timeout',
 } as const;
 
 export type Reason = (typeof Reason)[keyof typeof Reason];
@@ -108,7 +109,9 @@ export interface Execution {
 // Every operation that writes runs in one transaction: a refusal writes
 // nothing, and an error from Turso or the file system rejects. Each change of
 // a task's status is recorded in that transaction, with when it happened and
-// who made it: any name the caller uses, never checked.
+// who made it: any name the caller uses, never checked. A write that starts
+// or ends past the timeout openTasks got rolls back and is refused as
+// timeout, so a caller that gave up never misses one that committed.
 //
 // A running task's current attempt holds a lease until it ends: only a call
 // that carries that attempt's id may renew it or finish the task, so one who
@@ -118,7 +121,9 @@ export interface Graph {
     task: NewTask,
   ) => Promise<
     | { ok: true; task: Task }
-    | Refused<typeof Reason.invalid | typeof Reason.notFound>
+    | Refused<
+        typeof Reason.invalid | typeof Reason.notFound | typeof Reason.timeout
+      >
   >;
   // Refuses a link that would close a cycle, or whose task isn't open. A pair
   // already linked succeeds and changes nothing.
@@ -132,6 +137,7 @@ export interface Graph {
         | typeof Reason.sameTask
         | typeof Reason.notOpen
         | typeof Reason.cycle
+        | typeof Reason.timeout
       >
   >;
   // Refuses a task that isn't open. A pair not linked succeeds and changes
@@ -141,21 +147,31 @@ export interface Graph {
   ) => Promise<
     | { ok: true }
     | Refused<
-        typeof Reason.invalid | typeof Reason.notFound | typeof Reason.notOpen
+        | typeof Reason.invalid
+        | typeof Reason.notFound
+        | typeof Reason.notOpen
+        | typeof Reason.timeout
       >
   >;
   // Moves the ready task listReady would list first for these assignees to
   // running and starts its next attempt, leased for leaseMs, in one write, so
   // two claims never take the same task. The actor runs it and is recorded as
   // who started it. task is null when none is ready.
+  //
+  // claimId is the actor's own name for the claim, which it sends again when
+  // the answer didn't reach it. A claim the actor already made with that id
+  // starts nothing: while its attempt runs, the answer is that attempt again,
+  // its lease pushed to leaseMs from now; once the attempt ended, task is
+  // null.
   claimTask: (claim: {
+    claimId: string;
     assignees: string[];
     actor: string;
     leaseMs: number;
   }) => Promise<
     | { ok: true; task: Task; execution: Execution }
     | { ok: true; task: null }
-    | Refused<typeof Reason.invalid>
+    | Refused<typeof Reason.invalid | typeof Reason.timeout>
   >;
   // Pushes the attempt's lease to leaseMs from now, and says whether someone
   // asked to cancel its task. Refuses, as lease_lost, an attempt that doesn't
@@ -167,11 +183,15 @@ export interface Graph {
     leaseMs: number;
   }) => Promise<
     | { ok: true; cancelRequested: boolean }
-    | Refused<typeof Reason.invalid | typeof Reason.leaseLost>
+    | Refused<
+        typeof Reason.invalid | typeof Reason.leaseLost | typeof Reason.timeout
+      >
   >;
   // Ends the attempt and moves its task to a final state, judging the lease
   // as renewExecution does. The one who finishes it need not be the one who
-  // started it.
+  // started it. The same finish sent again, by the same one with the same
+  // status, reason and result, succeeds and changes nothing while the
+  // attempt's end is still its task's last change.
   finishTask: (finish: {
     executionId: string;
     changedBy: string;
@@ -182,12 +202,17 @@ export interface Graph {
     // and never read; blank is null.
     resultPath?: string;
   }) => Promise<
-    { ok: true } | Refused<typeof Reason.invalid | typeof Reason.leaseLost>
+    | { ok: true }
+    | Refused<
+        typeof Reason.invalid | typeof Reason.leaseLost | typeof Reason.timeout
+      >
   >;
   // Cancels an open task at once. For a running task, records the request on
   // its current attempt, which renewExecution reports to the one who runs
   // it; a second request changes nothing. status is the task's state after.
-  // Refuses a task already in a final state.
+  // Refuses a task already in a final state, unless the cancellation that
+  // ended it is its last change and came from the same one with the same
+  // reason: that is the same cancel sent again, and it succeeds.
   cancelTask: (cancel: {
     id: string;
     changedBy: string;
@@ -199,6 +224,7 @@ export interface Graph {
         | typeof Reason.invalid
         | typeof Reason.notFound
         | typeof Reason.alreadyFinished
+        | typeof Reason.timeout
       >
   >;
   // Changes who may take an open task. Refuses a task that isn't open.
@@ -209,7 +235,10 @@ export interface Graph {
   }) => Promise<
     | { ok: true }
     | Refused<
-        typeof Reason.invalid | typeof Reason.notFound | typeof Reason.notOpen
+        | typeof Reason.invalid
+        | typeof Reason.notFound
+        | typeof Reason.notOpen
+        | typeof Reason.timeout
       >
   >;
   // Ends every attempt whose lease expired. Its task is cancelled when
@@ -219,7 +248,10 @@ export interface Graph {
   expireExecutions: (expire: {
     maxAttempts: number;
     changedBy: string;
-  }) => Promise<{ ok: true; expired: number } | Refused<typeof Reason.invalid>>;
+  }) => Promise<
+    | { ok: true; expired: number }
+    | Refused<typeof Reason.invalid | typeof Reason.timeout>
+  >;
   // The open tasks no blocker holds whose assignee is one of assignees,
   // matched exactly, most urgent first, then oldest, at most limit of them.
   listReady: (query: {
@@ -298,17 +330,19 @@ function leased(executionId: string) {
 const oneMore = sql`${tasks.holdingBlockers} + 1`;
 const oneLess = sql`${tasks.holdingBlockers} - 1`;
 
-// Whether the second task is reachable from the first through open blockers.
-// A task that ran has only succeeded or skipped blockers, and a cancelled one
-// never runs, so a path that could deadlock open tasks never runs through
-// either. drizzle's builder has no recursive query.
+// Whether the second task is reachable from the first through open or
+// cancelled blockers. A task cancelled while open keeps its links, and its
+// blockers may still be open. Any other task was ready when it last started
+// and takes no link while it isn't open, so its blockers all succeeded or
+// were skipped: a path to an open task never runs through it. drizzle's
+// builder has no recursive query.
 function reaches(tx: Transaction, from: string, to: string) {
   return tx.get(sql`WITH RECURSIVE reached (id) AS (
   SELECT ${from}
   UNION
   SELECT ${taskLinks.blockerId} FROM reached
   JOIN ${taskLinks} ON ${taskLinks.taskId} = reached.id
-  JOIN ${tasks} ON ${tasks.id} = ${taskLinks.blockerId} AND ${tasks.status} = ${openStatus}
+  JOIN ${tasks} ON ${tasks.id} = ${taskLinks.blockerId} AND ${inArray(tasks.status, [Status.open, Status.cancelled])}
 )
 SELECT 1 FROM reached WHERE id = ${to} LIMIT 1`);
 }
@@ -334,33 +368,45 @@ export interface Logger {
 // task's holding_blockers, which every write moves in the same transaction:
 // it always counts the task's blockers that hold it. The logger is there for
 // the graph's code; nothing in it logs yet. now is the clock every recorded
-// time and lease reads.
+// time, lease and timeout reads; timeoutMs is how long a write may take,
+// waiting for the lock included, with no limit when undefined.
 export function createGraph(
   db: TursoDatabaseDatabase,
   _logger: Logger,
   now: () => number,
+  timeoutMs?: number,
 ): Graph {
   // Runs fn in an immediate transaction, which takes the write lock first, so
   // its checks and its writes see the same graph. Turso holds the connection
   // until the transaction ends: another operation waits for it. A refusal is
-  // thrown out of the transaction, so only a success commits.
+  // thrown out of the transaction, so only a success commits. The deadline is
+  // checked once the lock is taken and again before the commit: a write past
+  // it rolls back as timeout instead of committing for a caller that gave up.
   async function write<T extends { ok: boolean }>(
     fn: (tx: Transaction) => Promise<T>,
-  ): Promise<T> {
+  ): Promise<T | Refused<typeof Reason.timeout>> {
+    const deadline = timeoutMs === undefined ? Infinity : now() + timeoutMs;
+    const inTime = () => {
+      if (now() > deadline) {
+        throw new Refusal(refuse(Reason.timeout));
+      }
+    };
     try {
       return await db.transaction(
         async (tx) => {
+          inTime();
           const result = await fn(tx);
           if (!result.ok) {
             throw new Refusal(result);
           }
+          inTime();
           return result;
         },
         { behavior: 'immediate' },
       );
     } catch (error) {
       if (error instanceof Refusal) {
-        return error.result as T;
+        return error.result as T | Refused<typeof Reason.timeout>;
       }
       throw error;
     }
@@ -402,12 +448,15 @@ export function createGraph(
   }
 
   // Moves a ready task to running and starts its next attempt, run by the
-  // actor.
+  // actor under its claim.
   async function begin(
     tx: Transaction,
-    taskId: string,
-    actor: string,
-    leaseMs: number,
+    {
+      taskId,
+      claimId,
+      actor,
+      leaseMs,
+    }: { taskId: string; claimId: string; actor: string; leaseMs: number },
   ): Promise<Execution> {
     const last = await tx
       .select({ attempt: max(taskExecutions.attempt) })
@@ -420,8 +469,51 @@ export function createGraph(
       expiresAt: now() + leaseMs,
     };
     await move(tx, taskId, Status.open, Status.running, actor);
-    await tx.insert(taskExecutions).values({ ...execution, taskId, actor });
+    await tx
+      .insert(taskExecutions)
+      .values({ ...execution, taskId, claimId, actor });
     return execution;
+  }
+
+  // Answers a claim sent again while its attempt runs: the same task and
+  // attempt, its lease pushed to leaseMs from now.
+  async function again(
+    tx: Transaction,
+    claimed: { id: string; taskId: string; attempt: number },
+    leaseMs: number,
+  ) {
+    const execution: Execution = {
+      id: claimed.id,
+      attempt: claimed.attempt,
+      expiresAt: now() + leaseMs,
+    };
+    await tx
+      .update(taskExecutions)
+      .set({ expiresAt: execution.expiresAt })
+      .where(eq(taskExecutions.id, claimed.id));
+    // An attempt's task exists: its foreign key says so.
+    const task = (await tx
+      .select(taskColumns)
+      .from(tasks)
+      .where(eq(tasks.id, claimed.taskId))
+      .get()) as Task;
+    return { ok: true as const, task, execution };
+  }
+
+  // A task's last change of status.
+  function lastChange(tx: Transaction, taskId: string) {
+    return tx
+      .select({
+        fromStatus: taskStatusChanges.fromStatus,
+        toStatus: taskStatusChanges.toStatus,
+        changedBy: taskStatusChanges.changedBy,
+        reason: taskStatusChanges.reason,
+      })
+      .from(taskStatusChanges)
+      .where(eq(taskStatusChanges.taskId, taskId))
+      .orderBy(desc(taskStatusChanges.id))
+      .limit(1)
+      .get();
   }
 
   // Ends a running task's attempt: in a final state, or back in open when
@@ -519,11 +611,7 @@ export function createGraph(
         if (task.status !== Status.open) {
           return refuse(Reason.notOpen);
         }
-        // A blocker past open reaches no open task.
-        if (
-          blocker.status === Status.open &&
-          (await reaches(tx, blockerId, taskId)) !== undefined
-        ) {
+        if ((await reaches(tx, blockerId, taskId)) !== undefined) {
           return refuse(Reason.cycle);
         }
         if (holds(blocker.status)) {
@@ -575,8 +663,28 @@ export function createGraph(
       if (!parsed.success) {
         return refuse(Reason.invalid);
       }
-      const { assignees, actor, leaseMs } = parsed.data;
+      const { claimId, assignees, actor, leaseMs } = parsed.data;
       return write(async (tx) => {
+        const claimed = await tx
+          .select({
+            id: taskExecutions.id,
+            taskId: taskExecutions.taskId,
+            attempt: taskExecutions.attempt,
+            expiresAt: taskExecutions.expiresAt,
+          })
+          .from(taskExecutions)
+          .where(
+            and(
+              eq(taskExecutions.actor, actor),
+              eq(taskExecutions.claimId, claimId),
+            ),
+          )
+          .get();
+        if (claimed !== undefined) {
+          return claimed.expiresAt === null
+            ? { ok: true, task: null }
+            : again(tx, claimed, leaseMs);
+        }
         const task = await tx
           .select(taskColumns)
           .from(tasks)
@@ -587,7 +695,12 @@ export function createGraph(
         if (task === undefined) {
           return { ok: true, task: null };
         }
-        const execution = await begin(tx, task.id, actor, leaseMs);
+        const execution = await begin(tx, {
+          taskId: task.id,
+          claimId,
+          actor,
+          leaseMs,
+        });
         return {
           ok: true,
           task: { ...task, status: Status.running },
@@ -629,12 +742,28 @@ export function createGraph(
         parsed.data;
       return write(async (tx) => {
         const execution = await tx
-          .select({ taskId: taskExecutions.taskId })
+          .select({
+            taskId: taskExecutions.taskId,
+            expiresAt: taskExecutions.expiresAt,
+            resultPath: taskExecutions.resultPath,
+          })
           .from(taskExecutions)
-          .where(leased(executionId))
+          .where(eq(taskExecutions.id, executionId))
           .get();
         if (execution === undefined) {
           return refuse(Reason.leaseLost);
+        }
+        if (execution.expiresAt === null) {
+          // The attempt ended: by this same finish, whose answer was lost,
+          // when its end is the task's last change and says the same.
+          const last = await lastChange(tx, execution.taskId);
+          const same =
+            last?.fromStatus === Status.running &&
+            last.toStatus === status &&
+            last.changedBy === changedBy &&
+            last.reason === reason &&
+            execution.resultPath === resultPath;
+          return same ? { ok: true } : refuse(Reason.leaseLost);
         }
         await end(tx, {
           taskId: execution.taskId,
@@ -678,7 +807,16 @@ export function createGraph(
             );
           return { ok: true, status: Status.running };
         }
-        return refuse(Reason.alreadyFinished);
+        // The same cancel sent again, its answer lost: the cancellation is
+        // the task's last change, by the same one for the same reason.
+        const last = await lastChange(tx, id);
+        const same =
+          last?.toStatus === Status.cancelled &&
+          last.changedBy === changedBy &&
+          last.reason === reason;
+        return same
+          ? { ok: true, status: Status.cancelled }
+          : refuse(Reason.alreadyFinished);
       });
     },
 

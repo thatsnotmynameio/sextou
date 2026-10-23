@@ -30,6 +30,10 @@ const unknownId = `tsk_${'0'.repeat(32)}`;
 const logger = createLogger({ level: 'silent', pretty: false });
 const leaseMs = 30_000;
 
+// A claim id no claim used before.
+let claims = 0;
+const newClaim = () => `claim-${(claims += 1)}`;
+
 let dir: string;
 const services: TasksService[] = [];
 
@@ -41,6 +45,7 @@ function service(
     logger,
     leaseMs,
     maxAttempts: 1,
+    timeoutMs: 20_000,
     ...options,
   });
   services.push(tasks);
@@ -81,7 +86,11 @@ async function createOpen(
 
 // Claims the only ready task of dev, and returns its attempt's id.
 async function claimed(tasks: TasksService) {
-  const result = await tasks.claim({ runner, assignees: [dev] });
+  const result = await tasks.claim({
+    claimId: newClaim(),
+    runner,
+    assignees: [dev],
+  });
   if (!result.ok || result.task === null) {
     throw new Error('claim found no task');
   }
@@ -129,7 +138,9 @@ test('start a second time keeps the tasks database it opened', async () => {
 
   await tasks.start();
 
-  expect(await tasks.claim({ runner, assignees: [dev] })).toMatchObject({
+  expect(
+    await tasks.claim({ claimId: newClaim(), runner, assignees: [dev] }),
+  ).toMatchObject({
     ok: true,
     task: { id: task.id },
   });
@@ -152,7 +163,9 @@ test('after a failed start, each call rejects with the error start rejected with
   const error: unknown = await tasks.start().catch((error: unknown) => error);
 
   await expect(tasks.create(newTask())).rejects.toBe(error);
-  await expect(tasks.claim({ runner, assignees: [dev] })).rejects.toBe(error);
+  await expect(
+    tasks.claim({ claimId: newClaim(), runner, assignees: [dev] }),
+  ).rejects.toBe(error);
   await expect(tasks.renew('exe_1')).rejects.toBe(error);
   await expect(
     tasks.finish({ executionId: 'exe_1', runner, outcome: Outcome.failed }),
@@ -274,7 +287,9 @@ test('claim hands the runner the most urgent ready task of its assignees, runnin
   const urgent = await createOpen(tasks, { priority: 0, assignee: dev });
   await createOpen(tasks, { priority: 2, assignee: alice });
 
-  expect(await tasks.claim({ runner, assignees: [alice, dev] })).toEqual({
+  expect(
+    await tasks.claim({ claimId: newClaim(), runner, assignees: [alice, dev] }),
+  ).toEqual({
     ok: true,
     task: { ...urgent, status: Status.running },
     execution: {
@@ -289,7 +304,9 @@ test('claim returns a null task when none is ready for the assignees given', asy
   const tasks = await startedService();
   await createOpen(tasks, { assignee: dev });
 
-  expect(await tasks.claim({ runner, assignees: [alice] })).toEqual({
+  expect(
+    await tasks.claim({ claimId: newClaim(), runner, assignees: [alice] }),
+  ).toEqual({
     ok: true,
     task: null,
   });
@@ -315,7 +332,9 @@ test('claim records the runner as who runs the task and as who started it', asyn
 test('claim refuses an empty list of assignees as invalid', async () => {
   const tasks = await startedService();
 
-  expect(await tasks.claim({ runner, assignees: [] })).toEqual({
+  expect(
+    await tasks.claim({ claimId: newClaim(), runner, assignees: [] }),
+  ).toEqual({
     ok: false,
     refusal: Refusal.invalid,
   });
@@ -348,7 +367,11 @@ test('claim skips a blocked task until its blocker succeeds', async () => {
   await seed.close();
   const tasks = await startedService(path);
 
-  const first = await tasks.claim({ runner, assignees: [dev] });
+  const first = await tasks.claim({
+    claimId: newClaim(),
+    runner,
+    assignees: [dev],
+  });
 
   expect(first).toMatchObject({ task: { id: blockerId } });
   if (!first.ok || first.task === null) {
@@ -359,7 +382,9 @@ test('claim skips a blocked task until its blocker succeeds', async () => {
     runner,
     outcome: Outcome.succeeded,
   });
-  expect(await tasks.claim({ runner, assignees: [dev] })).toMatchObject({
+  expect(
+    await tasks.claim({ claimId: newClaim(), runner, assignees: [dev] }),
+  ).toMatchObject({
     task: { id: taskId },
   });
 });
@@ -372,7 +397,11 @@ test('renew pushes the lease by the configured length and says no cancel was ask
   const executionId = await claimed(tasks);
   now.mockReturnValue(1_700_000_010_000);
 
-  expect(await tasks.renew(executionId)).toEqual({ ok: true, cancel: false });
+  expect(await tasks.renew(executionId)).toEqual({
+    ok: true,
+    cancel: false,
+    leaseMs,
+  });
   await tasks.stop();
   expect(
     await readRow(
@@ -389,7 +418,52 @@ test('renew tells the runner that someone asked to cancel its task', async () =>
   const executionId = await claimed(tasks);
   await tasks.cancel({ taskId: task.id, actor: planner });
 
-  expect(await tasks.renew(executionId)).toEqual({ ok: true, cancel: true });
+  expect(await tasks.renew(executionId)).toEqual({
+    ok: true,
+    cancel: true,
+    leaseMs,
+  });
+});
+
+test('claim sent again with its claim id gets the same attempt back', async () => {
+  const tasks = await startedService();
+  await createOpen(tasks);
+  await createOpen(tasks);
+  const first = await tasks.claim({
+    claimId: 'claim-1',
+    runner,
+    assignees: [dev],
+  });
+
+  expect(
+    await tasks.claim({ claimId: 'claim-1', runner, assignees: [dev] }),
+  ).toEqual(first);
+});
+
+test('finish sent again, the same finish, succeeds', async () => {
+  const tasks = await startedService();
+  await createOpen(tasks);
+  const executionId = await claimed(tasks);
+  const finish = { executionId, runner, outcome: Outcome.succeeded };
+  await tasks.finish(finish);
+
+  expect(await tasks.finish(finish)).toEqual({ ok: true });
+});
+
+test('a call past timeoutMs writes nothing and is refused as timeout', async () => {
+  const tasks = await startedService(':memory:', { timeoutMs: 50 });
+  // Each read of the clock is 60 ms after the last.
+  let clock = 1_700_000_000_000;
+  vi.spyOn(Date, 'now').mockImplementation(() => (clock += 60));
+
+  expect(await tasks.create(newTask())).toEqual({
+    ok: false,
+    refusal: Refusal.timeout,
+  });
+  vi.restoreAllMocks();
+  expect(
+    await tasks.claim({ claimId: newClaim(), runner, assignees: [dev] }),
+  ).toEqual({ ok: true, task: null });
 });
 
 test('renew refuses an attempt that ended as lease_lost', async () => {
@@ -509,12 +583,22 @@ test('cancel leaves a running task running, for its runner to end', async () => 
   });
 });
 
+test('cancel sent again, the same cancel, succeeds', async () => {
+  const tasks = await startedService();
+  const task = await createOpen(tasks);
+  await tasks.cancel({ taskId: task.id, actor: planner, reason: 'dropped' });
+
+  expect(
+    await tasks.cancel({ taskId: task.id, actor: planner, reason: 'dropped' }),
+  ).toEqual({ ok: true, status: Status.cancelled });
+});
+
 test('cancel refuses a finished task as already_finished and an unknown one as not_found', async () => {
   const tasks = await startedService();
   const task = await createOpen(tasks);
   await tasks.cancel({ taskId: task.id, actor: planner });
 
-  expect(await tasks.cancel({ taskId: task.id, actor: planner })).toEqual({
+  expect(await tasks.cancel({ taskId: task.id, actor: alice })).toEqual({
     ok: false,
     refusal: Refusal.alreadyFinished,
   });
@@ -531,11 +615,15 @@ test('assign hands an open task to another assignee', async () => {
   expect(
     await tasks.assign({ taskId: task.id, assignee: alice, actor: planner }),
   ).toEqual({ ok: true });
-  expect(await tasks.claim({ runner, assignees: [dev] })).toEqual({
+  expect(
+    await tasks.claim({ claimId: newClaim(), runner, assignees: [dev] }),
+  ).toEqual({
     ok: true,
     task: null,
   });
-  expect(await tasks.claim({ runner, assignees: [alice] })).toMatchObject({
+  expect(
+    await tasks.claim({ claimId: newClaim(), runner, assignees: [alice] }),
+  ).toMatchObject({
     task: { id: task.id, assignee: alice },
   });
 });
@@ -584,7 +672,9 @@ test('expire opens a task again while the configured attempts allow', async () =
   now.mockReturnValue(1_700_000_000_000 + leaseMs);
 
   expect(await tasks.expire(server)).toEqual({ ok: true, expired: 1 });
-  expect(await tasks.claim({ runner, assignees: [dev] })).toMatchObject({
+  expect(
+    await tasks.claim({ claimId: newClaim(), runner, assignees: [dev] }),
+  ).toMatchObject({
     task: { id: task.id },
     execution: { attempt: 2 },
   });

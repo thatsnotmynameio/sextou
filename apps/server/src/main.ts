@@ -64,6 +64,7 @@ async function serve(config: Config) {
     migrationsFolder: tasksMigrations(),
     leaseMs: config.leaseMs,
     maxAttempts: config.maxAttempts,
+    timeoutMs: config.tasksTimeoutMs,
   });
   const tasksOpened = await tasks.start().then(
     () => true,
@@ -91,6 +92,7 @@ async function serve(config: Config) {
     ? startLeaseSweep({
         expire: () => tasks.expire({ name: 'server' }),
         intervalMs: config.leaseSweepMs,
+        leaseMs: config.leaseMs,
         logger,
       })
     : undefined;

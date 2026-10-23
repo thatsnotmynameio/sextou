@@ -21,7 +21,10 @@ export interface TasksService extends Tasks {
   // asked for it. expired counts the attempts it ended.
   expire: (
     actor: Actor,
-  ) => Promise<{ ok: true; expired: number } | Refused<typeof Refusal.invalid>>;
+  ) => Promise<
+    | { ok: true; expired: number }
+    | Refused<typeof Refusal.invalid | typeof Refusal.timeout>
+  >;
 }
 
 export interface TasksServiceOptions {
@@ -34,13 +37,22 @@ export interface TasksServiceOptions {
   leaseMs: number;
   // How many attempts a task gets before an expired lease fails it.
   maxAttempts: number;
+  // How long a call to the tasks database may take, in milliseconds: one
+  // past it writes nothing and is refused as timeout.
+  timeoutMs: number;
 }
 
 // The service over the tasks database at an absolute path, or in memory for
 // ':memory:'. Nothing opens until start.
 export function createTasksService(
   path: string,
-  { logger, migrationsFolder, leaseMs, maxAttempts }: TasksServiceOptions,
+  {
+    logger,
+    migrationsFolder,
+    leaseMs,
+    maxAttempts,
+    timeoutMs,
+  }: TasksServiceOptions,
 ): TasksService {
   let database: Promise<TasksDb> | undefined;
 
@@ -49,7 +61,7 @@ export function createTasksService(
 
   return {
     start: async () => {
-      database ??= openTasks(path, { logger, migrationsFolder });
+      database ??= openTasks(path, { logger, migrationsFolder, timeoutMs });
       await database;
     },
     stop: async () => {
@@ -75,10 +87,11 @@ export function createTasksService(
         ? { ok: true, task: toTask(result.task) }
         : refused(result.reason);
     },
-    claim: async ({ runner, assignees }) => {
+    claim: async ({ claimId, runner, assignees }) => {
       const result = await (
         await opened()
       ).claimTask({
+        claimId,
         assignees: assignees.map((assignee) => assignee.name),
         actor: runner.name,
         leaseMs,
@@ -101,7 +114,7 @@ export function createTasksService(
         await opened()
       ).renewExecution({ executionId, leaseMs });
       return result.ok
-        ? { ok: true, cancel: result.cancelRequested }
+        ? { ok: true, cancel: result.cancelRequested, leaseMs }
         : refused(result.reason);
     },
     finish: async ({ executionId, runner, outcome, reason }) => {

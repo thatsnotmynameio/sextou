@@ -44,6 +44,7 @@ const refusalCodes = {
   not_open: 'CONFLICT',
   lease_lost: 'CONFLICT',
   already_finished: 'CONFLICT',
+  timeout: 'TIMEOUT',
 } as const satisfies Record<Refusal, TRPC_ERROR_CODE_KEY>;
 
 // A call's result when the tasks accepted it. A refusal throws its HTTP

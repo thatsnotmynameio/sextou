@@ -12,20 +12,23 @@ export interface AppOptions extends Context {
 
 // The HTTP app: CORS, then the tRPC router at /trpc. Each request gets an id,
 // the X-Request-Id it carries or a new one, and its procedures a logger
-// bound to it.
+// bound to it. A procedure that fails, rather than refusing, is logged there.
 export function createApp({ webOrigin, logger, ...context }: AppOptions) {
   return new Hono<{ Variables: RequestIdVariables }>()
     .use('/trpc/*', requestId())
     .use('/trpc/*', cors({ origin: webOrigin }))
-    .all('/trpc/*', (c) =>
-      fetchRequestHandler({
+    .all('/trpc/*', (c) => {
+      const requestLogger = logger.child({ requestId: c.var.requestId });
+      return fetchRequestHandler({
         endpoint: '/trpc',
         req: c.req.raw,
         router: appRouter,
-        createContext: () => ({
-          ...context,
-          logger: logger.child({ requestId: c.var.requestId }),
-        }),
-      }),
-    );
+        createContext: () => ({ ...context, logger: requestLogger }),
+        onError: ({ error, path }) => {
+          if (error.code === 'INTERNAL_SERVER_ERROR') {
+            requestLogger.error({ err: error, path }, 'Procedure failed');
+          }
+        },
+      });
+    });
 }

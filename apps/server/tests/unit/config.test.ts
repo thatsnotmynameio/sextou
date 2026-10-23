@@ -19,6 +19,7 @@ test('loadConfig uses every default when no variable is set', () => {
     tasksDb: '/home/ana/.local/share/sextou/tasks.db',
     webOrigin: 'http://localhost:5173',
     databaseTimeoutMs: 20000,
+    tasksTimeoutMs: 20000,
     leaseMs: 30000,
     maxAttempts: 1,
     leaseSweepMs: 5000,
@@ -36,6 +37,7 @@ test('loadConfig takes every variable that is set', () => {
       SEXTOU_SERVER_TASKS_DB: '/t.db',
       SEXTOU_SERVER_WEB_ORIGIN: 'https://app.example',
       SEXTOU_SERVER_DATABASE_TIMEOUT_MS: '500',
+      SEXTOU_SERVER_TASKS_TIMEOUT_MS: '700',
       SEXTOU_SERVER_LEASE_MS: '60000',
       SEXTOU_SERVER_MAX_ATTEMPTS: '3',
       SEXTOU_SERVER_LEASE_SWEEP_MS: '1000',
@@ -49,6 +51,7 @@ test('loadConfig takes every variable that is set', () => {
     tasksDb: '/t.db',
     webOrigin: 'https://app.example',
     databaseTimeoutMs: 500,
+    tasksTimeoutMs: 700,
     leaseMs: 60000,
     maxAttempts: 3,
     leaseSweepMs: 1000,
@@ -58,6 +61,7 @@ test('loadConfig takes every variable that is set', () => {
 });
 
 test.each([
+  ['SEXTOU_SERVER_TASKS_TIMEOUT_MS', 'tasksTimeoutMs'],
   ['SEXTOU_SERVER_LEASE_MS', 'leaseMs'],
   ['SEXTOU_SERVER_LEASE_SWEEP_MS', 'leaseSweepMs'],
 ] as const)(
@@ -69,6 +73,8 @@ test.each([
 );
 
 test.each([
+  ['SEXTOU_SERVER_TASKS_TIMEOUT_MS', '0'],
+  ['SEXTOU_SERVER_TASKS_TIMEOUT_MS', '2147483648'],
   ['SEXTOU_SERVER_LEASE_MS', '0'],
   ['SEXTOU_SERVER_LEASE_MS', '2147483648'],
   ['SEXTOU_SERVER_LEASE_MS', '1.5'],

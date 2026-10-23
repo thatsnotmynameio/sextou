@@ -23,6 +23,10 @@ export interface OpenTasksOptions {
   // The clock, in milliseconds since the epoch, for every recorded time and
   // lease: Date.now by default.
   now?: () => number;
+  // How long a write may take, in milliseconds, waiting for the lock
+  // included: one past it rolls back and is refused as timeout. No limit by
+  // default.
+  timeoutMs?: number;
 }
 
 // Opens the task graph kept in the database file at an absolute path, or in
@@ -36,6 +40,7 @@ export async function openTasks(
     logger,
     migrationsFolder = packageMigrations,
     now = () => Date.now(),
+    timeoutMs,
   }: OpenTasksOptions,
 ): Promise<Tasks> {
   if (path !== ':memory:') {
@@ -56,5 +61,8 @@ export async function openTasks(
     throw error;
   }
 
-  return { ...createGraph(db, logger, now), close: () => client.close() };
+  return {
+    ...createGraph(db, logger, now, timeoutMs),
+    close: () => client.close(),
+  };
 }

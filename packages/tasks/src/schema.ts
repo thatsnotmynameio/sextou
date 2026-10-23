@@ -24,12 +24,12 @@ import { Status, statusList } from './status';
 // index.
 
 // holding_blockers counts the task's blockers that still hold it: those open,
-// running or failed. A ready task is then one row of task_ready, which no
-// other index covers: with a second candidate, SQLite can pick the wrong one.
-// The index orders by assignee, then by priority, then by rowid, which is the
-// order the tasks were created in. Turso searches it only for a query that
-// writes the status and the count as literals, as its condition does: the
-// ready list writes the same condition, ready.
+// running, failed or cancelled. A ready task is then one row of task_ready,
+// which no other index covers: with a second candidate, SQLite can pick the
+// wrong one. The index orders by assignee, then by priority, then by rowid,
+// which is the order the tasks were created in. Turso searches it only for a
+// query that writes the status and the count as literals, as its condition
+// does: the ready list writes the same condition, ready.
 export const tasks = sqliteTable(
   'tasks',
   {
@@ -53,7 +53,7 @@ export const tasks = sqliteTable(
 );
 
 // The open status as literal SQL.
-export const openStatus = sql.raw(`'${Status.open}'`);
+const openStatus = sql.raw(`'${Status.open}'`);
 
 // An open task no blocker holds: task_ready's condition.
 export const ready: SQL = sql`${tasks.status} = ${openStatus} AND ${tasks.holdingBlockers} = 0`;
@@ -103,9 +103,11 @@ export const taskStatusChanges = sqliteTable(
   ],
 );
 
-// Each attempt at running a task: who runs it, where its log and result are,
-// and its lease. Its start and end are the changes into and out of running.
-// The id is the token the one who runs it carries.
+// Each attempt at running a task: who runs it, under which of its claims,
+// where its log and result are, and its lease. Its start and end are the
+// changes into and out of running. The id is the token the one who runs it
+// carries. An actor names each claim once, so a claim sent again finds its
+// attempt through task_execution_claim.
 //
 // expires_at is set only while the attempt runs, so only a task's current
 // attempt has one, and task_execution_lease finds the expired ones. A
@@ -120,6 +122,7 @@ export const taskExecutions = sqliteTable(
       .references(() => tasks.id),
     attempt: integer('attempt').notNull(),
     actor: text('actor').notNull(),
+    claimId: text('claim_id').notNull(),
     logPath: text('log_path'),
     resultPath: text('result_path'),
     expiresAt: integer('expires_at'),
@@ -129,6 +132,7 @@ export const taskExecutions = sqliteTable(
   (table) => [
     check('task_execution_attempt', sql`${table.attempt} >= 1`),
     uniqueIndex('task_execution_task_attempt').on(table.taskId, table.attempt),
+    uniqueIndex('task_execution_claim').on(table.actor, table.claimId),
     index('task_execution_lease')
       .on(table.expiresAt)
       .where(sql`${table.expiresAt} IS NOT NULL`),

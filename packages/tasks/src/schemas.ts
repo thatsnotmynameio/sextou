@@ -42,6 +42,7 @@ export const unlinkSchema = linkSchema;
 const duration = integer.min(1).max(2_147_483_647);
 
 export const claimTaskSchema = z.object({
+  claimId: label,
   assignees: z.array(label).min(1),
   actor: label,
   leaseMs: duration,

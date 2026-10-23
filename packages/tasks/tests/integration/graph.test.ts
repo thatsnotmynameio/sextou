@@ -162,8 +162,16 @@ async function finish(id: string, status: FinalStatus) {
   });
 }
 
-function claim(assignees = ['dev']) {
-  return tasks.claimTask({ assignees, actor: 'bot-dev-1', leaseMs: lease });
+// Each claim names itself anew, unless the test sends one again.
+let claims = 0;
+
+function claim(assignees = ['dev'], claimId = `claim-${(claims += 1)}`) {
+  return tasks.claimTask({
+    claimId,
+    assignees,
+    actor: 'bot-dev-1',
+    leaseMs: lease,
+  });
 }
 
 function renew(executionId: string, leaseMs = lease) {
@@ -470,6 +478,30 @@ test('link refuses a link that closes a cycle, leaving links and counters', asyn
   ]);
 });
 
+// A task cancelled while open keeps its links, so a path back to the task can
+// run through it.
+test(`link refuses a link that closes a cycle through a task cancelled while open, as ${Reason.cycle}`, async () => {
+  const a = await create('A');
+  const b = await create('B');
+  await link(b, a);
+  await tasks.cancelTask({ id: b, changedBy: 'planner' });
+  expect(await link(a, b)).toEqual({ ok: false, reason: Reason.cycle });
+  expect(await links()).toEqual([{ task_id: b, blocker_id: a }]);
+  expect(await counter(a)).toBe(0);
+});
+
+test(`link refuses a longer cycle that runs through a cancelled task, as ${Reason.cycle}`, async () => {
+  const a = await create('A');
+  const b = await create('B');
+  const c = await create('C');
+  await link(b, a);
+  await tasks.cancelTask({ id: b, changedBy: 'planner' });
+  await link(c, b);
+  expect(await link(a, c)).toEqual({ ok: false, reason: Reason.cycle });
+  expect(await links()).toHaveLength(2);
+  expect(await counter(a)).toBe(0);
+});
+
 test(`link refuses a task blocked by itself as ${Reason.sameTask}`, async () => {
   const a = await create('A');
   expect(await link(a, a)).toEqual({ ok: false, reason: Reason.sameTask });
@@ -680,6 +712,7 @@ test('claimTask accepts the longest lease', async () => {
   await create('A');
   expect(
     await tasks.claimTask({
+      claimId: 'claim-1',
       assignees: ['dev'],
       actor: 'bot',
       leaseMs: 2_147_483_647,
@@ -713,6 +746,22 @@ test('claimTask starts the most urgent ready task of the assignees, then the old
   expect(await ready(100, ['qa'])).toEqual(['C']);
 });
 
+// Without its order, a claim would follow the ready index assignee by
+// assignee, in name order: the task to take belongs to the later name.
+test('claimTask starts the oldest ready task of its assignees at equal priority', async () => {
+  const older = await create('Older', 2, undefined, 'qa');
+  await create('Newer', 2, undefined, 'dev');
+  expect(await claim(['dev', 'qa'])).toMatchObject({ task: { id: older } });
+});
+
+test('claimTask starts the most urgent ready task of its assignees before an older one', async () => {
+  await create('Older', 2, undefined, 'alice');
+  const urgent = await create('Urgent', 0, undefined, 'dev');
+  expect(await claim(['alice', 'dev'])).toMatchObject({
+    task: { id: urgent },
+  });
+});
+
 test('claimTask returns the whole task, now running', async () => {
   const created = await tasks.createTask({
     title: 'A',
@@ -734,6 +783,7 @@ test('claimTask returns the whole task, now running', async () => {
 test('claimTask records the actor as who started the task and who runs it', async () => {
   const a = await create('A');
   await tasks.claimTask({
+    claimId: 'claim-1',
     assignees: ['dev'],
     actor: ' runner-1 ',
     leaseMs: lease,
@@ -923,13 +973,162 @@ test(`finishTask refuses an attempt it doesn't know as ${Reason.leaseLost}`, asy
   expect(await status(a)).toBe(Status.running);
 });
 
+test('claimTask sent again with the same claim id answers the same attempt, its lease pushed, and starts nothing else', async () => {
+  const now = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+  const a = await create('A');
+  await create('B');
+  const first = await claim(['dev'], 'claim-1');
+  now.mockReturnValue(1_700_000_000_000 + 1_000);
+  const again = await claim(['dev'], 'claim-1');
+  expect(again).toEqual({
+    ok: true,
+    task: first.ok && first.task,
+    execution: {
+      id: await latest(a),
+      attempt: 1,
+      expiresAt: 1_700_000_000_000 + 1_000 + lease,
+    },
+  });
+  expect(await expiry(await latest(a))).toBe(1_700_000_000_000 + 1_000 + lease);
+  expect(await ready()).toEqual(['B']);
+  expect(await history(a)).toHaveLength(2);
+});
+
+test('claimTask sent again once its attempt ended answers no task and starts none', async () => {
+  const a = await create('A');
+  await claim(['dev'], 'claim-1');
+  await finish(a, Status.succeeded);
+  await create('B');
+  expect(await claim(['dev'], 'claim-1')).toEqual({ ok: true, task: null });
+  expect(await ready()).toEqual(['B']);
+});
+
+test("claimTask takes another actor's claim id as a new claim", async () => {
+  const a = await create('A');
+  const b = await create('B');
+  await claim(['dev'], 'claim-1');
+  expect(
+    await tasks.claimTask({
+      claimId: 'claim-1',
+      assignees: ['dev'],
+      actor: 'bot-dev-2',
+      leaseMs: lease,
+    }),
+  ).toMatchObject({ task: { id: b } });
+  expect(await status(a)).toBe(Status.running);
+});
+
+test.each([{ claimId: '' }, { claimId: ' ' }, { claimId: 7 }, {}])(
+  `claimTask refuses %j as ${Reason.invalid}, starting nothing`,
+  async (input) => {
+    const a = await create('A');
+    expect(
+      await tasks.claimTask({
+        assignees: ['dev'],
+        actor: 'bot',
+        leaseMs: lease,
+        ...input,
+      } as never),
+    ).toEqual({ ok: false, reason: Reason.invalid });
+    expect(await status(a)).toBe(Status.open);
+  },
+);
+
+test('finishTask sent again, the same finish, succeeds and changes nothing', async () => {
+  const a = await create('A');
+  const b = await create('B');
+  await link(b, a);
+  const executionId = await startedAttempt(a);
+  const done = {
+    executionId,
+    changedBy: 'bot-dev-1',
+    status: Status.succeeded,
+    reason: 'done',
+    resultPath: 'out/1',
+  };
+  await tasks.finishTask(done);
+  const recorded = await history(a);
+  expect(await tasks.finishTask({ ...done, reason: ' done ' })).toEqual({
+    ok: true,
+  });
+  expect(await history(a)).toEqual(recorded);
+  expect(await counter(b)).toBe(0);
+});
+
+test.each([
+  { changedBy: 'bot-dev-2' },
+  { status: Status.failed },
+  { reason: 'other' },
+  { reason: undefined },
+  { resultPath: 'out/2' },
+  { resultPath: undefined },
+])(
+  `finishTask refuses a finish that differs from the one that ended the attempt, %j, as ${Reason.leaseLost}`,
+  async (change) => {
+    const a = await create('A');
+    const executionId = await startedAttempt(a);
+    const done = {
+      executionId,
+      changedBy: 'bot-dev-1',
+      status: Status.succeeded,
+      reason: 'done',
+      resultPath: 'out/1',
+    };
+    await tasks.finishTask(done);
+    expect(await tasks.finishTask({ ...done, ...change })).toEqual({
+      ok: false,
+      reason: Reason.leaseLost,
+    });
+  },
+);
+
+test(`finishTask refuses, as ${Reason.leaseLost}, the finish of an expired attempt that matches a later cancel of the open task`, async () => {
+  const now = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+  const a = await create('A');
+  const executionId = await startedAttempt(a);
+  now.mockReturnValue(1_700_000_000_000 + lease);
+  await expire(2);
+  await tasks.cancelTask({ id: a, changedBy: 'bot-dev-1' });
+  expect(
+    await tasks.finishTask({
+      executionId,
+      changedBy: 'bot-dev-1',
+      status: Status.cancelled,
+    }),
+  ).toEqual({ ok: false, reason: Reason.leaseLost });
+});
+
+test(`finishTask refuses the finish of an attempt the sweep ended as ${Reason.leaseLost}`, async () => {
+  const now = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+  const a = await create('A');
+  const executionId = await startedAttempt(a);
+  now.mockReturnValue(1_700_000_000_000 + lease);
+  await expire(1);
+  expect(
+    await tasks.finishTask({
+      executionId,
+      changedBy: 'server',
+      status: Status.failed,
+      reason: 'lease expired',
+    }),
+  ).toEqual({ ok: true });
+  expect(
+    await tasks.finishTask({
+      executionId,
+      changedBy: 'bot-dev-1',
+      status: Status.failed,
+      reason: 'lease expired',
+    }),
+  ).toEqual({ ok: false, reason: Reason.leaseLost });
+});
+
 // Covers AE6.
-test(`finishTask refuses an attempt that already ended, in any state, as ${Reason.leaseLost}`, async () => {
+test(`finishTask refuses an attempt that already ended, in any other state, as ${Reason.leaseLost}`, async () => {
   const a = await create('A');
   const b = await create('B');
   await link(b, a);
   await moveTo(a, Status.succeeded);
-  for (const to of finalStatuses) {
+  for (const to of finalStatuses.filter((to) => to !== Status.succeeded)) {
     expect(await finish(a, to)).toEqual({
       ok: false,
       reason: Reason.leaseLost,
@@ -1113,6 +1312,44 @@ test.each([
       reason: Reason.invalid,
     });
     expect(await status(a)).toBe(Status.open);
+  },
+);
+
+test('cancelTask sent again, the same cancel of an open task, succeeds and changes nothing', async () => {
+  const a = await create('A');
+  await tasks.cancelTask({ id: a, changedBy: 'planner', reason: 'dropped' });
+  const recorded = await history(a);
+  expect(
+    await tasks.cancelTask({ id: a, changedBy: 'planner', reason: 'dropped' }),
+  ).toEqual({ ok: true, status: Status.cancelled });
+  expect(await history(a)).toEqual(recorded);
+});
+
+test('cancelTask sent again after the sweep cancelled the running task succeeds', async () => {
+  const now = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+  const a = await create('A');
+  await startedAttempt(a);
+  await tasks.cancelTask({ id: a, changedBy: 'planner', reason: 'dropped' });
+  now.mockReturnValue(1_700_000_000_000 + lease);
+  await expire(1);
+  expect(
+    await tasks.cancelTask({ id: a, changedBy: 'planner', reason: 'dropped' }),
+  ).toEqual({ ok: true, status: Status.cancelled });
+});
+
+test.each([
+  { changedBy: 'reviewer', reason: 'dropped' },
+  { changedBy: 'planner', reason: 'other' },
+  { changedBy: 'planner' },
+])(
+  `cancelTask refuses a cancel that differs from the one that cancelled the task, %j, as ${Reason.alreadyFinished}`,
+  async (cancel) => {
+    const a = await create('A');
+    await tasks.cancelTask({ id: a, changedBy: 'planner', reason: 'dropped' });
+    expect(await tasks.cancelTask({ id: a, ...cancel })).toEqual({
+      ok: false,
+      reason: Reason.alreadyFinished,
+    });
   },
 );
 
@@ -1505,6 +1742,7 @@ test('the history and the execution trim the names, the result path and the reas
   const a = await create('A');
   const b = await create('B');
   await tasks.claimTask({
+    claimId: ' claim-1 ',
     assignees: ['dev'],
     actor: ' bot-dev-1 ',
     leaseMs: lease,

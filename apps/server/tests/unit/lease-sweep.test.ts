@@ -19,10 +19,21 @@ function memoryLogger() {
   );
 }
 
-// A sweep every 100 ms that logs to lines.
-function sweep(expire: Parameters<typeof startLeaseSweep>[0]['expire']) {
-  return startLeaseSweep({ expire, intervalMs: 100, logger: memoryLogger() });
+// A sweep every 100 ms that logs to lines, for leases of leaseMs: by
+// default as long as the interval, so the first sweep ends leases.
+function sweep(
+  expire: Parameters<typeof startLeaseSweep>[0]['expire'],
+  leaseMs = 100,
+) {
+  return startLeaseSweep({
+    expire,
+    intervalMs: 100,
+    leaseMs,
+    logger: memoryLogger(),
+  });
 }
+
+const nothingExpired = async () => ({ ok: true as const, expired: 0 });
 
 function records(): unknown[] {
   return lines.map((line) => JSON.parse(line));
@@ -70,6 +81,57 @@ test('startLeaseSweep counts the interval from the end of the last call', async 
   finish();
   await running.stop();
 });
+
+test('startLeaseSweep ends no lease until the server has been up a whole lease', async () => {
+  const expire = vi.fn(nothingExpired);
+  const running = sweep(expire, 300);
+
+  await vi.advanceTimersByTimeAsync(299);
+  expect(expire).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1);
+  expect(expire).toHaveBeenCalledTimes(1);
+  await running.stop();
+});
+
+test('startLeaseSweep waits a whole lease again after a sweep that came late, logging it', async () => {
+  const expire = vi.fn(nothingExpired);
+  const running = sweep(expire, 300);
+  await vi.advanceTimersByTimeAsync(300);
+
+  // The host slept 10 s: the clock moved, the timers didn't.
+  vi.setSystemTime(Date.now() + 10_000);
+  await vi.advanceTimersByTimeAsync(100);
+  expect(records()).toEqual([
+    expect.objectContaining({
+      level: 40,
+      msg: 'The lease sweep ran late: ending no lease until the runners renew',
+      lateMs: 10_000,
+    }),
+  ]);
+  await vi.advanceTimersByTimeAsync(299);
+  expect(expire).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(expire).toHaveBeenCalledTimes(2);
+  await running.stop();
+});
+
+test.each([
+  { lateMs: 100, calls: 2 },
+  { lateMs: 101, calls: 1 },
+])(
+  'startLeaseSweep counts a sweep late past a third of the lease: $lateMs ms late leaves $calls calls',
+  async ({ lateMs, calls }) => {
+    const expire = vi.fn(nothingExpired);
+    const running = sweep(expire, 300);
+    await vi.advanceTimersByTimeAsync(300);
+
+    vi.setSystemTime(Date.now() + lateMs);
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(expire).toHaveBeenCalledTimes(calls);
+    await running.stop();
+  },
+);
 
 test('startLeaseSweep logs how many attempts a sweep ended', async () => {
   const running = sweep(async () => ({ ok: true, expired: 2 }));

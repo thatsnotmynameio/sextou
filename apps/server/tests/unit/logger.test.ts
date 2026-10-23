@@ -1,22 +1,6 @@
-import { Writable } from 'node:stream';
 import { expect, test, vi } from 'vitest';
 import { createLogger } from '../../src/logger';
-
-// A destination that keeps each line the logger writes.
-function memory() {
-  const lines: string[] = [];
-  return {
-    lines,
-    records: () => lines.map((line) => JSON.parse(line) as unknown),
-    // A stream, as pino-pretty pipes into its destination.
-    destination: new Writable({
-      write: (chunk, _encoding, done) => {
-        lines.push(String(chunk));
-        done();
-      },
-    }),
-  };
-}
+import { memory } from '../logger';
 
 test('createLogger writes an info call as one JSON line', () => {
   const output = memory();

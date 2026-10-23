@@ -28,6 +28,9 @@ export interface Config {
   // database as down. Below the web app's request timeout, so a database
   // that hangs shows as down rather than as a server that can't be reached.
   databaseTimeoutMs: number;
+  // How long a call to the tasks database may take: one past it writes
+  // nothing. Below the web app's request timeout, as databaseTimeoutMs.
+  tasksTimeoutMs: number;
   // How long a runner's lease on a task lasts unless renewed.
   leaseMs: number;
   // How many attempts a task gets before an expired lease fails it: 1 fails
@@ -99,6 +102,11 @@ export function loadConfig(
     ),
     databaseTimeoutMs: read(
       'SEXTOU_SERVER_DATABASE_TIMEOUT_MS',
+      parseTimeout,
+      () => 20000,
+    ),
+    tasksTimeoutMs: read(
+      'SEXTOU_SERVER_TASKS_TIMEOUT_MS',
       parseTimeout,
       () => 20000,
     ),

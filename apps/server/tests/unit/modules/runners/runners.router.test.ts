@@ -20,11 +20,13 @@ test('runners.claim hands the runner the task and the attempt it holds', async (
 
   expect(
     await caller({ claim }).claim({
+      claimId: 'claim-1',
       runner: ' runner-1 ',
       assignees: ['dev', ' qa '],
     }),
   ).toEqual({ task, execution });
   expect(claim).toHaveBeenCalledWith({
+    claimId: 'claim-1',
     runner: { name: 'runner-1' },
     assignees: [{ name: 'dev' }, { name: 'qa' }],
   });
@@ -34,16 +36,18 @@ test('runners.claim answers a null task when none is ready', async () => {
   expect(
     await caller({
       claim: async () => ({ ok: true, task: null }),
-    }).claim({ runner: 'runner-1', assignees: ['dev'] }),
+    }).claim({ claimId: 'claim-1', runner: 'runner-1', assignees: ['dev'] }),
   ).toEqual({ task: null });
 });
 
 test.each([
-  { runner: ' ', assignees: ['dev'] },
-  { runner: 'runner-1', assignees: [] },
-  { runner: 'runner-1', assignees: [''] },
+  { claimId: 'claim-1', runner: ' ', assignees: ['dev'] },
+  { claimId: 'claim-1', runner: 'runner-1', assignees: [] },
+  { claimId: 'claim-1', runner: 'runner-1', assignees: [''] },
+  { claimId: '', runner: 'runner-1', assignees: ['dev'] },
+  { runner: 'runner-1', assignees: ['dev'] },
 ])('runners.claim refuses %j as BAD_REQUEST', async (input) => {
-  await expect(caller({}).claim(input)).rejects.toMatchObject({
+  await expect(caller({}).claim(input as never)).rejects.toMatchObject({
     code: 'BAD_REQUEST',
   });
 });
@@ -52,7 +56,7 @@ test('runners.claim turns a refusal into BAD_REQUEST, named in the message', asy
   await expect(
     caller({
       claim: async () => ({ ok: false, refusal: Refusal.invalid }),
-    }).claim({ runner: 'runner-1', assignees: ['dev'] }),
+    }).claim({ claimId: 'claim-1', runner: 'runner-1', assignees: ['dev'] }),
   ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: 'invalid' });
 });
 
@@ -63,7 +67,7 @@ test('runners.claim fails with INTERNAL_SERVER_ERROR when its answer breaks the 
       task,
       execution: { ...execution, attempt: 0 },
     }),
-  }).claim({ runner: 'runner-1', assignees: ['dev'] });
+  }).claim({ claimId: 'claim-1', runner: 'runner-1', assignees: ['dev'] });
 
   await expect(result).rejects.toBeInstanceOf(TRPCError);
   await expect(result).rejects.toMatchObject({
@@ -73,16 +77,28 @@ test('runners.claim fails with INTERNAL_SERVER_ERROR when its answer breaks the 
 });
 
 test.each([true, false])(
-  'runners.heartbeat answers cancel: %s as the tasks say',
+  'runners.heartbeat answers cancel: %s and the lease as the tasks say',
   async (cancel) => {
-    const renew = vi.fn(async () => ({ ok: true as const, cancel }));
+    const renew = vi.fn(async () => ({
+      ok: true as const,
+      cancel,
+      leaseMs: 6000,
+    }));
 
     expect(await caller({ renew }).heartbeat({ executionId: 'exe_1' })).toEqual(
-      { cancel },
+      { cancel, leaseMs: 6000 },
     );
     expect(renew).toHaveBeenCalledWith('exe_1');
   },
 );
+
+test('runners.heartbeat fails with TIMEOUT, timeout, when the tasks database took too long', async () => {
+  await expect(
+    caller({
+      renew: async () => ({ ok: false, refusal: Refusal.timeout }),
+    }).heartbeat({ executionId: 'exe_1' }),
+  ).rejects.toMatchObject({ code: 'TIMEOUT', message: 'timeout' });
+});
 
 test('runners.heartbeat fails with CONFLICT, lease_lost, for an attempt that lost its lease', async () => {
   await expect(

@@ -75,6 +75,9 @@ export const Refusal = {
   notOpen: 'not_open',
   leaseLost: 'lease_lost',
   alreadyFinished: 'already_finished',
+  // The tasks database took longer than the server's timeout, and wrote
+  // nothing.
+  timeout: 'timeout',
 } as const;
 
 export type Refusal = (typeof Refusal)[keyof typeof Refusal];
@@ -85,44 +88,63 @@ export interface Refused<R extends Refusal> {
 }
 
 // What procedures reach through the context. A refusal is a result; an error
-// from the database rejects.
+// from the database rejects. Every call may be refused as timeout, having
+// written nothing.
 export interface Tasks {
   create: (
     task: NewTask,
   ) => Promise<
     | { ok: true; task: Task }
-    | Refused<typeof Refusal.invalid | typeof Refusal.notFound>
+    | Refused<
+        | typeof Refusal.invalid
+        | typeof Refusal.notFound
+        | typeof Refusal.timeout
+      >
   >;
   // The runner takes the most urgent ready task of the assignees it serves,
   // then the oldest, and holds it under a lease. task is null when none is
-  // ready.
+  // ready. claimId is the runner's name for the claim: the same claim sent
+  // again, when its answer was lost, gets the same attempt back while it
+  // runs, and no task once it ended.
   claim: (claim: {
+    claimId: string;
     runner: Actor;
     assignees: Actor[];
   }) => Promise<
     | { ok: true; task: Task; execution: Execution }
     | { ok: true; task: null }
-    | Refused<typeof Refusal.invalid>
+    | Refused<typeof Refusal.invalid | typeof Refusal.timeout>
   >;
-  // Renews the attempt's lease, and says whether someone asked to cancel its
-  // task.
+  // Renews the attempt's lease for leaseMs, the server's lease now, and says
+  // whether someone asked to cancel its task.
   renew: (
     executionId: string,
   ) => Promise<
-    | { ok: true; cancel: boolean }
-    | Refused<typeof Refusal.invalid | typeof Refusal.leaseLost>
+    | { ok: true; cancel: boolean; leaseMs: number }
+    | Refused<
+        | typeof Refusal.invalid
+        | typeof Refusal.leaseLost
+        | typeof Refusal.timeout
+      >
   >;
-  // The runner that holds the attempt ends its task.
+  // The runner that holds the attempt ends its task. The same finish sent
+  // again succeeds.
   finish: (finish: {
     executionId: string;
     runner: Actor;
     outcome: Outcome;
     reason?: string;
   }) => Promise<
-    { ok: true } | Refused<typeof Refusal.invalid | typeof Refusal.leaseLost>
+    | { ok: true }
+    | Refused<
+        | typeof Refusal.invalid
+        | typeof Refusal.leaseLost
+        | typeof Refusal.timeout
+      >
   >;
   // Cancels an open task at once, or asks the runner of a running one to
-  // cancel it. status is the task's state after.
+  // cancel it. status is the task's state after. The same cancel sent again
+  // succeeds.
   cancel: (cancel: {
     taskId: string;
     actor: Actor;
@@ -133,6 +155,7 @@ export interface Tasks {
         | typeof Refusal.invalid
         | typeof Refusal.notFound
         | typeof Refusal.alreadyFinished
+        | typeof Refusal.timeout
       >
   >;
   // Hands an open task to another assignee.
@@ -146,6 +169,7 @@ export interface Tasks {
         | typeof Refusal.invalid
         | typeof Refusal.notFound
         | typeof Refusal.notOpen
+        | typeof Refusal.timeout
       >
   >;
 }

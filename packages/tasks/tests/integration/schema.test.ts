@@ -78,7 +78,7 @@ test('the schema lets a link be refused twice, deleted, and refused for a missin
 test("the schema lets an execution's result path and lease be updated", async () => {
   const client = connection();
   await client.exec(
-    "INSERT INTO tasks (id, title, kind, priority, assignee, status) VALUES ('a', 'A', 'task', 2, 'dev', 'running'); INSERT INTO task_executions (id, task_id, attempt, actor, expires_at) VALUES ('e', 'a', 1, 'bot', 5)",
+    "INSERT INTO tasks (id, title, kind, priority, assignee, status) VALUES ('a', 'A', 'task', 2, 'dev', 'running'); INSERT INTO task_executions (id, task_id, attempt, actor, claim_id, expires_at) VALUES ('e', 'a', 1, 'bot', 'c', 5)",
   );
   await client.run(
     "UPDATE task_executions SET result_path = 'out', expires_at = NULL WHERE id = 'e'",
@@ -94,15 +94,18 @@ test("the schema lets an execution's result path and lease be updated", async ()
       expires_at: null,
       cancel_requested_by: null,
       cancel_reason: null,
+      claim_id: 'c',
     },
   ]);
 });
 
-function insertExecution(id: string, attempt: number) {
+// Each attempt under a claim of its own unless one is given.
+function insertExecution(id: string, attempt: number, claimId = id) {
   return connection().run(
-    "INSERT INTO task_executions (id, task_id, attempt, actor) VALUES (?, 'a', ?, 'bot')",
+    "INSERT INTO task_executions (id, task_id, attempt, actor, claim_id) VALUES (?, 'a', ?, 'bot', ?)",
     id,
     attempt,
+    claimId,
   );
 }
 
@@ -121,6 +124,16 @@ test("the schema numbers a task's attempts from 1, once each", async () => {
   expect(
     await connection().all('SELECT id FROM task_executions ORDER BY attempt'),
   ).toEqual([{ id: 'e1' }, { id: 'e2' }]);
+});
+
+test("the schema takes an actor's claim id once", async () => {
+  await connection().exec(
+    "INSERT INTO tasks (id, title, kind, priority, assignee, status) VALUES ('a', 'A', 'task', 2, 'dev', 'open')",
+  );
+  await insertExecution('e1', 1, 'c');
+  await expect(insertExecution('e2', 2, 'c')).rejects.toThrow(
+    'UNIQUE constraint failed',
+  );
 });
 
 test('the schema refuses an execution of a missing task', async () => {

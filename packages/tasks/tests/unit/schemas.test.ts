@@ -71,7 +71,12 @@ test.each([1, 2_147_483_647])(
   'the lease schemas accept a lease of %d milliseconds',
   (leaseMs) => {
     expect(
-      claimTaskSchema.parse({ assignees: ['dev'], actor: 'bot', leaseMs }),
+      claimTaskSchema.parse({
+        claimId: 'claim-1',
+        assignees: ['dev'],
+        actor: 'bot',
+        leaseMs,
+      }),
     ).toMatchObject({ leaseMs });
     expect(
       renewExecutionSchema.parse({ executionId: 'exe_1', leaseMs }),
@@ -83,8 +88,12 @@ test.each([0, 2_147_483_648, 1.5])(
   'the lease schemas refuse a lease of %d milliseconds',
   (leaseMs) => {
     expect(
-      claimTaskSchema.safeParse({ assignees: ['dev'], actor: 'bot', leaseMs })
-        .success,
+      claimTaskSchema.safeParse({
+        claimId: 'claim-1',
+        assignees: ['dev'],
+        actor: 'bot',
+        leaseMs,
+      }).success,
     ).toBe(false);
     expect(
       renewExecutionSchema.safeParse({ executionId: 'exe_1', leaseMs }).success,
@@ -92,14 +101,20 @@ test.each([0, 2_147_483_648, 1.5])(
   },
 );
 
-test('claimTaskSchema outputs the assignees and the actor trimmed', () => {
+test('claimTaskSchema outputs the claim id, the assignees and the actor trimmed', () => {
   expect(
     claimTaskSchema.parse({
+      claimId: ' claim-1 ',
       assignees: [' dev ', 'qa'],
       actor: ' runner-1 ',
       leaseMs: 30_000,
     }),
-  ).toEqual({ assignees: ['dev', 'qa'], actor: 'runner-1', leaseMs: 30_000 });
+  ).toEqual({
+    claimId: 'claim-1',
+    assignees: ['dev', 'qa'],
+    actor: 'runner-1',
+    leaseMs: 30_000,
+  });
 });
 
 test('finishTaskSchema outputs a finish with its texts trimmed and blank ones as null', () => {
