@@ -6,6 +6,12 @@
 # typescript.yml still runs the unit and integration suites through the root
 # vitest.config.ts; this moves there later. No check here is required yet.
 #
+# A change to documentation only (Markdown, LICENSE), against the pull
+# request's base or the commit main had before the push, runs no check: the
+# level and mutation jobs skip, which a required check counts as passed, where
+# a paths filter on the workflow would leave it pending. Any other change runs
+# every check.
+#
 # Mutation runs as in StrykerJS's own CI: in full on each push to main, and
 # incrementally on a pull request, from the newest result in the Actions
 # cache, which GitHub looks up in the pull request's scope first, then in
@@ -58,19 +64,30 @@ jobs:
       levels: ${{ steps.matrix.outputs.levels }}
       mutation: ${{ steps.matrix.outputs.mutation }}
     steps:
+      # The whole history, so git finds where the branch forked.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       # The shell expands pnpm-workspace.yaml's globs, read with yq; $dir and
       # $package are jq's variables, not the shell's. shell: bash adds
       # pipefail, and failglob fails on a glob that matches nothing, so a
       # package.json jq can't read fails the step instead of dropping checks.
+      # A run with no base (a manual run) lists every package, as does one
+      # whose base git can't diff (a new branch's all-zero before).
       - name: Matrix
         id: matrix
         shell: bash
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           shopt -s failglob
           manifests=$(yq '.packages[] + "/package.json"' pnpm-workspace.yaml)
+          if [ -n "$BASE" ] && git diff --quiet "$BASE...HEAD" -- . \
+            ':(exclude,glob)**/*.md' ':!LICENSE'; then
+            manifests=
+          fi
+          # With no package, jq reads nothing and writes empty lists.
           # shellcheck disable=SC2016,SC2086
           jq -nr '
               [inputs | (input_filename | rtrimstr("/package.json")) as $dir
@@ -79,7 +96,7 @@ jobs:
                 | {package: $package, level: ., dir: $dir}]
               | "levels=\(map(select(.level != "mutation")) | tojson)",
                 "mutation=\(map(select(.level == "mutation") | del(.level)) | tojson)"' \
-            $manifests \
+            $manifests < /dev/null \
             | tee -a "$GITHUB_OUTPUT"
 
   level:
