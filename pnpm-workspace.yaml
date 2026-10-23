@@ -2,7 +2,6 @@ packages:
   - apps/*
   - packages/*
 allowBuilds:
-  '@go-task/cli': true
   electron-winstaller: true
   esbuild: false
 nodeLinker: hoisted

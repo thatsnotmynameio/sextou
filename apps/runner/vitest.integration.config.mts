@@ -2,8 +2,8 @@ import { defineConfig } from 'vitest/config';
 import { coverage, integrationOnly } from './vitest.config.mjs';
 
 // The integration suite: tests/integration/ in Node, against the server
-// started as a child process on localhost. It answers only for the files
-// vitest.config.mts lists.
+// started as a child process on localhost, and go-task run as one. It answers
+// only for the files vitest.config.mts lists.
 export default defineConfig({
   test: {
     name: 'runner/integration',

@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import { createRunnerClient } from './client';
 import { loadConfig, type Config } from './config';
+import { hold } from './hold';
 import { createLogger } from './logger';
 import { startRunner } from './runner';
 
@@ -34,7 +35,9 @@ function run(config: Config) {
     name: config.name,
     assignees: config.assignees,
     pollMs: config.pollMs,
-    holdMs: config.holdMs,
+    // Until a task carries the Taskfile runTaskfile runs, the runner holds
+    // each task it claims.
+    execute: hold(config.holdMs),
     logger,
     newId: randomUUID,
   });
