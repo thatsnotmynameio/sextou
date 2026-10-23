@@ -2,7 +2,7 @@
 # named after the package: "<package> / <level>" judges every file that level
 # answers for at 90% coverage, "<package> / mutation" judges every file of its
 # unit and integration suites: Stryker fails it below 80% of mutants
-# killed in the package. The organization's
+# killed in the package. The packages job lists the checks. The organization's
 # typescript.yml still runs the unit and integration suites through the root
 # vitest.config.ts; this moves there later. No check here is required yet.
 #
@@ -44,8 +44,49 @@ env:
   pnpm_config_registry: https://registry.npmjs.org/
 
 jobs:
+  # The matrices of the jobs below, read from each workspace package's
+  # package.json: a "test:<level>" script is a level, "test:mutation" a
+  # mutation run. The root, whose scripts run every package, is no workspace
+  # package.
+  packages:
+    name: packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      levels: ${{ steps.matrix.outputs.levels }}
+      mutation: ${{ steps.matrix.outputs.mutation }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The shell expands pnpm-workspace.yaml's globs, read with yq; $dir and
+      # $package are jq's variables, not the shell's. shell: bash adds
+      # pipefail, and failglob fails on a glob that matches nothing, so a
+      # package.json jq can't read fails the step instead of dropping checks.
+      - name: Matrix
+        id: matrix
+        shell: bash
+        run: |
+          shopt -s failglob
+          manifests=$(yq '.packages[] + "/package.json"' pnpm-workspace.yaml)
+          # shellcheck disable=SC2016,SC2086
+          jq -nr '
+              [inputs | (input_filename | rtrimstr("/package.json")) as $dir
+                | (.name | sub("^@[^/]+/"; "")) as $package
+                | .scripts // {} | keys[] | capture("^test:(?<level>.+)$").level
+                | {package: $package, level: ., dir: $dir}]
+              | "levels=\(map(select(.level != "mutation")) | tojson)",
+                "mutation=\(map(select(.level == "mutation") | del(.level)) | tojson)"' \
+            $manifests \
+            | tee -a "$GITHUB_OUTPUT"
+
   level:
     name: ${{ matrix.package }} / ${{ matrix.level }}
+    needs: packages
+    # An empty matrix is an error, so no level skips the job.
+    if: ${{ needs.packages.outputs.levels != '[]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -53,16 +94,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { package: desktop, level: unit, dir: apps/desktop }
-          - { package: server, level: unit, dir: apps/server }
-          - { package: server, level: integration, dir: apps/server }
-          - { package: web, level: unit, dir: apps/web }
-          - { package: web, level: integration, dir: apps/web }
-          - { package: tasks, level: unit, dir: packages/tasks }
-          - { package: tasks, level: integration, dir: packages/tasks }
-          - { package: ui, level: unit, dir: packages/ui }
-          - { package: ui, level: component, dir: packages/ui }
+        include: ${{ fromJSON(needs.packages.outputs.levels) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -82,10 +114,12 @@ jobs:
           } >> "$GITHUB_ENV"
       - name: pnpm install
         run: pnpm install --frozen-lockfile --ignore-scripts
-      # Only the component suite renders in a browser.
+      # Only a component suite renders in a browser.
       - name: Chromium
         if: ${{ matrix.level == 'component' }}
-        run: pnpm --filter @sextou/ui exec playwright install --with-deps chromium
+        env:
+          DIR: ${{ matrix.dir }}
+        run: pnpm --dir "$DIR" exec playwright install --with-deps chromium
       - name: Tests
         env:
           DIR: ${{ matrix.dir }}
@@ -94,6 +128,8 @@ jobs:
 
   mutation:
     name: ${{ matrix.package }} / mutation
+    needs: packages
+    if: ${{ needs.packages.outputs.mutation != '[]' }}
     runs-on: ubuntu-latest
     # A run with no cached result mutates every file of the package.
     timeout-minutes: 60
@@ -102,12 +138,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { package: desktop, dir: apps/desktop }
-          - { package: server, dir: apps/server }
-          - { package: web, dir: apps/web }
-          - { package: tasks, dir: packages/tasks }
-          - { package: ui, dir: packages/ui }
+        include: ${{ fromJSON(needs.packages.outputs.mutation) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -132,8 +163,8 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ matrix.dir }}/reports/stryker-incremental.json
-          key: stryker-incremental-${{ matrix.package }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: stryker-incremental-${{ matrix.package }}-
+          key: stryker-incremental-${{ matrix.package }}/${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: stryker-incremental-${{ matrix.package }}/
       # On main every mutant runs (--force) and the result is written for the
       # pull requests after it; a pull request runs only what changed since
       # the result it restored.
@@ -143,16 +174,16 @@ jobs:
           FULL: ${{ github.event_name != 'pull_request' }}
         run: |
           if [ "$FULL" = true ]; then
-            pnpm --dir "$DIR" exec stryker run --incremental --force
+            pnpm --dir "$DIR" run test:mutation --incremental --force
           else
-            pnpm --dir "$DIR" exec stryker run --incremental
+            pnpm --dir "$DIR" run test:mutation --incremental
           fi
       - name: Save the result
         if: ${{ !cancelled() && github.actor != 'dependabot[bot]' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ matrix.dir }}/reports/stryker-incremental.json
-          key: stryker-incremental-${{ matrix.package }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: stryker-incremental-${{ matrix.package }}/${{ github.run_id }}-${{ github.run_attempt }}
       - name: Upload the report
         if: ${{ failure() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
