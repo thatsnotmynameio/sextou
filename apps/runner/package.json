@@ -13,7 +13,6 @@
     "test:mutation": "stryker run"
   },
   "dependencies": {
-    "@go-task/cli": "3.54.0",
     "@trpc/client": "^11.19.0",
     "pino": "^10.4.0",
     "pino-pretty": "^13.2.0"

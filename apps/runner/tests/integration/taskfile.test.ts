@@ -1,10 +1,18 @@
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import { createLogger } from '../../src/logger';
-import { goTaskBin, runTaskfile } from '../../src/taskfile';
+import { runTaskfile } from '../../src/taskfile';
 import { memory } from '../logger';
+
+// go-task from the host, as `task` on the PATH. The organization's
+// typescript.yml runs this suite with no go-task installed, so the tests skip
+// there; tests.yml installs it, and test:integration's coverage floor fails
+// when they skip.
+const bin = 'task';
+const goTask = test.skipIf(spawnSync(bin, ['--version']).status !== 0);
 
 let dir: string;
 let output: ReturnType<typeof memory>;
@@ -43,11 +51,11 @@ function run(
     signal = new AbortController().signal,
     timeoutMs = 20000,
     killGraceMs = 5000,
-    bin = goTaskBin(),
+    bin: taskBin = bin,
   } = {},
 ) {
   return runTaskfile({
-    bin,
+    bin: taskBin,
     taskfile: path,
     timeoutMs,
     killGraceMs,
@@ -64,26 +72,27 @@ function lines() {
     .map(({ stream, line }) => ({ stream, line }));
 }
 
-test('goTaskBin names the binary @go-task/cli installed', () => {
-  expect(goTaskBin('linux')).toMatch(/@go-task\/cli\/bin\/task$/);
-  expect(goTaskBin('win32')).toMatch(/@go-task\/cli\/bin\/task\.exe$/);
-});
+goTask(
+  'runTaskfile resolves succeeded when the default task exits 0',
+  async () => {
+    expect(await run(taskfile(['true']))).toEqual({ outcome: 'succeeded' });
+  },
+);
 
-test('runTaskfile resolves succeeded when the default task exits 0', async () => {
-  expect(await run(taskfile(['true']))).toEqual({ outcome: 'succeeded' });
-});
+goTask(
+  'runTaskfile logs each line of stdout and stderr as an output record',
+  async () => {
+    await run(taskfile(['echo one', 'echo two >&2', 'echo three']));
 
-test('runTaskfile logs each line of stdout and stderr as an output record', async () => {
-  await run(taskfile(['echo one', 'echo two >&2', 'echo three']));
+    expect(lines()).toEqual([
+      { stream: 'stdout', line: 'one' },
+      { stream: 'stderr', line: 'two' },
+      { stream: 'stdout', line: 'three' },
+    ]);
+  },
+);
 
-  expect(lines()).toEqual([
-    { stream: 'stdout', line: 'one' },
-    { stream: 'stderr', line: 'two' },
-    { stream: 'stdout', line: 'three' },
-  ]);
-});
-
-test("runTaskfile runs the commands in the Taskfile's folder", async () => {
+goTask("runTaskfile runs the commands in the Taskfile's folder", async () => {
   const path = taskfile(['pwd'], 'nested/work');
 
   await run(path);
@@ -93,44 +102,60 @@ test("runTaskfile runs the commands in the Taskfile's folder", async () => {
   ]);
 });
 
-test('runTaskfile resolves failed with the exit code of the command that failed', async () => {
-  expect(await run(taskfile(['exit 3', 'echo never']))).toEqual({
-    outcome: 'failed',
-    reason: 'exit code 3',
+goTask('runTaskfile gives the run no input', async () => {
+  expect(await run(taskfile(['cat']), { timeoutMs: 5000 })).toEqual({
+    outcome: 'succeeded',
   });
-  expect(lines()).not.toContainEqual({ stream: 'stdout', line: 'never' });
 });
 
-test('runTaskfile resolves failed when the Taskfile does not exist', async () => {
-  expect(await run(join(dir, 'missing', 'Taskfile.yml'))).toEqual({
-    outcome: 'failed',
-    reason: 'exit code 100',
-  });
-});
+goTask(
+  'runTaskfile resolves failed with the exit code of the command that failed',
+  async () => {
+    expect(await run(taskfile(['exit 3', 'echo never']))).toEqual({
+      outcome: 'failed',
+      reason: 'exit code 3',
+    });
+    expect(lines()).not.toContainEqual({ stream: 'stdout', line: 'never' });
+  },
+);
+
+goTask(
+  'runTaskfile resolves failed when the Taskfile does not exist',
+  async () => {
+    expect(await run(join(dir, 'missing', 'Taskfile.yml'))).toEqual({
+      outcome: 'failed',
+      reason: 'exit code 100',
+    });
+  },
+);
 
 test('runTaskfile resolves failed with the error when the binary does not exist', async () => {
-  const bin = join(dir, 'no-task');
+  const missing = join(dir, 'no-task');
 
-  expect(await run(taskfile(['true']), { bin })).toEqual({
+  expect(await run(taskfile(['true']), { bin: missing })).toEqual({
     outcome: 'failed',
-    reason: `spawn ${bin} ENOENT`,
+    reason: `spawn ${missing} ENOENT`,
   });
 });
 
-test('runTaskfile stops a run that takes longer than timeoutMs and resolves timeout', async () => {
-  const started = Date.now();
+goTask(
+  'runTaskfile stops a run that takes longer than timeoutMs and resolves timeout',
+  async () => {
+    const started = Date.now();
 
-  const result = await run(taskfile(['sleep 30']), { timeoutMs: 300 });
+    const result = await run(taskfile(['sleep 30']), { timeoutMs: 300 });
 
-  expect(result).toEqual({ outcome: 'failed', reason: 'timeout' });
-  expect(Date.now() - started).toBeLessThan(5000);
-});
+    expect(result).toEqual({ outcome: 'failed', reason: 'timeout' });
+    expect(Date.now() - started).toBeLessThan(5000);
+  },
+);
 
-test('runTaskfile stops a run once its signal aborts', async () => {
+goTask('runTaskfile stops a run once its signal aborts', async () => {
   const controller = new AbortController();
   const path = taskfile(['echo started', 'sleep 30']);
   const started = Date.now();
-  const running = run(path, { signal: controller.signal });
+  // A grace longer than the test: only SIGTERM can end the run in time.
+  const running = run(path, { signal: controller.signal, killGraceMs: 60000 });
   await waitForLine('started');
 
   controller.abort();
@@ -140,22 +165,25 @@ test('runTaskfile stops a run once its signal aborts', async () => {
   expect(Date.now() - started).toBeLessThan(5000);
 });
 
-test('runTaskfile kills a run that ignores SIGTERM once killGraceMs pass', async () => {
-  const controller = new AbortController();
-  // go-task's shell has no trap for TERM: Node ignores it instead.
-  const path = taskfile([
-    `${process.execPath} -e "process.on('SIGTERM', () => {}); console.log('started'); setInterval(() => {}, 1000)"`,
-  ]);
-  const running = run(path, { signal: controller.signal, killGraceMs: 300 });
-  await waitForLine('started');
-  const stopped = Date.now();
+goTask(
+  'runTaskfile kills a run that ignores SIGTERM once killGraceMs pass',
+  async () => {
+    const controller = new AbortController();
+    // go-task's shell has no trap for TERM: Node ignores it instead.
+    const path = taskfile([
+      `${process.execPath} -e "process.on('SIGTERM', () => {}); console.log('started'); setInterval(() => {}, 1000)"`,
+    ]);
+    const running = run(path, { signal: controller.signal, killGraceMs: 300 });
+    await waitForLine('started');
+    const stopped = Date.now();
 
-  controller.abort();
-  const result = await running;
+    controller.abort();
+    const result = await running;
 
-  expect(result).toEqual({ outcome: 'failed', reason: 'signal SIGKILL' });
-  expect(Date.now() - stopped).toBeGreaterThanOrEqual(250);
-});
+    expect(result).toEqual({ outcome: 'failed', reason: 'signal SIGKILL' });
+    expect(Date.now() - stopped).toBeGreaterThanOrEqual(250);
+  },
+);
 
 test('runTaskfile does not start a run whose signal already aborted', async () => {
   const marker = join(dir, 'ran');

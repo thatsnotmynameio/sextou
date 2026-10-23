@@ -1,23 +1,12 @@
 import { spawn } from 'node:child_process';
-import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
-import { fileURLToPath } from 'node:url';
 import type { Logger } from './logger';
 import type { Result } from './runner';
 
-// The go-task binary @go-task/cli downloads on install. Its own `task`
-// command is a Node script that runs this one with spawnSync: a signal it
-// gets never reaches go-task, and it exits 0 when go-task died of one.
-export function goTaskBin(platform: NodeJS.Platform = process.platform) {
-  const cli = dirname(
-    fileURLToPath(import.meta.resolve('@go-task/cli/package.json')),
-  );
-  return join(cli, 'bin', platform === 'win32' ? 'task.exe' : 'task');
-}
-
 export interface TaskfileOptions {
-  // The go-task binary.
+  // The go-task binary, from the host: `task` on the PATH, or a path. Some
+  // distributions name it go-task.
   bin: string;
   // The Taskfile whose default task runs. go-task runs its commands in the
   // Taskfile's folder.
@@ -55,7 +44,8 @@ export function runTaskfile({
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    // The run stops once, on the first of an abort and the timeout.
+    // The run stops on the first of an abort and the timeout: an AbortSignal
+    // aborts once.
     const timeout = AbortSignal.timeout(timeoutMs);
     const stop = AbortSignal.any([signal, timeout]);
     let killTimer: NodeJS.Timeout | undefined;
@@ -67,11 +57,15 @@ export function runTaskfile({
       }
     };
     const kill = () => {
+      // Stryker disable next-line StringLiteral: process.kill reads '' as SIGTERM
       signalGroup('SIGTERM');
       killTimer = setTimeout(() => signalGroup('SIGKILL'), killGraceMs);
     };
-    stop.addEventListener('abort', kill, { once: true });
+    stop.addEventListener('abort', kill);
     const settle = (result: Result) => {
+      // Without it, a run that exited within its grace still gets a SIGKILL
+      // for its group once the grace ends: try/catch drops it.
+      // Stryker disable next-line CallExpression: a stray signal only
       clearTimeout(killTimer);
       // A run that ended unstopped would leave its kill, and the child, on a
       // signal that may outlive it.
