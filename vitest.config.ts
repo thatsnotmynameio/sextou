@@ -7,6 +7,8 @@ export default {
   test: {
     projects: [
       'apps/desktop',
+      'apps/runner',
+      'apps/runner/vitest.integration.config.mts',
       'apps/server',
       'apps/server/vitest.integration.config.mts',
       'apps/web',
