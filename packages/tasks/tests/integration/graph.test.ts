@@ -1098,6 +1098,23 @@ test(`finishTask refuses, as ${Reason.leaseLost}, the finish of an expired attem
   ).toEqual({ ok: false, reason: Reason.leaseLost });
 });
 
+test(`finishTask refuses, as ${Reason.leaseLost}, the finish of an expired attempt that matches how a later attempt ended`, async () => {
+  const now = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+  const a = await create('A');
+  const lost = await startedAttempt(a);
+  now.mockReturnValue(1_700_000_000_000 + lease);
+  await expire(2);
+  await claim();
+  await finish(a, Status.succeeded);
+  expect(
+    await tasks.finishTask({
+      executionId: lost,
+      changedBy: 'bot-dev-1',
+      status: Status.succeeded,
+    }),
+  ).toEqual({ ok: false, reason: Reason.leaseLost });
+});
+
 test(`finishTask refuses the finish of an attempt the sweep ended as ${Reason.leaseLost}`, async () => {
   const now = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
   const a = await create('A');

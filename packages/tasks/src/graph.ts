@@ -755,9 +755,18 @@ export function createGraph(
         }
         if (execution.expiresAt === null) {
           // The attempt ended: by this same finish, whose answer was lost,
-          // when its end is the task's last change and says the same.
+          // when it is the task's latest attempt and its end is the task's
+          // last change and says the same.
+          const latest = await tx
+            .select({ id: taskExecutions.id })
+            .from(taskExecutions)
+            .where(eq(taskExecutions.taskId, execution.taskId))
+            .orderBy(desc(taskExecutions.attempt))
+            .limit(1)
+            .get();
           const last = await lastChange(tx, execution.taskId);
           const same =
+            latest?.id === executionId &&
             last?.fromStatus === Status.running &&
             last.toStatus === status &&
             last.changedBy === changedBy &&
