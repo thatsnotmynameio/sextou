@@ -75,10 +75,10 @@ test('poll asks again one interval after the previous answer, not after the prev
 });
 
 // Covers AE2.
-test('poll logs a refused request as no answer and keeps asking', async () => {
+test('poll logs a refused request as no answer', async () => {
   const loop = start(refused);
 
-  await vi.advanceTimersByTimeAsync(intervalMs);
+  await vi.advanceTimersByTimeAsync(0);
   await loop.stop();
 
   expect(loop.records()).toEqual([
@@ -87,13 +87,18 @@ test('poll logs a refused request as no answer and keeps asking', async () => {
       msg: 'request failed',
       kind: 'no-answer',
     }),
-    expect.objectContaining({
-      level: 40,
-      msg: 'request failed',
-      kind: 'no-answer',
-    }),
   ]);
+});
+
+// Covers AE2.
+test('poll asks again an interval after a refused request', async () => {
+  const loop = start(refused);
+
+  await vi.advanceTimersByTimeAsync(intervalMs);
+  await loop.stop();
+
   expect(loop.fetch).toHaveBeenCalledTimes(2);
+  expect(loop.messages()).toEqual(['request failed', 'request failed']);
 });
 
 // Covers AE2.

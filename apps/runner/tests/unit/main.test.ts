@@ -69,12 +69,17 @@ function run() {
   return import('../../src/main');
 }
 
-test('main with an invalid variable logs it, exits with 1 and never asks the server', async () => {
+// Runs main with an invalid variable, which returns without polling.
+async function runInvalid() {
   const fetch = vi.fn();
   vi.stubGlobal('fetch', fetch);
   vi.stubEnv('SEXTOU_RUNNER_POLL_INTERVAL_MS', '0');
-
   await run();
+  return fetch;
+}
+
+test('main logs an invalid variable as an error naming it', async () => {
+  await runInvalid();
 
   expect(output.lines.map((line) => JSON.parse(line))).toEqual([
     expect.objectContaining({
@@ -82,23 +87,39 @@ test('main with an invalid variable logs it, exits with 1 and never asks the ser
       msg: expect.stringContaining('Invalid SEXTOU_RUNNER_POLL_INTERVAL_MS'),
     }),
   ]);
+});
+
+test('main sets exit code 1 on an invalid variable', async () => {
+  await runInvalid();
+
   expect(process.exitCode).toBe(1);
+});
+
+test('main never asks the server when a variable is invalid', async () => {
+  const fetch = await runInvalid();
+
   expect(fetch).not.toHaveBeenCalled();
   expect(on).not.toHaveBeenCalled();
 });
 
-test('main logs where it polls, asks the server, and returns on SIGTERM with no error code', async () => {
+// Runs main against a server that answers no task, until its first answer,
+// then stops it with SIGTERM.
+async function runUntilFirstAnswer() {
   const fetch = vi.fn(async (_input: RequestInfo | URL) =>
     Response.json({ result: { data: { task: null } } }),
   );
   vi.stubGlobal('fetch', fetch);
   vi.stubEnv('SEXTOU_RUNNER_SERVER_URL', 'http://server.test:4310');
   vi.stubEnv('SEXTOU_RUNNER_POLL_INTERVAL_MS', '10');
-
   const running = run();
   await vi.waitFor(() => expect(messages()).toContain('no task'));
   handler('SIGTERM')();
   await running;
+  return fetch;
+}
+
+test('main first logs where it polls, with its interval', async () => {
+  await runUntilFirstAnswer();
 
   expect(output.lines.map((line) => JSON.parse(line))[0]).toMatchObject({
     level: 30,
@@ -106,10 +127,25 @@ test('main logs where it polls, asks the server, and returns on SIGTERM with no 
     url: 'http://server.test:4310',
     intervalMs: 10,
   });
+});
+
+test('main asks runner.next at the configured server URL', async () => {
+  const fetch = await runUntilFirstAnswer();
+
   expect(String(fetch.mock.calls[0]?.[0])).toBe(
     'http://server.test:4310/trpc/runner.next',
   );
+});
+
+test('main logs stopped on SIGTERM', async () => {
+  await runUntilFirstAnswer();
+
   expect(messages().at(-1)).toBe('stopped');
+});
+
+test('main returns on SIGTERM with no error code, without forcing an exit', async () => {
+  await runUntilFirstAnswer();
+
   expect(exit).not.toHaveBeenCalled();
   expect(process.exitCode).toBeUndefined();
 });

@@ -116,7 +116,7 @@ test('poll gets no task from the real server, request after request', async () =
 });
 
 // Covers AE2.
-test('poll logs each attempt against a port nothing listens on as no answer, and keeps going', async () => {
+test('poll logs every attempt against a port nothing listens on as no answer', async () => {
   const records = await pollUntil(await closedUrl(), (records) =>
     expect(records.length).toBeGreaterThanOrEqual(2),
   );

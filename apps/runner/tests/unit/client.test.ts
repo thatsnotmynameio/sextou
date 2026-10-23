@@ -55,21 +55,30 @@ test('timeoutFetch passes the request on with the rest of its options', async ()
   );
 });
 
-test('createClient asks runner.next at the server URL plus /trpc and returns its answer', async () => {
-  const fetch = vi.fn(async (_input: RequestInfo | URL) =>
+// A fetch that answers runner.next with no task, as the server does.
+function answeringFetch() {
+  return vi.fn(async (_input: RequestInfo | URL) =>
     Response.json({ result: { data: { task: null } } }),
   );
+}
+
+test('createClient asks runner.next at the server URL plus /trpc', async () => {
+  const fetch = answeringFetch();
   vi.stubGlobal('fetch', fetch);
 
-  const answer = await createClient(
-    'http://server.test:4310',
-    1000,
-  ).runner.next.query();
+  await createClient('http://server.test:4310', 1000).runner.next.query();
 
-  expect(answer).toEqual({ task: null });
   expect(String(fetch.mock.calls[0]?.[0])).toBe(
     'http://server.test:4310/trpc/runner.next',
   );
+});
+
+test('createClient returns the server’s answer to runner.next', async () => {
+  vi.stubGlobal('fetch', answeringFetch());
+
+  expect(
+    await createClient('http://server.test:4310', 1000).runner.next.query(),
+  ).toEqual({ task: null });
 });
 
 test('createClient gives up on a server that never answers once the request timeout passes', async () => {

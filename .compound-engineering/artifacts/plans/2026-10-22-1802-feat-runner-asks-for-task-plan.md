@@ -13,7 +13,7 @@ execution: code
 ## Goal Capsule
 
 - **Objective:** A runner on the user's machine asks the remote server for a task at a fixed interval and gets an answer, so the slice that executes tasks builds on a request path that already works.
-- **Means:** A new Node app, `apps/runner`, that calls a new `tasks.next` procedure on the server through the tRPC client, one request at a time (KTD1–KTD4).
+- **Means:** A new Node app, `apps/runner`, that calls a new `runner.next` procedure on the server through the tRPC client, one request at a time (KTD1–KTD4).
 - **Product authority:** This plan's brainstorm dialogue of 2026-10-22 and the planning synthesis the user confirmed the same day, which added that the interval is an environment variable. A throwaway prototype outside the repo, run the same day, informed it.
 - **Execution profile:** U1 can go first and alone. U2 to U5 follow their dependencies. U6 last, once the files it describes exist.
 - **Stop conditions:** Stop and report if the runner's typecheck can't follow `AppRouter` into the server's sources (KTD2), or if the integration test can't find the server's folder inside Stryker's sandbox through the package name (KTD7).
@@ -83,7 +83,7 @@ sextou has no way to send work to the user's machine. The server runs remotely, 
 
 - KTD1. **The runner is a Node package, `apps/runner` (`@sextou/runner`), laid out like the server's process files, and runs both from source and from a bundle.** Every gate in the repo (Vitest, Stryker, knip, oxlint) runs on Node, and the microsandbox SDK the next slice needs was a Node package with a native addon in the prototype. `main.ts`, `config.ts`, `logger.ts` and `env.d.ts` mirror `apps/server/src/`. The parsers it needs are copied from `apps/server/src/config.ts` (`parseTimeout`, `parseBoolean`, `parseLogLevel`) and `apps/web/settings.ts` (the URL parse): importing the server's runtime code would break knip and the dependency direction, and a shared package is out of scope. `dev` runs `tsx watch --env-file-if-exists=.env src/main.ts`, `build` bundles to `dist/runner.mjs` with Vite and Pino left external as the server does, and `start` runs the bundle. The root `build` script gains the runner. Governs R1.
 - KTD2. **The runner calls the server through `createTRPCClient<AppRouter>` with `httpLink` and a fetch that adds the request timeout.** `httpLink` sends one request per call, and the runner makes one call at a time. The timeout fetch is the web's `timeoutFetch` (`apps/web/src/trpc.ts`), copied: `httpLink` has no timeout of its own, and the fetch merges `AbortSignal.timeout` with the caller's signal, which also lets shutdown abort a request (KTD4). The runner imports `AppRouter` as a whole `import type` statement from `@sextou/server/router`, declares `@sextou/server` as a `workspace:*` dev dependency and `@trpc/client` as a dependency, as the web does. A new `.oxlintrc.json` override for `apps/runner/**` allows `@sextou/server` and `@sextou/server/*` only as types, since today's rule covers only `apps/web/**`. Node sends no `Origin`, so the server's CORS doesn't affect the runner. Governs R2, R3.
-- KTD3. **The server's procedure is `tasks.next`, a query whose output is `{ task: null }`.** It lives in a new module, `apps/server/src/modules/tasks/`, registered in `src/router.ts` under `tasks`. The output schema allows only `task: null`, so a later slice widens `task` without changing the outer shape. It is a query because it reads and changes nothing. The slice that hands out real tasks decides whether taking one becomes a mutation. The procedure reads nothing from the context, so `Context` doesn't change. Governs R4, R5.
+- KTD3. **The server's procedure is `runner.next`, a query whose output is `{ task: null }`.** It lives in a new module, `apps/server/src/modules/runner/`, registered in `src/router.ts` under `runner`. (session-settled: user-directed — chosen over `queue.next`, after `main` gained `apps/server/src/modules/tasks.ts`, the tasks service, which took the name `tasks`.) The output schema allows only `task: null`, so a later slice widens `task` without changing the outer shape. It is a query because it reads and changes nothing. The slice that hands out real tasks decides whether taking one becomes a mutation. The procedure reads nothing from the context, so `Context` doesn't change. Governs R4, R5.
 - KTD4. **The runner makes one request at a time and waits the interval after each one settles.** The loop asks, logs the answer or the failure, then sleeps for `SEXTOU_RUNNER_POLL_INTERVAL_MS` before asking again. Against a server that hangs, requests never pile up: one fails per request timeout plus interval. One `AbortSignal` stops the loop: it ends the sleep, aborts the request in flight, and an abort the runner caused is not logged as a failure. Governs R2, R3.
 - KTD5. **Every runner setting is a `SEXTOU_RUNNER_*` environment variable with a default, read in `config.ts`, listed in `apps/runner/.env.example`.** An invalid value is logged at the default level, names the variable, sets the exit code to 1, and the runner never asks, as the server's `main.ts` does. The interval is one of them, as the user asked.
 
@@ -135,9 +135,9 @@ One request, end to end:
 sequenceDiagram
   participant L as poll loop (apps/runner)
   participant C as tRPC client, httpLink + timeout fetch
-  participant S as server, /trpc/tasks.next
-  L->>C: tasks.next.query(signal)
-  C->>S: GET /trpc/tasks.next
+  participant S as server, /trpc/runner.next
+  L->>C: runner.next.query(signal)
+  C->>S: GET /trpc/runner.next
   S-->>C: { result: { data: { task: null } } }
   C-->>L: { task: null }
   L->>L: log "no task", wait the interval
@@ -181,25 +181,25 @@ apps/runner/
 
 ## Implementation Units
 
-### U1. Add the `tasks.next` procedure to the server
+### U1. Add the `runner.next` procedure to the server
 
-- **Goal:** The server answers `tasks.next` with `{ task: null }` to any caller.
+- **Goal:** The server answers `runner.next` with `{ task: null }` to any caller.
 - **Requirements:** R4, R5; KTD3.
 - **Dependencies:** none.
 - **Files:**
-  - `apps/server/src/modules/tasks/index.ts`, `tasks.router.ts`, `tasks.schema.ts` (new)
+  - `apps/server/src/modules/runner/index.ts`, `runner.router.ts`, `runner.schema.ts` (new)
   - `apps/server/src/router.ts`
-  - `apps/server/tests/unit/modules/tasks/tasks.router.test.ts` (new)
+  - `apps/server/tests/unit/modules/runner/runner.router.test.ts` (new)
   - `apps/server/tests/unit/app.test.ts`
 - **Approach:** Mirror `modules/health/`: the schema file holds the output schema, the router file `router({ next: procedure.output(…).query(…) })`, and `index.ts` exports the router. `router.ts` adds it as `tasks`.
 - **Patterns to follow:** `apps/server/src/modules/health/`, `apps/server/tests/unit/modules/health/health.router.test.ts` (the `caller` helper with a silent logger).
 - **Test scenarios:**
-  - `tasks.next` through `createCallerFactory(tasksRouter)` returns `{ task: null }`.
-  - `tasks.next` with a context that has no database and no version still returns `{ task: null }`, since it reads nothing from the context.
-  - `GET /trpc/tasks.next` through `createApp(…).request` answers 200 with `{ result: { data: { task: null } } }`.
-  - The batched form, `GET /trpc/tasks.next?batch=1&input=%7B%7D`, answers an array with the same data.
-  - `GET /trpc/tasks.next` with no `Origin` header still answers 200. Covers R5.
-- **Verification:** the server's unit suite passes at 90% per file, with `tasks.router.ts` and `tasks.schema.ts` covered.
+  - `runner.next` through `createCallerFactory(runnerRouter)` returns `{ task: null }`.
+  - `runner.next` with a context that has no database and no version still returns `{ task: null }`, since it reads nothing from the context.
+  - `GET /trpc/runner.next` through `createApp(…).request` answers 200 with `{ result: { data: { task: null } } }`.
+  - The batched form, `GET /trpc/runner.next?batch=1&input=%7B%7D`, answers an array with the same data.
+  - `GET /trpc/runner.next` with no `Origin` header still answers 200. Covers R5.
+- **Verification:** the server's unit suite passes at 90% per file, with `runner.router.ts` and `runner.schema.ts` covered.
 
 ### U2. Create the runner package and wire it into the repo's gates
 
@@ -233,7 +233,7 @@ apps/runner/
 
 ### U3. Build the client and the poll loop
 
-- **Goal:** The runner asks `tasks.next`, logs each answer or failure, and waits the interval after each request, until its signal aborts.
+- **Goal:** The runner asks `runner.next`, logs each answer or failure, and waits the interval after each request, until its signal aborts.
 - **Requirements:** R2, R3; AE1, AE2; KTD2, KTD4, KTD6.
 - **Dependencies:** U1, U2.
 - **Files:**
