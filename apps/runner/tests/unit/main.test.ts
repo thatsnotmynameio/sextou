@@ -105,7 +105,7 @@ test('main never asks the server when a variable is invalid', async () => {
 // Runs main against a server that answers no task, until its first answer,
 // then stops it with SIGTERM.
 async function runUntilFirstAnswer() {
-  const fetch = vi.fn(async (_input: RequestInfo | URL) =>
+  const fetch = vi.fn(async (_input: string | URL) =>
     Response.json({ result: { data: { task: null } } }),
   );
   vi.stubGlobal('fetch', fetch);

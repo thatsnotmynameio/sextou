@@ -57,7 +57,7 @@ test('timeoutFetch passes the request on with the rest of its options', async ()
 
 // A fetch that answers runner.next with no task, as the server does.
 function answeringFetch() {
-  return vi.fn(async (_input: RequestInfo | URL) =>
+  return vi.fn(async (_input: string | URL) =>
     Response.json({ result: { data: { task: null } } }),
   );
 }
