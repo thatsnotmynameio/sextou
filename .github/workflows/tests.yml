@@ -6,11 +6,19 @@
 # typescript.yml still runs the unit and integration suites through the root
 # vitest.config.ts; this moves there later. No check here is required yet.
 #
-# Mutation runs as in StrykerJS's own CI: in full on each push to main, and
-# incrementally on a pull request, from the newest result in the Actions
-# cache, which GitHub looks up in the pull request's scope first, then in
-# main's. A Dependabot pull request never saves, so it always starts from
-# main's result.
+# Only the packages a change reaches run: the packages it changed and those
+# that depend on them, which pnpm picks, against the pull request's base or
+# the commit main had before the push. A change outside the packages runs
+# every package, unless it touches only files no test reads, which the Matrix
+# step's ignore patterns list. A run with nothing to test skips the level and
+# mutation jobs, which a required check counts as passed; a paths filter on
+# the workflow would leave it pending instead.
+#
+# Mutation runs as in StrykerJS's own CI: in full on each push to main that
+# reaches the package, and incrementally on a pull request, from the newest
+# result in the Actions cache, which GitHub looks up in the pull request's
+# scope first, then in main's. A Dependabot pull request never saves, so it
+# always starts from main's result.
 name: Tests
 
 on:
@@ -44,10 +52,10 @@ env:
   pnpm_config_registry: https://registry.npmjs.org/
 
 jobs:
-  # The matrices of the jobs below, read from each workspace package's
-  # package.json: a "test:<level>" script is a level, "test:mutation" a
-  # mutation run. The root, whose scripts run every package, is no workspace
-  # package.
+  # The matrices of the jobs below, read from the package.json of each
+  # workspace package the change reaches: a "test:<level>" script is a level,
+  # "test:mutation" a mutation run. The root project, whose scripts run every
+  # package, is left out.
   packages:
     name: packages
     runs-on: ubuntu-latest
@@ -58,19 +66,49 @@ jobs:
       levels: ${{ steps.matrix.outputs.levels }}
       mutation: ${{ steps.matrix.outputs.mutation }}
     steps:
+      # The whole history, so git and pnpm find where the branch forked.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The shell expands pnpm-workspace.yaml's globs, read with yq; $dir and
-      # $package are jq's variables, not the shell's. shell: bash adds
-      # pipefail, and failglob fails on a glob that matches nothing, so a
-      # package.json jq can't read fails the step instead of dropping checks.
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      # pnpm lists the workspace without an install. A changed file outside
+      # the packages, .github/ included, selects the root project, which runs
+      # every package. A run with no base (a manual run, or a new branch,
+      # whose all-zero base is no commit) lists every package. $dir and
+      # $package are jq's variables, not the shell's; shell: bash adds
+      # pipefail.
       - name: Matrix
         id: matrix
         shell: bash
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
-          shopt -s failglob
-          manifests=$(yq '.packages[] + "/package.json"' pnpm-workspace.yaml)
+          all=$(pnpm ls --recursive --depth -1 --json)
+          projects=$all
+          if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2> /dev/null; then
+            projects=$(pnpm ls --recursive --depth -1 --json \
+              --filter "...[$BASE]" \
+              --changed-files-ignore-pattern '**/*.md' \
+              --changed-files-ignore-pattern '.compound-engineering/**' \
+              --changed-files-ignore-pattern '.husky/**' \
+              --changed-files-ignore-pattern '.oxlintrc*.json' \
+              --changed-files-ignore-pattern '.oxfmtrc.json' \
+              --changed-files-ignore-pattern '.gitignore' \
+              --changed-files-ignore-pattern 'LICENSE')
+          fi
+          # shellcheck disable=SC2016
+          manifests=$(jq -r --arg root "$PWD" --argjson all "$all" '
+              (if any(.[]; .path == $root) then $all end)
+              | .[].path | select(. != $root)
+              | ltrimstr($root + "/") + "/package.json"' <<< "$projects")
+          # With no package, jq reads nothing and writes empty lists.
           # shellcheck disable=SC2016,SC2086
           jq -nr '
               [inputs | (input_filename | rtrimstr("/package.json")) as $dir
@@ -79,7 +117,7 @@ jobs:
                 | {package: $package, level: ., dir: $dir}]
               | "levels=\(map(select(.level != "mutation")) | tojson)",
                 "mutation=\(map(select(.level == "mutation") | del(.level)) | tojson)"' \
-            $manifests \
+            $manifests < /dev/null \
             | tee -a "$GITHUB_OUTPUT"
 
   level:
