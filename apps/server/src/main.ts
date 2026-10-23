@@ -8,9 +8,10 @@ import packageJson from '../package.json';
 import { createApp } from './app';
 import { loadConfig, type Config } from './config';
 import { createDatabase } from './database';
+import { startLeaseSweep } from './lease-sweep';
 import { createLogger } from './logger';
-import { createTasksService } from './modules/tasks';
 import { startServer } from './server';
+import { createTasksService } from './tasks-service';
 
 const config = readConfig();
 if (config) {
@@ -61,23 +62,43 @@ async function serve(config: Config) {
   const tasks = createTasksService(config.tasksDb, {
     logger,
     migrationsFolder: tasksMigrations(),
+    leaseMs: config.leaseMs,
+    maxAttempts: config.maxAttempts,
+    timeoutMs: config.tasksTimeoutMs,
   });
-  await tasks.start().catch((error: unknown) => {
-    logger.error(
-      { path: config.tasksDb, err: error },
-      'Could not open the tasks database',
-    );
-  });
+  const tasksOpened = await tasks.start().then(
+    () => true,
+    (error: unknown) => {
+      logger.error(
+        { path: config.tasksDb, err: error },
+        'Could not open the tasks database',
+      );
+      return false;
+    },
+  );
   const database = createDatabase(config.database, config.databaseTimeoutMs);
   const app = createApp({
     version: packageJson.version,
     database: { ping: database.ping },
     dev: config.dev,
     logger,
+    tasks,
     webOrigin: config.webOrigin,
   });
+  // The server ends the attempts whose runner stopped renewing its lease,
+  // once the tasks database is open: a service that didn't open rejects
+  // every call until a restart.
+  const sweep = tasksOpened
+    ? startLeaseSweep({
+        expire: () => tasks.expire({ name: 'server' }),
+        intervalMs: config.leaseSweepMs,
+        leaseMs: config.leaseMs,
+        logger,
+      })
+    : undefined;
   const server = await startServer(app, config).catch(
     async (error: unknown) => {
+      await sweep?.stop();
       await tasks.stop();
       await database.close();
       throw error;
@@ -94,6 +115,7 @@ async function serve(config: Config) {
     process.off('SIGINT', shutdown);
     process.off('SIGTERM', shutdown);
     await server.close();
+    await sweep?.stop();
     await tasks.stop();
     await database.close();
     process.exit(0);

@@ -1,6 +1,9 @@
 import { expect, test } from 'vitest';
 import { createApp, type AppOptions } from '../../src/app';
 import { createLogger } from '../../src/logger';
+import { Refusal, type Tasks } from '../../src/tasks';
+import { memory } from '../logger';
+import { fakeTasks } from '../tasks';
 
 const webOrigin = 'http://localhost:5173';
 
@@ -10,6 +13,7 @@ function app(options: Partial<AppOptions> = {}) {
     database: { ping: async () => true },
     dev: false,
     logger: createLogger({ level: 'silent', pretty: false }),
+    tasks: fakeTasks(),
     webOrigin,
     ...options,
   });
@@ -131,4 +135,67 @@ test('a request without an id gets a logger bound to a new one', async () => {
     { requestId: expect.stringMatching(/^[0-9a-f-]{36}$/) },
   ]);
   expect(bindings[0]).not.toEqual(bindings[1]);
+});
+
+test('a heartbeat that lost its lease answers 409, with lease_lost in the error', async () => {
+  const response = await app({
+    tasks: fakeTasks({
+      renew: async () => ({ ok: false, refusal: Refusal.leaseLost }),
+    }),
+  }).request('/trpc/runners.heartbeat', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ executionId: 'exe_1' }),
+  });
+
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({
+    error: {
+      message: 'lease_lost',
+      data: { code: 'CONFLICT', httpStatus: 409, path: 'runners.heartbeat' },
+    },
+  });
+});
+
+// A heartbeat over an app whose logger writes to output, with the request id
+// it carries.
+function heartbeat(output: ReturnType<typeof memory>, tasks: Partial<Tasks>) {
+  return app({
+    logger: createLogger({ level: 'info', pretty: false }, output.destination),
+    tasks: fakeTasks(tasks),
+  }).request('/trpc/runners.heartbeat', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-request-id': 'req-1' },
+    body: JSON.stringify({ executionId: 'exe_1' }),
+  });
+}
+
+test('a procedure that fails logs the error under the request id', async () => {
+  const output = memory();
+
+  await heartbeat(output, {
+    renew: () => Promise.reject(new Error('disk I/O error')),
+  });
+
+  expect(output.records()).toEqual([
+    expect.objectContaining({
+      level: 50,
+      msg: 'Procedure failed',
+      requestId: 'req-1',
+      path: 'runners.heartbeat',
+      err: expect.objectContaining({
+        message: expect.stringContaining('disk I/O error'),
+      }),
+    }),
+  ]);
+});
+
+test('a refused call logs nothing', async () => {
+  const output = memory();
+
+  await heartbeat(output, {
+    renew: async () => ({ ok: false, refusal: Refusal.leaseLost }),
+  });
+
+  expect(output.records()).toEqual([]);
 });

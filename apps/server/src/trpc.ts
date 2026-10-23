@@ -1,4 +1,5 @@
-import { initTRPC } from '@trpc/server';
+import { initTRPC, TRPCError, type TRPC_ERROR_CODE_KEY } from '@trpc/server';
+import type { Refusal, Refused, Tasks } from './tasks';
 
 // One level of a logger: a message, or fields and then a message.
 interface LogMethod {
@@ -31,6 +32,34 @@ export interface Context {
   // Whether error responses carry the stack.
   dev: boolean;
   logger: Logger;
+  // The task graph and the runners' leases: main.ts passes the tasks
+  // service.
+  tasks: Tasks;
+}
+
+// The HTTP code of each refusal from the tasks.
+const refusalCodes = {
+  invalid: 'BAD_REQUEST',
+  not_found: 'NOT_FOUND',
+  not_open: 'CONFLICT',
+  lease_lost: 'CONFLICT',
+  already_finished: 'CONFLICT',
+  timeout: 'TIMEOUT',
+} as const satisfies Record<Refusal, TRPC_ERROR_CODE_KEY>;
+
+// A call's result when the tasks accepted it. A refusal throws its HTTP
+// error instead, with the refusal as the message, so a caller tells two
+// conflicts apart.
+export function accepted<T extends { ok: true }>(
+  result: T | Refused<Refusal>,
+): T {
+  if (!result.ok) {
+    throw new TRPCError({
+      code: refusalCodes[result.refusal],
+      message: result.refusal,
+    });
+  }
+  return result;
 }
 
 // isDev is false because tRPC's default reads NODE_ENV, which the bundle

@@ -112,6 +112,107 @@ test('openTasks applies the migrations of the folder it is given', async () => {
   expect(await tables(connection())).toEqual(['__drizzle_migrations']);
 });
 
+test('openTasks records times and leases by the clock it is given', async () => {
+  const tasks = await openTasks(':memory:', {
+    logger: pino({ level: 'silent' }),
+    now: () => 1_000,
+  });
+  opened.push(tasks);
+  const created = await tasks.createTask({
+    title: 'A',
+    kind: 'task',
+    priority: 2,
+    assignee: 'dev',
+    createdBy: 'planner',
+  });
+  if (!created.ok) {
+    throw new Error(`create: ${created.reason}`);
+  }
+  expect(
+    await tasks.claimTask({
+      claimId: 'claim-1',
+      assignees: ['dev'],
+      actor: 'bot',
+      leaseMs: 500,
+    }),
+  ).toMatchObject({ execution: { expiresAt: 1_500 } });
+  expect(
+    await connection().all('SELECT time_changed FROM task_status_changes'),
+  ).toEqual([{ time_changed: 1_000 }, { time_changed: 1_000 }]);
+});
+
+test('openTasks reads Date.now by default, at each call', async () => {
+  const tasks = await open(':memory:');
+  vi.spyOn(Date, 'now').mockReturnValue(2_000);
+  await tasks.createTask({
+    title: 'A',
+    kind: 'task',
+    priority: 2,
+    assignee: 'dev',
+    createdBy: 'planner',
+  });
+  expect(
+    await connection().all('SELECT time_changed FROM task_status_changes'),
+  ).toEqual([{ time_changed: 2_000 }]);
+});
+
+// Creates a task on a graph opened with this clock and timeout.
+async function createOn(now: () => number, timeoutMs?: number) {
+  const tasks = await openTasks(':memory:', {
+    logger: pino({ level: 'silent' }),
+    now,
+    timeoutMs,
+  });
+  opened.push(tasks);
+  const created = await tasks.createTask({
+    title: 'A',
+    kind: 'task',
+    priority: 2,
+    assignee: 'dev',
+    createdBy: 'planner',
+  });
+  const { n } = (await connection().get('SELECT count(*) AS n FROM tasks')) as {
+    n: number;
+  };
+  return { created, rows: n };
+}
+
+// Each read of the clock is 60 ms after the last: the deadline is read
+// first, then the lock is taken, then the change recorded, then the commit
+// checked.
+function ticking() {
+  let clock = 1_000;
+  return () => (clock += 60);
+}
+
+test('openTasks refuses a write that takes the lock past its timeout as timeout, writing nothing', async () => {
+  expect(await createOn(ticking(), 50)).toEqual({
+    created: { ok: false, reason: 'timeout' },
+    rows: 0,
+  });
+});
+
+test('openTasks rolls back a write that runs past its timeout as timeout', async () => {
+  expect(await createOn(ticking(), 150)).toEqual({
+    created: { ok: false, reason: 'timeout' },
+    rows: 0,
+  });
+});
+
+test('openTasks commits a write that ends at its timeout', async () => {
+  expect(await createOn(ticking(), 180)).toMatchObject({
+    created: { ok: true },
+    rows: 1,
+  });
+});
+
+test('openTasks sets no timeout by default', async () => {
+  expect(await createOn(ticking())).toMatchObject({
+    created: { ok: true },
+    rows: 1,
+  });
+});
+
 test('openTasks in memory opens a migrated, empty graph', async () => {
   await open(':memory:');
   expect(await tables(connection())).toEqual(taskTables);

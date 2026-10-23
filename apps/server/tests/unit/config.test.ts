@@ -19,6 +19,10 @@ test('loadConfig uses every default when no variable is set', () => {
     tasksDb: '/home/ana/.local/share/sextou/tasks.db',
     webOrigin: 'http://localhost:5173',
     databaseTimeoutMs: 20000,
+    tasksTimeoutMs: 20000,
+    leaseMs: 30000,
+    maxAttempts: 1,
+    leaseSweepMs: 5000,
     dev: false,
     logLevel: 'info',
   });
@@ -33,6 +37,10 @@ test('loadConfig takes every variable that is set', () => {
       SEXTOU_SERVER_TASKS_DB: '/t.db',
       SEXTOU_SERVER_WEB_ORIGIN: 'https://app.example',
       SEXTOU_SERVER_DATABASE_TIMEOUT_MS: '500',
+      SEXTOU_SERVER_TASKS_TIMEOUT_MS: '700',
+      SEXTOU_SERVER_LEASE_MS: '60000',
+      SEXTOU_SERVER_MAX_ATTEMPTS: '3',
+      SEXTOU_SERVER_LEASE_SWEEP_MS: '1000',
       SEXTOU_SERVER_DEV: 'true',
       SEXTOU_SERVER_LOG_LEVEL: 'debug',
     }),
@@ -43,10 +51,56 @@ test('loadConfig takes every variable that is set', () => {
     tasksDb: '/t.db',
     webOrigin: 'https://app.example',
     databaseTimeoutMs: 500,
+    tasksTimeoutMs: 700,
+    leaseMs: 60000,
+    maxAttempts: 3,
+    leaseSweepMs: 1000,
     dev: true,
     logLevel: 'debug',
   });
 });
+
+test.each([
+  ['SEXTOU_SERVER_TASKS_TIMEOUT_MS', 'tasksTimeoutMs'],
+  ['SEXTOU_SERVER_LEASE_MS', 'leaseMs'],
+  ['SEXTOU_SERVER_LEASE_SWEEP_MS', 'leaseSweepMs'],
+] as const)(
+  'loadConfig takes %s from 1 to 2147483647 milliseconds',
+  (name, key) => {
+    expect(load({ [name]: '1' })[key]).toBe(1);
+    expect(load({ [name]: '2147483647' })[key]).toBe(2147483647);
+  },
+);
+
+test.each([
+  ['SEXTOU_SERVER_TASKS_TIMEOUT_MS', '0'],
+  ['SEXTOU_SERVER_TASKS_TIMEOUT_MS', '2147483648'],
+  ['SEXTOU_SERVER_LEASE_MS', '0'],
+  ['SEXTOU_SERVER_LEASE_MS', '2147483648'],
+  ['SEXTOU_SERVER_LEASE_MS', '1.5'],
+  ['SEXTOU_SERVER_LEASE_SWEEP_MS', ''],
+  ['SEXTOU_SERVER_LEASE_SWEEP_MS', '-5'],
+])('loadConfig rejects %s=%j', (name, value) => {
+  expect(() => load({ [name]: value })).toThrow(
+    `Invalid ${name}: ${JSON.stringify(value)} (expected a whole number of milliseconds from 1 to 2147483647)`,
+  );
+});
+
+test('loadConfig takes SEXTOU_SERVER_MAX_ATTEMPTS up to the largest safe integer', () => {
+  expect(load({ SEXTOU_SERVER_MAX_ATTEMPTS: '1' }).maxAttempts).toBe(1);
+  expect(
+    load({ SEXTOU_SERVER_MAX_ATTEMPTS: '9007199254740991' }).maxAttempts,
+  ).toBe(9007199254740991);
+});
+
+test.each(['', '0', '-1', '1.5', 'abc', '9007199254740992'])(
+  'loadConfig rejects SEXTOU_SERVER_MAX_ATTEMPTS=%j',
+  (value) => {
+    expect(() => load({ SEXTOU_SERVER_MAX_ATTEMPTS: value })).toThrow(
+      `Invalid SEXTOU_SERVER_MAX_ATTEMPTS: ${JSON.stringify(value)} (expected a whole number of attempts from 1)`,
+    );
+  },
+);
 
 test('loadConfig accepts port 0, for a port the system picks', () => {
   expect(load({ SEXTOU_SERVER_PORT: '0' }).port).toBe(0);

@@ -28,6 +28,16 @@ export interface Config {
   // database as down. Below the web app's request timeout, so a database
   // that hangs shows as down rather than as a server that can't be reached.
   databaseTimeoutMs: number;
+  // How long a call to the tasks database may take: one past it writes
+  // nothing. Below the web app's request timeout, as databaseTimeoutMs.
+  tasksTimeoutMs: number;
+  // How long a runner's lease on a task lasts unless renewed.
+  leaseMs: number;
+  // How many attempts a task gets before an expired lease fails it: 1 fails
+  // it at the first.
+  maxAttempts: number;
+  // How often the server ends the attempts whose lease expired.
+  leaseSweepMs: number;
   // Whether error responses carry the stack.
   dev: boolean;
   // The lowest level the logger writes.
@@ -95,6 +105,18 @@ export function loadConfig(
       parseTimeout,
       () => 20000,
     ),
+    tasksTimeoutMs: read(
+      'SEXTOU_SERVER_TASKS_TIMEOUT_MS',
+      parseTimeout,
+      () => 20000,
+    ),
+    leaseMs: read('SEXTOU_SERVER_LEASE_MS', parseTimeout, () => 30000),
+    maxAttempts: read('SEXTOU_SERVER_MAX_ATTEMPTS', parseAttempts, () => 1),
+    leaseSweepMs: read(
+      'SEXTOU_SERVER_LEASE_SWEEP_MS',
+      parseTimeout,
+      () => 5000,
+    ),
     dev: read('SEXTOU_SERVER_DEV', parseBoolean, () => false),
     logLevel: read('SEXTOU_SERVER_LOG_LEVEL', parseLogLevel, () => 'info'),
   };
@@ -154,18 +176,38 @@ function parseOrigin(value: string, name: string): string {
   return url.origin;
 }
 
-// Only digits, from 1 millisecond to the longest delay setTimeout takes: a
-// longer one fires after 1 ms, which would report the database down.
-function parseTimeout(value: string, name: string): number {
-  const ms = Number(value);
-  if (!/^\d+$/.test(value) || ms === 0 || ms > 2147483647) {
-    throw invalid(
-      name,
-      value,
-      'a whole number of milliseconds from 1 to 2147483647',
-    );
+// Only digits, from 1 to max.
+function parseCount(
+  value: string,
+  name: string,
+  max: number,
+  expected: string,
+): number {
+  const count = Number(value);
+  if (!/^\d+$/.test(value) || count === 0 || count > max) {
+    throw invalid(name, value, expected);
   }
-  return ms;
+  return count;
+}
+
+// Up to the longest delay setTimeout takes: a longer one fires after 1 ms,
+// which would report the database down or sweep leases nonstop.
+function parseTimeout(value: string, name: string): number {
+  return parseCount(
+    value,
+    name,
+    2147483647,
+    'a whole number of milliseconds from 1 to 2147483647',
+  );
+}
+
+function parseAttempts(value: string, name: string): number {
+  return parseCount(
+    value,
+    name,
+    Number.MAX_SAFE_INTEGER,
+    'a whole number of attempts from 1',
+  );
 }
 
 function parseBoolean(value: string, name: string): boolean {

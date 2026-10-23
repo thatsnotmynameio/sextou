@@ -1,10 +1,14 @@
 import { expect, test } from 'vitest';
 import {
+  assignTaskSchema,
+  cancelTaskSchema,
+  claimTaskSchema,
   createTaskSchema,
+  expireExecutionsSchema,
   finishTaskSchema,
   linkSchema,
   listReadySchema,
-  startTaskSchema,
+  renewExecutionSchema,
   unlinkSchema,
 } from '../../src/schemas';
 import { Status } from '../../src/status';
@@ -63,38 +67,102 @@ test.each([linkSchema, unlinkSchema])(
   },
 );
 
-test('startTaskSchema outputs a start with its texts trimmed', () => {
+test.each([1, 2_147_483_647])(
+  'the lease schemas accept a lease of %d milliseconds',
+  (leaseMs) => {
+    expect(
+      claimTaskSchema.parse({
+        claimId: 'claim-1',
+        assignees: ['dev'],
+        actor: 'bot',
+        leaseMs,
+      }),
+    ).toMatchObject({ leaseMs });
+    expect(
+      renewExecutionSchema.parse({ executionId: 'exe_1', leaseMs }),
+    ).toEqual({ executionId: 'exe_1', leaseMs });
+  },
+);
+
+test.each([0, 2_147_483_648, 1.5])(
+  'the lease schemas refuse a lease of %d milliseconds',
+  (leaseMs) => {
+    expect(
+      claimTaskSchema.safeParse({
+        claimId: 'claim-1',
+        assignees: ['dev'],
+        actor: 'bot',
+        leaseMs,
+      }).success,
+    ).toBe(false);
+    expect(
+      renewExecutionSchema.safeParse({ executionId: 'exe_1', leaseMs }).success,
+    ).toBe(false);
+  },
+);
+
+test('claimTaskSchema outputs the claim id, the assignees and the actor trimmed', () => {
   expect(
-    startTaskSchema.parse({
-      id: 'tsk_1',
-      changedBy: ' orchestrator ',
-      actor: ' bot-dev-1 ',
-      logPath: ' ./logs/1.log ',
+    claimTaskSchema.parse({
+      claimId: ' claim-1 ',
+      assignees: [' dev ', 'qa'],
+      actor: ' runner-1 ',
+      leaseMs: 30_000,
     }),
   ).toEqual({
-    id: 'tsk_1',
-    changedBy: 'orchestrator',
-    actor: 'bot-dev-1',
-    logPath: './logs/1.log',
+    claimId: 'claim-1',
+    assignees: ['dev', 'qa'],
+    actor: 'runner-1',
+    leaseMs: 30_000,
   });
 });
 
 test('finishTaskSchema outputs a finish with its texts trimmed and blank ones as null', () => {
   expect(
     finishTaskSchema.parse({
-      id: 'tsk_1',
+      executionId: 'exe_1',
       changedBy: ' bot-dev-1 ',
-      status: Status.skipped,
+      status: Status.cancelled,
       reason: ' Done elsewhere. ',
       resultPath: '  ',
     }),
   ).toEqual({
-    id: 'tsk_1',
+    executionId: 'exe_1',
     changedBy: 'bot-dev-1',
-    status: Status.skipped,
+    status: Status.cancelled,
     reason: 'Done elsewhere.',
     resultPath: null,
   });
+});
+
+test('cancelTaskSchema outputs a cancel with its texts trimmed and a blank reason as null', () => {
+  expect(
+    cancelTaskSchema.parse({
+      id: 'tsk_1',
+      changedBy: ' planner ',
+      reason: ' ',
+    }),
+  ).toEqual({ id: 'tsk_1', changedBy: 'planner', reason: null });
+});
+
+test('assignTaskSchema outputs the assignee and who changed it trimmed', () => {
+  expect(
+    assignTaskSchema.parse({
+      id: 'tsk_1',
+      assignee: ' qa ',
+      changedBy: ' planner ',
+    }),
+  ).toEqual({ id: 'tsk_1', assignee: 'qa', changedBy: 'planner' });
+});
+
+test('expireExecutionsSchema accepts one attempt or more, and refuses none', () => {
+  expect(
+    expireExecutionsSchema.parse({ maxAttempts: 1, changedBy: ' server ' }),
+  ).toEqual({ maxAttempts: 1, changedBy: 'server' });
+  expect(
+    expireExecutionsSchema.safeParse({ maxAttempts: 0, changedBy: 'server' })
+      .success,
+  ).toBe(false);
 });
 
 test('listReadySchema outputs the assignees trimmed', () => {

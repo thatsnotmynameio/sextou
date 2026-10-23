@@ -12,12 +12,9 @@ import {
 } from 'vitest';
 import packageJson from '../../package.json';
 import { createDatabase, type Database } from '../../src/database';
-import {
-  createTasksService,
-  type NewTask,
-  type TasksService,
-} from '../../src/modules/tasks';
 import { startServer } from '../../src/server';
+import type { NewTask } from '../../src/tasks';
+import { createTasksService, type TasksService } from '../../src/tasks-service';
 
 // main reads the home directory from node:os, which in a worker thread
 // ignores a stubbed HOME. Each test points it at its own temporary directory,
@@ -70,7 +67,7 @@ function records(): unknown[] {
 
 // The real service, watched so each test can reach the one main created and
 // see when its start settled.
-vi.mock(import('../../src/modules/tasks'), async (importOriginal) => {
+vi.mock(import('../../src/tasks-service'), async (importOriginal) => {
   const service = await importOriginal();
   return {
     createTasksService: vi.fn(
@@ -91,6 +88,9 @@ const variables = [
   'SEXTOU_SERVER_TASKS_DB',
   'SEXTOU_SERVER_WEB_ORIGIN',
   'SEXTOU_SERVER_DATABASE_TIMEOUT_MS',
+  'SEXTOU_SERVER_LEASE_MS',
+  'SEXTOU_SERVER_MAX_ATTEMPTS',
+  'SEXTOU_SERVER_LEASE_SWEEP_MS',
   'SEXTOU_SERVER_DEV',
   'SEXTOU_SERVER_LOG_LEVEL',
   'XDG_DATA_HOME',
@@ -146,6 +146,9 @@ beforeEach(() => {
   }
   // A test that looks at the tasks database's file sets its own path.
   vi.stubEnv('SEXTOU_SERVER_TASKS_DB', ':memory:');
+  // No sweep fires unless a test asks for one, so none outlives its test
+  // and writes into the next one's records.
+  vi.stubEnv('SEXTOU_SERVER_LEASE_SWEEP_MS', '2147483647');
   on = vi.spyOn(process, 'on').mockImplementation(() => process);
   off = vi.spyOn(process, 'off').mockImplementation(() => process);
   exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
@@ -252,7 +255,9 @@ test.runIf(process.platform === 'linux')(
 
     expect(createTasksService).toHaveBeenCalledWith(
       join(dir, '.local/share/sextou/tasks.db'),
-      { logger: expect.objectContaining({ error: expect.any(Function) }) },
+      expect.objectContaining({
+        logger: expect.objectContaining({ error: expect.any(Function) }),
+      }),
     );
     expect(existsSync(join(dir, '.local/share/sextou/tasks.db'))).toBe(true);
   },
@@ -272,6 +277,9 @@ test('starts the tasks service at SEXTOU_SERVER_TASKS_DB before listening', asyn
 
   expect(createTasksService).toHaveBeenCalledWith(path, {
     logger: expect.objectContaining({ error: expect.any(Function) }),
+    leaseMs: 30000,
+    maxAttempts: 1,
+    timeoutMs: 20000,
   });
   expect(startedAtListen).toBe('fulfilled');
   expect(await tasksService().create(newTask)).toMatchObject({ ok: true });
@@ -332,6 +340,18 @@ test('the tasks service rejects its calls when the tasks database does not open'
   await expect(tasksService().create(newTask)).rejects.toThrow(
     'File is not a database',
   );
+});
+
+test('sweeps no lease when the tasks database does not open', async () => {
+  brokenTasksDb();
+  vi.stubEnv('SEXTOU_SERVER_LEASE_MS', '20');
+  vi.stubEnv('SEXTOU_SERVER_LEASE_SWEEP_MS', '5');
+  await import('../../src/main');
+  const expire = vi.spyOn(tasksService(), 'expire');
+
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  expect(expire).not.toHaveBeenCalled();
 });
 
 test('a restart once the tasks database is fixed gives a service that works', async () => {
@@ -458,6 +478,101 @@ test.each([
     expect('stack' in error.data).toBe(stack);
   },
 );
+
+test('hands the tasks service the lease length, the attempts and the timeout from the environment', async () => {
+  vi.stubEnv('SEXTOU_SERVER_LEASE_MS', '60000');
+  vi.stubEnv('SEXTOU_SERVER_MAX_ATTEMPTS', '3');
+  vi.stubEnv('SEXTOU_SERVER_TASKS_TIMEOUT_MS', '1500');
+
+  await import('../../src/main');
+
+  expect(createTasksService).toHaveBeenCalledWith(
+    ':memory:',
+    expect.objectContaining({
+      leaseMs: 60000,
+      maxAttempts: 3,
+      timeoutMs: 1500,
+    }),
+  );
+});
+
+// A tRPC mutation over the app main served.
+async function mutate(path: string, input: unknown) {
+  const response = await servedApp().request(`/trpc/${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  return ((await response.json()) as { result: { data: unknown } }).result.data;
+}
+
+test('serves the tasks and the runners procedures over the tasks service', async () => {
+  await import('../../src/main');
+
+  const created = (await mutate('tasks.create', {
+    title: 'Write the tests',
+    kind: 'task',
+    priority: 2,
+    assignee: 'dev',
+    createdBy: 'planner',
+  })) as { id: string };
+  const claimed = await mutate('runners.claim', {
+    claimId: 'claim-1',
+    runner: 'runner-1',
+    assignees: ['dev'],
+  });
+
+  expect(claimed).toMatchObject({
+    task: { id: created.id, status: 'running' },
+    execution: { attempt: 1, leaseMs: 30000 },
+  });
+});
+
+// The sweep starts ending leases a whole lease after the server starts, and
+// takes a sweep a third of a lease late as a pause: the lease is long enough
+// that a timer's jitter never counts as one.
+test('ends expired leases every SEXTOU_SERVER_LEASE_SWEEP_MS, logging each task it failed', async () => {
+  vi.stubEnv('SEXTOU_SERVER_LEASE_MS', '300');
+  vi.stubEnv('SEXTOU_SERVER_LEASE_SWEEP_MS', '20');
+  await import('../../src/main');
+  const tasks = tasksService();
+  const created = await tasks.create(newTask);
+  await tasks.claim({
+    claimId: 'claim-1',
+    runner: { name: 'runner-1' },
+    assignees: [{ name: 'dev' }],
+  });
+
+  await vi.waitFor(() => {
+    expect(records()).toContainEqual(
+      expect.objectContaining({
+        level: 40,
+        msg: 'Failed a task whose lease expired',
+        taskId: created.ok && created.task.id,
+        attempt: 1,
+        status: 'failed',
+      }),
+    );
+  });
+  await handler('SIGTERM')();
+});
+
+test('stops sweeping on shutdown', async () => {
+  vi.stubEnv('SEXTOU_SERVER_LEASE_MS', '150');
+  vi.stubEnv('SEXTOU_SERVER_LEASE_SWEEP_MS', '5');
+  await import('../../src/main');
+  const tasks = tasksService();
+  const expire = vi.spyOn(tasks, 'expire');
+  await vi.waitFor(() => {
+    expect(expire).toHaveBeenCalled();
+  });
+
+  await handler('SIGTERM')();
+  const calls = expire.mock.calls.length;
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  expect(expire).toHaveBeenCalledTimes(calls);
+});
 
 test('gives the database the configured timeout', async () => {
   vi.stubEnv('SEXTOU_SERVER_DATABASE', ':memory:');
