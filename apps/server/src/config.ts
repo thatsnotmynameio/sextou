@@ -28,6 +28,13 @@ export interface Config {
   // database as down. Below the web app's request timeout, so a database
   // that hangs shows as down rather than as a server that can't be reached.
   databaseTimeoutMs: number;
+  // How long a runner's lease on a task lasts unless renewed.
+  leaseMs: number;
+  // How many attempts a task gets before an expired lease fails it: 1 fails
+  // it at the first.
+  maxAttempts: number;
+  // How often the server ends the attempts whose lease expired.
+  leaseSweepMs: number;
   // Whether error responses carry the stack.
   dev: boolean;
   // The lowest level the logger writes.
@@ -95,6 +102,13 @@ export function loadConfig(
       parseTimeout,
       () => 20000,
     ),
+    leaseMs: read('SEXTOU_SERVER_LEASE_MS', parseTimeout, () => 30000),
+    maxAttempts: read('SEXTOU_SERVER_MAX_ATTEMPTS', parseAttempts, () => 1),
+    leaseSweepMs: read(
+      'SEXTOU_SERVER_LEASE_SWEEP_MS',
+      parseTimeout,
+      () => 5000,
+    ),
     dev: read('SEXTOU_SERVER_DEV', parseBoolean, () => false),
     logLevel: read('SEXTOU_SERVER_LOG_LEVEL', parseLogLevel, () => 'info'),
   };
@@ -155,7 +169,8 @@ function parseOrigin(value: string, name: string): string {
 }
 
 // Only digits, from 1 millisecond to the longest delay setTimeout takes: a
-// longer one fires after 1 ms, which would report the database down.
+// longer one fires after 1 ms, which would report the database down or sweep
+// leases nonstop.
 function parseTimeout(value: string, name: string): number {
   const ms = Number(value);
   if (!/^\d+$/.test(value) || ms === 0 || ms > 2147483647) {
@@ -166,6 +181,19 @@ function parseTimeout(value: string, name: string): number {
     );
   }
   return ms;
+}
+
+// Only digits, from 1 attempt to the largest safe integer.
+function parseAttempts(value: string, name: string): number {
+  const attempts = Number(value);
+  if (
+    !/^\d+$/.test(value) ||
+    attempts === 0 ||
+    !Number.isSafeInteger(attempts)
+  ) {
+    throw invalid(name, value, 'a whole number of attempts from 1');
+  }
+  return attempts;
 }
 
 function parseBoolean(value: string, name: string): boolean {

@@ -20,6 +20,9 @@ export interface OpenTasksOptions {
   // caller whose bundle carries this package without its files. The
   // package's own folder by default.
   migrationsFolder?: string;
+  // The clock, in milliseconds since the epoch, for every recorded time and
+  // lease: Date.now by default.
+  now?: () => number;
 }
 
 // Opens the task graph kept in the database file at an absolute path, or in
@@ -29,7 +32,11 @@ export interface OpenTasksOptions {
 // while a write is in progress, and refuses a second process.
 export async function openTasks(
   path: string,
-  { logger, migrationsFolder = packageMigrations }: OpenTasksOptions,
+  {
+    logger,
+    migrationsFolder = packageMigrations,
+    now = () => Date.now(),
+  }: OpenTasksOptions,
 ): Promise<Tasks> {
   if (path !== ':memory:') {
     restrictToOwner(path);
@@ -49,5 +56,5 @@ export async function openTasks(
     throw error;
   }
 
-  return { ...createGraph(db, logger), close: () => client.close() };
+  return { ...createGraph(db, logger, now), close: () => client.close() };
 }

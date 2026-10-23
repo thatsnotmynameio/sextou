@@ -37,19 +37,44 @@ export const linkSchema = z.object({ taskId: id, blockerId: id });
 
 export const unlinkSchema = linkSchema;
 
-export const startTaskSchema = z.object({
-  id,
-  changedBy: label,
+// How long a lease lasts, in milliseconds: from one to the longest delay
+// setTimeout takes, which keeps every expiry a safe integer.
+const duration = integer.min(1).max(2_147_483_647);
+
+export const claimTaskSchema = z.object({
+  assignees: z.array(label).min(1),
   actor: label,
-  logPath: optional,
+  leaseMs: duration,
+});
+
+export const renewExecutionSchema = z.object({
+  executionId: id,
+  leaseMs: duration,
 });
 
 export const finishTaskSchema = z.object({
-  id,
+  executionId: id,
   changedBy: label,
   status: z.enum(finalStatuses),
   reason: optional,
   resultPath: optional,
+});
+
+export const cancelTaskSchema = z.object({
+  id,
+  changedBy: label,
+  reason: optional,
+});
+
+export const assignTaskSchema = z.object({
+  id,
+  assignee: label,
+  changedBy: label,
+});
+
+export const expireExecutionsSchema = z.object({
+  maxAttempts: integer.min(1),
+  changedBy: label,
 });
 
 export const listReadySchema = z.object({

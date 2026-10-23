@@ -112,6 +112,45 @@ test('openTasks applies the migrations of the folder it is given', async () => {
   expect(await tables(connection())).toEqual(['__drizzle_migrations']);
 });
 
+test('openTasks records times and leases by the clock it is given', async () => {
+  const tasks = await openTasks(':memory:', {
+    logger: pino({ level: 'silent' }),
+    now: () => 1_000,
+  });
+  opened.push(tasks);
+  const created = await tasks.createTask({
+    title: 'A',
+    kind: 'task',
+    priority: 2,
+    assignee: 'dev',
+    createdBy: 'planner',
+  });
+  if (!created.ok) {
+    throw new Error(`create: ${created.reason}`);
+  }
+  expect(
+    await tasks.claimTask({ assignees: ['dev'], actor: 'bot', leaseMs: 500 }),
+  ).toMatchObject({ execution: { expiresAt: 1_500 } });
+  expect(
+    await connection().all('SELECT time_changed FROM task_status_changes'),
+  ).toEqual([{ time_changed: 1_000 }, { time_changed: 1_000 }]);
+});
+
+test('openTasks reads Date.now by default, at each call', async () => {
+  const tasks = await open(':memory:');
+  vi.spyOn(Date, 'now').mockReturnValue(2_000);
+  await tasks.createTask({
+    title: 'A',
+    kind: 'task',
+    priority: 2,
+    assignee: 'dev',
+    createdBy: 'planner',
+  });
+  expect(
+    await connection().all('SELECT time_changed FROM task_status_changes'),
+  ).toEqual([{ time_changed: 2_000 }]);
+});
+
 test('openTasks in memory opens a migrated, empty graph', async () => {
   await open(':memory:');
   expect(await tables(connection())).toEqual(taskTables);

@@ -3,6 +3,7 @@ import { expect, test } from 'vitest';
 import { createLogger } from '../../../../src/logger';
 import { healthRouter } from '../../../../src/modules/health/health.router';
 import { createCallerFactory, type Context } from '../../../../src/trpc';
+import { fakeTasks } from '../../../tasks';
 
 const createCaller = createCallerFactory(healthRouter);
 
@@ -12,6 +13,7 @@ function caller(context: Partial<Context> = {}) {
     database: { ping: async () => true },
     dev: false,
     logger: createLogger({ level: 'silent', pretty: false }),
+    tasks: fakeTasks(),
     ...context,
   });
 }

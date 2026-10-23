@@ -1,11 +1,13 @@
-// A task's states: open, then running, then a final one. running never
-// returns to open.
+// A task's states: open, then running, then a final one. A running task
+// returns to open only when its lease expires with attempts left; an open one
+// may also be cancelled before it runs.
 export const Status = {
   open: 'open',
   running: 'running',
   succeeded: 'succeeded',
   failed: 'failed',
   skipped: 'skipped',
+  cancelled: 'cancelled',
 } as const;
 
 export type Status = (typeof Status)[keyof typeof Status];
@@ -15,12 +17,13 @@ export const finalStatuses = [
   Status.succeeded,
   Status.failed,
   Status.skipped,
+  Status.cancelled,
 ] as const;
 
 export type FinalStatus = (typeof finalStatuses)[number];
 
-// succeeded and skipped free the tasks a task blocks; failed keeps them
-// waiting.
+// succeeded and skipped free the tasks a task blocks; failed and cancelled
+// keep them waiting.
 const freeing: ReadonlySet<unknown> = new Set<Status>([
   Status.succeeded,
   Status.skipped,

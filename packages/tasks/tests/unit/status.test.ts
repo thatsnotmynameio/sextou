@@ -10,11 +10,12 @@ test('Status gives each state its own value', () => {
   expect(new Set(values).size).toBe(values.length);
 });
 
-test('finalStatuses lists succeeded, failed and skipped', () => {
+test('finalStatuses lists succeeded, failed, skipped and cancelled', () => {
   expect(finalStatuses).toEqual([
     Status.succeeded,
     Status.failed,
     Status.skipped,
+    Status.cancelled,
   ]);
 });
 
@@ -25,7 +26,7 @@ test.each([Status.succeeded, Status.skipped])(
   },
 );
 
-test.each([Status.open, Status.running, Status.failed])(
+test.each([Status.open, Status.running, Status.failed, Status.cancelled])(
   'holds is true for %s, which keeps the tasks it blocks waiting',
   (status) => {
     expect(holds(status)).toBe(true);

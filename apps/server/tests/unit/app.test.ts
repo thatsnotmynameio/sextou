@@ -1,6 +1,8 @@
 import { expect, test } from 'vitest';
 import { createApp, type AppOptions } from '../../src/app';
 import { createLogger } from '../../src/logger';
+import { Refusal } from '../../src/tasks';
+import { fakeTasks } from '../tasks';
 
 const webOrigin = 'http://localhost:5173';
 
@@ -10,6 +12,7 @@ function app(options: Partial<AppOptions> = {}) {
     database: { ping: async () => true },
     dev: false,
     logger: createLogger({ level: 'silent', pretty: false }),
+    tasks: fakeTasks(),
     webOrigin,
     ...options,
   });
@@ -131,4 +134,24 @@ test('a request without an id gets a logger bound to a new one', async () => {
     { requestId: expect.stringMatching(/^[0-9a-f-]{36}$/) },
   ]);
   expect(bindings[0]).not.toEqual(bindings[1]);
+});
+
+test('a heartbeat that lost its lease answers 409, with lease_lost in the error', async () => {
+  const response = await app({
+    tasks: fakeTasks({
+      renew: async () => ({ ok: false, refusal: Refusal.leaseLost }),
+    }),
+  }).request('/trpc/runners.heartbeat', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ executionId: 'exe_1' }),
+  });
+
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({
+    error: {
+      message: 'lease_lost',
+      data: { code: 'CONFLICT', httpStatus: 409, path: 'runners.heartbeat' },
+    },
+  });
 });

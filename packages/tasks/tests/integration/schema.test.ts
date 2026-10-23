@@ -75,17 +75,58 @@ test('the schema lets a link be refused twice, deleted, and refused for a missin
   ).toMatchObject({ changes: 1 });
 });
 
-test("the schema lets an execution's result path be updated", async () => {
+test("the schema lets an execution's result path and lease be updated", async () => {
   const client = connection();
   await client.exec(
-    "INSERT INTO tasks (id, title, kind, priority, assignee, status) VALUES ('a', 'A', 'task', 2, 'dev', 'running'); INSERT INTO task_executions (task_id, actor) VALUES ('a', 'bot')",
+    "INSERT INTO tasks (id, title, kind, priority, assignee, status) VALUES ('a', 'A', 'task', 2, 'dev', 'running'); INSERT INTO task_executions (id, task_id, attempt, actor, expires_at) VALUES ('e', 'a', 1, 'bot', 5)",
   );
   await client.run(
-    "UPDATE task_executions SET result_path = 'out' WHERE task_id = 'a'",
+    "UPDATE task_executions SET result_path = 'out', expires_at = NULL WHERE id = 'e'",
   );
   expect(await client.all('SELECT * FROM task_executions')).toEqual([
-    { task_id: 'a', actor: 'bot', log_path: null, result_path: 'out' },
+    {
+      id: 'e',
+      task_id: 'a',
+      attempt: 1,
+      actor: 'bot',
+      log_path: null,
+      result_path: 'out',
+      expires_at: null,
+      cancel_requested_by: null,
+      cancel_reason: null,
+    },
   ]);
+});
+
+function insertExecution(id: string, attempt: number) {
+  return connection().run(
+    "INSERT INTO task_executions (id, task_id, attempt, actor) VALUES (?, 'a', ?, 'bot')",
+    id,
+    attempt,
+  );
+}
+
+test("the schema numbers a task's attempts from 1, once each", async () => {
+  await connection().exec(
+    "INSERT INTO tasks (id, title, kind, priority, assignee, status) VALUES ('a', 'A', 'task', 2, 'dev', 'running')",
+  );
+  await expect(insertExecution('e0', 0)).rejects.toThrow(
+    /CHECK constraint failed/,
+  );
+  await insertExecution('e1', 1);
+  await expect(insertExecution('e2', 1)).rejects.toThrow(
+    'UNIQUE constraint failed',
+  );
+  await insertExecution('e2', 2);
+  expect(
+    await connection().all('SELECT id FROM task_executions ORDER BY attempt'),
+  ).toEqual([{ id: 'e1' }, { id: 'e2' }]);
+});
+
+test('the schema refuses an execution of a missing task', async () => {
+  await expect(insertExecution('e1', 1)).rejects.toThrow(
+    'FOREIGN KEY constraint failed',
+  );
 });
 
 // A name that is not one of the states.
