@@ -17,3 +17,8 @@ overrides:
   # all fixed by 6.16.0, a minor release of the same major. typed-rest-client 3
   # moved to qs ^6.16.0 itself.
   typed-rest-client>qs: ^6.16.1
+  # @go-task/cli downloads go-task through proxy-agent, whose get-uri asks
+  # for basic-ftp ^5.3.1: GHSA-c475-qrg2-pj4r, fixed only by 6.2.1. 6.0.0's
+  # one breaking change turns off separate transfer hosts, which get-uri
+  # doesn't use.
+  get-uri>basic-ftp: ^6.2.3

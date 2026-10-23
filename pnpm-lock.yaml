@@ -7,6 +7,7 @@ settings:
 overrides:
   semver@^6.0.0: ^7.8.5
   typed-rest-client>qs: ^6.16.1
+  get-uri>basic-ftp: ^6.2.3
 
 importers:
 
@@ -2676,8 +2677,8 @@ packages:
     engines: {node: '>=6.0.0'}
     hasBin: true
 
-  basic-ftp@5.3.1:
-    resolution: {integrity: sha512-bopVNp6ugyA150DDuZfPFdt1KZ5a94ZDiwX4hMgZDzF+GttD80lEy8kj98kbyhLXnPvhtIo93mdnLIjpCAeeOw==}
+  basic-ftp@6.2.3:
+    resolution: {integrity: sha512-T7GYtQ2eKJUN5YORG7A8u2WfB9JMN0a4/wl3MI64qq2qTRfa3FXzoNq0DDojZDkDyStcL+TkfKsz4JHEZx5kGQ==}
     engines: {node: '>=10.0.0'}
 
   bidi-js@1.1.0:
@@ -7090,7 +7091,7 @@ snapshots:
 
   baseline-browser-mapping@2.11.29: {}
 
-  basic-ftp@5.3.1: {}
+  basic-ftp@6.2.3: {}
 
   bidi-js@1.1.0:
     dependencies:
@@ -7608,7 +7609,7 @@ snapshots:
 
   get-uri@8.0.1(supports-color@7.2.0):
     dependencies:
-      basic-ftp: 5.3.1
+      basic-ftp: 6.2.3
       data-uri-to-buffer: 8.0.0
       debug: 4.4.3(supports-color@7.2.0)
     transitivePeerDependencies:
