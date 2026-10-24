@@ -23,7 +23,7 @@ One command checks the whole flow, against a server it starts through the `run-s
 node .claude/skills/run-runner/driver.mjs smoke
 ```
 
-It prints one `ok`/`FAIL` line per step and exits 1 at the first wrong one, in about 7 s. It touches neither driver's state file, so it runs beside a server or runner you started, and it drops every `SEXTOU_*` variable from your shell, so an exported setting doesn't change it. A step that throws fails the smoke and stops what it started. Steps:
+It prints one `ok`/`FAIL` line per step and exits 1 at the first wrong one, in about 7 s. It touches neither driver's state file, so it runs beside a server or runner you started, and it drops every `SEXTOU_*` variable from your shell but `SEXTOU_RUNNER_TASK_BIN`, so an exported setting doesn't change it. A step that throws fails the smoke and stops what it started. Steps:
 
 1. The runner against a port nothing listens on logs `claim failed`, `failure: no_answer`.
 2. Server listening, runner started.
@@ -73,7 +73,7 @@ node .claude/skills/run-runner/driver.mjs stop
 node $S stop
 ```
 
-To see the runner ride out a server restart, give the server a fixed port (verified with `SEXTOU_SERVER_PORT=4391`, `SEXTOU_SERVER_DATA_DIR` set to a folder and kept, a 1500 ms lease): stop the server after `claimed`, start it again at once, within the stub's 2 s run. The runner logs `heartbeat failed` with `no_answer` while it is down, then heartbeats again and completes the task as `succeeded`.
+To see the runner ride out a server restart, give the server a fixed port and a lease longer than the restart (verified with `SEXTOU_SERVER_PORT=4391`, `SEXTOU_SERVER_DATA_DIR` set to a folder and kept, a 6000 ms lease): stop the server after `claimed` and start it again at once. The task completes as `succeeded`. A call that reaches the server while it is down logs `heartbeat failed` or `complete failed` with `no_answer` and is sent again. With a lease shorter than the restart, the runner logs `lease expired` and drops the task.
 
 ## Run (human path)
 

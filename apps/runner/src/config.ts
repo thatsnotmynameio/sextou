@@ -32,7 +32,8 @@ export interface Config {
   // How long a run may take before the runner stops it and it fails as
   // timeout.
   runTimeoutMs: number;
-  // How long a stopped run has to exit after SIGTERM before SIGKILL.
+  // How long a stopped run has to exit after SIGTERM before SIGKILL, and how
+  // long a run's output may stay open once go-task exited, stopped or not.
   killGraceMs: number;
   // Readable log lines instead of JSON.
   dev: boolean;

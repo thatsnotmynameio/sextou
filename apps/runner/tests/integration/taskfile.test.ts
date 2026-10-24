@@ -1,14 +1,22 @@
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
-  realpathSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import { afterEach, beforeEach, expect, test } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  expect,
+  onTestFinished,
+  test,
+  vi,
+} from 'vitest';
 import { createLogger } from '../../src/logger';
 import { runTaskfile, taskfileExecute } from '../../src/taskfile';
 import { bin, goTask } from '../go-task';
@@ -113,6 +121,36 @@ goTask("runTaskfile runs the commands in the Taskfile's folder", async () => {
   ]);
 });
 
+goTask(
+  "runTaskfile runs go-task in the Taskfile's folder, its USER_WORKING_DIR",
+  async () => {
+    const path = taskfile(['echo {{.USER_WORKING_DIR}}'], 'nested/work');
+
+    await run(path);
+
+    expect(lines()).toEqual([
+      { stream: 'stdout', line: join(dir, 'nested/work') },
+    ]);
+  },
+);
+
+goTask(
+  'runTaskfile kills what the run left in its group once it ended',
+  async () => {
+    const pidFile = join(dir, 'pid');
+
+    const result = await run(
+      // go-task's own shell waits for its background commands; another
+      // shell leaves them behind.
+      taskfile([`sh -c 'sleep 30 > /dev/null 2>&1 & echo $! > ${pidFile}'`]),
+    );
+
+    expect(result).toEqual({ outcome: 'succeeded' });
+    const pid = Number(readFileSync(pidFile, 'utf8'));
+    await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow());
+  },
+);
+
 goTask('runTaskfile gives the run no input', async () => {
   expect(await run(taskfile(['cat']), { timeoutMs: 5000 })).toEqual({
     outcome: 'succeeded',
@@ -133,7 +171,7 @@ goTask(
 goTask(
   'runTaskfile resolves failed when the Taskfile does not exist',
   async () => {
-    expect(await run(join(dir, 'missing', 'Taskfile.yml'))).toEqual({
+    expect(await run(join(dir, 'Taskfile.yml'))).toEqual({
       outcome: 'failed',
       reason: 'exit code 100',
     });
@@ -300,8 +338,8 @@ goTask(
     expect(await execute(plaintext(['pwd']))).toEqual({ outcome: 'succeeded' });
 
     const [{ line }] = lines();
-    expect(dirname(line)).toBe(realpathSync(tmpdir()));
-    expect(basename(line)).toMatch(/^sextou-run-/);
+    expect(dirname(line)).toBe(tmpdir());
+    expect(basename(line)).toMatch(/^sextou-execution-/);
   },
 );
 
@@ -310,17 +348,46 @@ goTask(
   async () => {
     await execute(plaintext(['pwd']));
 
-    expect(existsSync(lines()[0].line)).toBe(false);
+    await vi.waitFor(() => expect(existsSync(lines()[0].line)).toBe(false));
   },
 );
 
-goTask(
-  'taskfileExecute resolves failed and removes the folder when the run failed',
-  async () => {
-    const result = await execute(plaintext(['pwd', 'exit 4']));
+goTask('taskfileExecute resolves failed when the run failed', async () => {
+  expect(await execute(plaintext(['exit 4']))).toEqual({
+    outcome: 'failed',
+    reason: 'exit code 4',
+  });
+});
 
-    expect(result).toEqual({ outcome: 'failed', reason: 'exit code 4' });
-    expect(existsSync(lines()[0].line)).toBe(false);
+goTask('taskfileExecute removes the folder once the run failed', async () => {
+  await execute(plaintext(['pwd', 'exit 4']));
+
+  await vi.waitFor(() => expect(existsSync(lines()[0].line)).toBe(false));
+});
+
+goTask(
+  "taskfileExecute keeps the run's result when its folder can't be removed",
+  async () => {
+    const result = await execute(
+      plaintext([
+        'mkdir locked',
+        'touch locked/file',
+        'chmod 555 locked',
+        'pwd',
+      ]),
+    );
+
+    expect(result).toEqual({ outcome: 'succeeded' });
+    const folder = lines()[0].line;
+    onTestFinished(() => {
+      chmodSync(join(folder, 'locked'), 0o755);
+      rmSync(folder, { recursive: true, force: true });
+    });
+    await vi.waitFor(() =>
+      expect(output.records()).toContainEqual(
+        expect.objectContaining({ msg: 'folder not removed', dir: folder }),
+      ),
+    );
   },
 );
 

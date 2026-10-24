@@ -281,7 +281,7 @@ function serverCommand(args, serverState, env = {}) {
 }
 
 // The runner's whole flow against a server of its own, with a short lease:
-// no server, a task completed as succeeded, a task cancelled while held, and
+// no server, a task completed as succeeded, a task cancelled while its Taskfile runs, and
 // the stop. Touches neither skill's usual state file. Exits 1 at the first
 // step that differs.
 async function smoke() {
@@ -312,9 +312,13 @@ async function smoke() {
   };
   const run = Date.now().toString(36);
   const assignee = `smoke-${run}`;
+  // go-task's binary is the one setting kept from the shell: some
+  // distributions name it go-task.
+  const taskBin = process.env.SEXTOU_RUNNER_TASK_BIN;
   const env = (url) => ({
     ...cleanEnv(),
     ...defaults,
+    ...(taskBin === undefined ? {} : { SEXTOU_RUNNER_TASK_BIN: taskBin }),
     SEXTOU_RUNNER_SERVER_URL: url,
     SEXTOU_RUNNER_NAME: assignee,
   });

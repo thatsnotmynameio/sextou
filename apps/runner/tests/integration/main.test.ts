@@ -202,7 +202,7 @@ test('main logs that it started, with its name, assignees and server', async () 
 // The server hands every task its stub Taskfile, which writes a line and
 // runs for 2 seconds.
 goTask(
-  'main claims a task, runs its Taskfile, renews its lease and completes it as succeeded',
+  'main completes a claimed task as succeeded once its Taskfile ran',
   async () => {
     const task = await createTask('succeeds');
     await startRunner('succeeds');
