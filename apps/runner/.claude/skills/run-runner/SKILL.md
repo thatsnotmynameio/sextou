@@ -106,5 +106,6 @@ pnpm --filter @sextou/runner test:mutation     # Stryker, about 1.5 min, fails b
 
 - **`No server URL: pass --server <url>, …`**: no `--server`, no `SEXTOU_RUNNER_SERVER_URL`, and no server from `run-server`. Start one with `node ../server/.claude/skills/run-server/driver.mjs start`.
 - **`The runner did not start.` followed by `Invalid SEXTOU_RUNNER_…`**: an exported variable has a bad value. The record names it and what it expects.
+- **`The runner did not start.` followed by `SEXTOU_RUNNER_TASK_BIN is not go-task`**: `task` isn't on the PATH, or is another program (Taskwarrior). The record's `reason` says which. Install go-task, or export `SEXTOU_RUNNER_TASK_BIN` with its name or path.
 - **`No claimed record.`**: the task's assignee isn't one the runner serves, or the runner's server isn't the one you created the task on. Compare `start`'s `assignees` and `serverUrl` with the task.
 - **`Already running: pid …`**: a runner from an earlier `start` is still up. Run `stop`, or set `RUN_RUNNER_STATE` to another path to run a second one.

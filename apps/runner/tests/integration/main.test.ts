@@ -188,16 +188,19 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-test('main logs that it started, with its name, assignees and server', async () => {
-  await startRunner('started');
+goTask(
+  'main logs that it started, with its name, assignees and server',
+  async () => {
+    await startRunner('started');
 
-  expect(await logged('started')).toMatchObject({
-    level: 30,
-    name: 'runner-started',
-    assignees: ['started'],
-    serverUrl,
-  });
-});
+    expect(await logged('started')).toMatchObject({
+      level: 30,
+      name: 'runner-started',
+      assignees: ['started'],
+      serverUrl,
+    });
+  },
+);
 
 // The server hands every task its stub Taskfile, which writes a line and
 // runs for 2 seconds.
@@ -251,7 +254,7 @@ goTask(
   },
 );
 
-test('main stops on SIGINT and SIGTERM, once, and exits with 0', async () => {
+goTask('main stops on SIGINT and SIGTERM, once, and exits with 0', async () => {
   await startRunner('stops');
   await logged('started');
 
@@ -266,7 +269,7 @@ test('main stops on SIGINT and SIGTERM, once, and exits with 0', async () => {
   expect(messages().at(-1)).toBe('stopped');
 });
 
-test.each([
+goTask.each([
   ['SIGINT', 130],
   ['SIGTERM', 143],
 ] as const)(
@@ -284,6 +287,24 @@ test.each([
     expect(exit).toHaveBeenCalledWith(code);
   },
 );
+
+test('main exits with 1 when SEXTOU_RUNNER_TASK_BIN is not go-task, without calling the server', async () => {
+  const missing = join(dir, 'no-task');
+  vi.stubEnv('SEXTOU_RUNNER_TASK_BIN', missing);
+
+  await import('../../src/main');
+
+  await vi.waitFor(() => expect(process.exitCode).toBe(1));
+  expect(records()).toEqual([
+    expect.objectContaining({
+      level: 50,
+      taskBin: missing,
+      reason: `spawn ${missing} ENOENT`,
+      msg: 'SEXTOU_RUNNER_TASK_BIN is not go-task',
+    }),
+  ]);
+  expect(on).not.toHaveBeenCalled();
+});
 
 test('main exits with 1 on an invalid variable, without calling the server', async () => {
   vi.stubEnv('SEXTOU_RUNNER_POLL_MS', '0');

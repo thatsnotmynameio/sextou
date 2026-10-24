@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -29,6 +29,33 @@ export function taskfileExecute(
       );
     }
   };
+}
+
+// Resolves with why `bin` can't run Taskfiles, or undefined when it's
+// go-task: it doesn't start, it takes longer than `timeoutMs` to print its
+// help, or its help names no --taskfile, as Taskwarrior's `task` doesn't.
+export function checkGoTask(
+  bin: string,
+  timeoutMs: number,
+): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    execFile(
+      bin,
+      ['--help'],
+      { timeout: timeoutMs },
+      (error, stdout, stderr) => {
+        if (`${stdout}${stderr}`.includes('--taskfile')) {
+          resolve(undefined);
+        } else if (error?.killed) {
+          resolve('timeout');
+        } else if (typeof error?.code === 'string') {
+          resolve(error.message);
+        } else {
+          resolve('its help names no --taskfile');
+        }
+      },
+    );
+  });
 }
 
 export interface TaskfileOptions {

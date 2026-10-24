@@ -18,7 +18,7 @@ import {
   vi,
 } from 'vitest';
 import { createLogger } from '../../src/logger';
-import { runTaskfile, taskfileExecute } from '../../src/taskfile';
+import { checkGoTask, runTaskfile, taskfileExecute } from '../../src/taskfile';
 import { bin, goTask } from '../go-task';
 import { memory } from '../logger';
 
@@ -135,14 +135,17 @@ goTask(
 );
 
 goTask(
-  'runTaskfile kills what the run left in its group once it ended',
+  'runTaskfile kills with SIGKILL what the run left in its group once it ended',
   async () => {
     const pidFile = join(dir, 'pid');
 
     const result = await run(
       // go-task's own shell waits for its background commands; another
-      // shell leaves them behind.
-      taskfile([`sh -c 'sleep 30 > /dev/null 2>&1 & echo $! > ${pidFile}'`]),
+      // shell leaves them behind. The sleep ignores SIGTERM, as the shell
+      // that started it does.
+      taskfile([
+        `sh -c 'trap "" TERM; sleep 30 > /dev/null 2>&1 & echo $! > ${pidFile}'`,
+      ]),
     );
 
     expect(result).toEqual({ outcome: 'succeeded' });
@@ -398,6 +401,45 @@ test('taskfileExecute resolves failed with the error when the binary does not ex
     outcome: 'failed',
     reason: `spawn ${missing} ENOENT`,
   });
+});
+
+// An executable script in `dir` that runs `body`.
+function script(body: string) {
+  const path = join(dir, 'fake-task');
+  writeFileSync(path, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+  return path;
+}
+
+goTask('checkGoTask resolves undefined for go-task', async () => {
+  expect(await checkGoTask(bin, 5000)).toBeUndefined();
+});
+
+test('checkGoTask resolves the error when the binary does not exist', async () => {
+  const missing = join(dir, 'no-task');
+
+  expect(await checkGoTask(missing, 5000)).toBe(`spawn ${missing} ENOENT`);
+});
+
+test('checkGoTask resolves why when the help names no --taskfile', async () => {
+  expect(await checkGoTask(script('echo "task add <description>"'), 5000)).toBe(
+    'its help names no --taskfile',
+  );
+});
+
+test('checkGoTask resolves why when a binary without --taskfile fails', async () => {
+  expect(await checkGoTask(script('exit 2'), 5000)).toBe(
+    'its help names no --taskfile',
+  );
+});
+
+test('checkGoTask takes --taskfile from the help on stderr', async () => {
+  expect(
+    await checkGoTask(script('echo "  -t, --taskfile string" >&2'), 5000),
+  ).toBeUndefined();
+});
+
+test('checkGoTask resolves timeout when the help takes longer than timeoutMs', async () => {
+  expect(await checkGoTask(script('exec sleep 30'), 200)).toBe('timeout');
 });
 
 async function waitForLine(line: string) {

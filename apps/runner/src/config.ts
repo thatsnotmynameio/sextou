@@ -29,6 +29,9 @@ export interface Config {
   // go-task's binary: `task` on the PATH, or a path. Some distributions name
   // it go-task.
   taskBin: string;
+  // How long go-task may take to print its help when the runner starts and
+  // checks it.
+  checkTimeoutMs: number;
   // How long a run may take before the runner stops it and it fails as
   // timeout.
   runTimeoutMs: number;
@@ -82,6 +85,11 @@ export function loadConfig(
       'SEXTOU_RUNNER_TASK_BIN',
       nonEmpty('a command or a path'),
       () => 'task',
+    ),
+    checkTimeoutMs: read(
+      'SEXTOU_RUNNER_CHECK_TIMEOUT_MS',
+      parseTimeout,
+      () => 10000,
     ),
     runTimeoutMs: read(
       'SEXTOU_RUNNER_RUN_TIMEOUT_MS',

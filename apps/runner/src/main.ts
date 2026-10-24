@@ -4,13 +4,13 @@ import { randomUUID } from 'node:crypto';
 import { constants, hostname } from 'node:os';
 import { createRunnerClient } from './client';
 import { loadConfig, type Config } from './config';
-import { createLogger } from './logger';
+import { createLogger, type Logger } from './logger';
 import { startRunner } from './runner';
-import { taskfileExecute } from './taskfile';
+import { checkGoTask, taskfileExecute } from './taskfile';
 
 const config = readConfig();
 if (config) {
-  run(config);
+  void start(config);
 }
 
 // An invalid variable stops the runner before it calls the server. The error
@@ -28,8 +28,23 @@ function readConfig(): Config | undefined {
   }
 }
 
-function run(config: Config) {
+// A runner whose go-task doesn't run would fail every task it claims: it
+// stops before it calls the server instead.
+async function start(config: Config) {
   const logger = createLogger({ level: config.logLevel, pretty: config.dev });
+  const reason = await checkGoTask(config.taskBin, config.checkTimeoutMs);
+  if (reason !== undefined) {
+    logger.error(
+      { taskBin: config.taskBin, reason },
+      'SEXTOU_RUNNER_TASK_BIN is not go-task',
+    );
+    process.exitCode = 1;
+    return;
+  }
+  run(config, logger);
+}
+
+function run(config: Config, logger: Logger) {
   const runner = startRunner({
     client: createRunnerClient(config.serverUrl, config.requestTimeoutMs),
     name: config.name,

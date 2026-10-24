@@ -13,6 +13,7 @@ test('loadConfig uses every default when no variable is set', () => {
     requestTimeoutMs: 30000,
     pollMs: 5000,
     taskBin: 'task',
+    checkTimeoutMs: 10000,
     runTimeoutMs: 21600000,
     killGraceMs: 10000,
     dev: false,
@@ -29,6 +30,7 @@ test('loadConfig takes every variable that is set', () => {
       SEXTOU_RUNNER_REQUEST_TIMEOUT_MS: '700',
       SEXTOU_RUNNER_POLL_MS: '200',
       SEXTOU_RUNNER_TASK_BIN: '/opt/go-task',
+      SEXTOU_RUNNER_CHECK_TIMEOUT_MS: '700',
       SEXTOU_RUNNER_RUN_TIMEOUT_MS: '900',
       SEXTOU_RUNNER_KILL_GRACE_MS: '800',
       SEXTOU_RUNNER_DEV: 'true',
@@ -41,6 +43,7 @@ test('loadConfig takes every variable that is set', () => {
     requestTimeoutMs: 700,
     pollMs: 200,
     taskBin: '/opt/go-task',
+    checkTimeoutMs: 700,
     runTimeoutMs: 900,
     killGraceMs: 800,
     dev: true,
@@ -104,6 +107,7 @@ test.each(['', ' ', 'dev,', ',dev', 'dev,,ops'])(
 test.each([
   ['SEXTOU_RUNNER_REQUEST_TIMEOUT_MS', 'requestTimeoutMs'],
   ['SEXTOU_RUNNER_POLL_MS', 'pollMs'],
+  ['SEXTOU_RUNNER_CHECK_TIMEOUT_MS', 'checkTimeoutMs'],
   ['SEXTOU_RUNNER_RUN_TIMEOUT_MS', 'runTimeoutMs'],
   ['SEXTOU_RUNNER_KILL_GRACE_MS', 'killGraceMs'],
 ] as const)(
@@ -121,6 +125,7 @@ test.each([
   ['SEXTOU_RUNNER_POLL_MS', ''],
   ['SEXTOU_RUNNER_RUN_TIMEOUT_MS', '-5'],
   ['SEXTOU_RUNNER_KILL_GRACE_MS', '1e3'],
+  ['SEXTOU_RUNNER_CHECK_TIMEOUT_MS', '0'],
 ])('loadConfig rejects %s=%j', (name, value) => {
   expect(() => load({ [name]: value })).toThrow(
     `Invalid ${name}: ${JSON.stringify(value)} (expected a whole number of milliseconds from 1 to 2147483647)`,
