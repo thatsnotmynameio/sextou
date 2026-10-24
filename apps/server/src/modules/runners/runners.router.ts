@@ -7,6 +7,7 @@ import {
   heartbeatInputSchema,
   heartbeatOutputSchema,
 } from './runners.schema';
+import { stubTaskfile } from './stub-taskfile';
 
 // What a runner calls: claim a task, heartbeat while it runs, complete it. A
 // heartbeat or a completion for an attempt that lost its lease fails with
@@ -16,19 +17,25 @@ import {
 // was, which succeeds once more. A call the tasks database didn't serve in
 // time fails with TIMEOUT, having written nothing.
 export const runnersRouter = router({
-  // The output schema keeps the task and its execution, and drops ok.
+  // Every task carries the stub Taskfile until tasks carry their own.
   claim: procedure
     .input(claimInputSchema)
     .output(claimOutputSchema)
-    .mutation(async ({ ctx, input }) =>
-      accepted(
+    .mutation(async ({ ctx, input }) => {
+      const claimed = accepted(
         await ctx.tasks.claim({
           claimId: input.claimId,
           runner: { name: input.runner },
           assignees: input.assignees.map((name) => ({ name })),
         }),
-      ),
-    ),
+      );
+      return claimed.task === null
+        ? { task: null }
+        : {
+            task: { id: claimed.task.id, taskfile: stubTaskfile },
+            execution: claimed.execution,
+          };
+    }),
 
   heartbeat: procedure
     .input(heartbeatInputSchema)

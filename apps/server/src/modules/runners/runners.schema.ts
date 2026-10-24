@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Outcome } from '../../tasks';
-import { idSchema, nameSchema, taskSchema } from '../tasks/index';
+import { idSchema, nameSchema } from '../tasks/index';
 
 export const claimInputSchema = z.object({
   // The runner's own name for this claim, new for each: sent again with the
@@ -12,10 +12,12 @@ export const claimInputSchema = z.object({
   assignees: z.array(nameSchema).min(1),
 });
 
-// The task the runner now holds and the attempt it runs, or no task.
+// The task the runner now holds and the attempt it runs, or no task. The
+// task carries what the runner runs, not its planning fields: its id, and the
+// Taskfile whose default task the runner runs, as plaintext.
 export const claimOutputSchema = z.union([
   z.object({
-    task: taskSchema,
+    task: z.object({ id: idSchema, taskfile: z.string().min(1) }),
     execution: z.object({
       id: idSchema,
       attempt: z.number().int().min(1),

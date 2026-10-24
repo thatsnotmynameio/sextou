@@ -1,10 +1,17 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  realpathSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import { createLogger } from '../../src/logger';
-import { runTaskfile } from '../../src/taskfile';
+import { runTaskfile, taskfileExecute } from '../../src/taskfile';
 import { memory } from '../logger';
 
 // go-task from the host, as `task` on the PATH. The organization's
@@ -34,18 +41,21 @@ afterEach(() => {
 function taskfile(cmds: string[], folder = 'work') {
   mkdirSync(join(dir, folder), { recursive: true });
   const path = join(dir, folder, 'Taskfile.yml');
-  writeFileSync(
-    path,
-    [
-      'version: "3"',
-      'silent: true',
-      'tasks:',
-      '  default:',
-      '    cmds:',
-      ...cmds.map((cmd) => `      - ${JSON.stringify(cmd)}`),
-    ].join('\n'),
-  );
+  writeFileSync(path, plaintext(cmds));
   return path;
+}
+
+// The text of a Taskfile whose default task runs `cmds` with no echo of each
+// command.
+function plaintext(cmds: string[]) {
+  return [
+    'version: "3"',
+    'silent: true',
+    'tasks:',
+    '  default:',
+    '    cmds:',
+    ...cmds.map((cmd) => `      - ${JSON.stringify(cmd)}`),
+  ].join('\n');
 }
 
 function run(
@@ -277,6 +287,59 @@ goTask(
     expect(process.listeners('exit')).toEqual(before);
   },
 );
+
+// Runs a task whose Taskfile is `text` through taskfileExecute.
+function execute(text: string, taskBin = bin) {
+  return taskfileExecute({ bin: taskBin, timeoutMs: 20000, killGraceMs: 5000 })(
+    { id: 'tsk_1', taskfile: text },
+    {
+      signal: new AbortController().signal,
+      logger: createLogger(
+        { level: 'info', pretty: false },
+        output.destination,
+      ),
+    },
+  );
+}
+
+goTask(
+  "taskfileExecute runs the task's Taskfile in a folder of its own under the temporary folder",
+  async () => {
+    expect(await execute(plaintext(['pwd']))).toEqual({ outcome: 'succeeded' });
+
+    const [{ line }] = lines();
+    expect(dirname(line)).toBe(realpathSync(tmpdir()));
+    expect(basename(line)).toMatch(/^sextou-run-/);
+  },
+);
+
+goTask(
+  'taskfileExecute removes the folder once the run succeeded',
+  async () => {
+    await execute(plaintext(['pwd']));
+
+    expect(existsSync(lines()[0].line)).toBe(false);
+  },
+);
+
+goTask(
+  'taskfileExecute resolves failed and removes the folder when the run failed',
+  async () => {
+    const result = await execute(plaintext(['pwd', 'exit 4']));
+
+    expect(result).toEqual({ outcome: 'failed', reason: 'exit code 4' });
+    expect(existsSync(lines()[0].line)).toBe(false);
+  },
+);
+
+test('taskfileExecute resolves failed with the error when the binary does not exist', async () => {
+  const missing = join(dir, 'no-task');
+
+  expect(await execute(plaintext(['true']), missing)).toEqual({
+    outcome: 'failed',
+    reason: `spawn ${missing} ENOENT`,
+  });
+});
 
 async function waitForLine(line: string) {
   while (!lines().some((record) => record.line === line)) {

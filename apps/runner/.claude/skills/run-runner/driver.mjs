@@ -46,11 +46,10 @@ const serverStateFile =
   join(tmpdir(), 'sextou-run-server', 'state.json');
 
 // Short enough to watch a whole task in a few seconds, with each heartbeat
-// in the log.
+// in the log: the server's stub Taskfile runs for 2 seconds.
 const defaults = {
   SEXTOU_RUNNER_NAME: 'run-runner',
   SEXTOU_RUNNER_POLL_MS: '500',
-  SEXTOU_RUNNER_HOLD_MS: '3000',
   SEXTOU_RUNNER_LOG_LEVEL: 'debug',
 };
 
@@ -318,7 +317,6 @@ async function smoke() {
     ...defaults,
     SEXTOU_RUNNER_SERVER_URL: url,
     SEXTOU_RUNNER_NAME: assignee,
-    SEXTOU_RUNNER_HOLD_MS: '1500',
   });
 
   // A step that throws, as a call whose answer isn't what it expects, fails
@@ -382,6 +380,15 @@ async function smoke() {
       succeeded?.outcome === 'succeeded',
       succeeded,
     );
+    await check(
+      'ran the stub Taskfile',
+      records(runner.log).some(
+        (record) =>
+          record.msg === 'output' &&
+          record.taskId === done.id &&
+          record.line === 'sextou stub',
+      ),
+    );
 
     const cancelled = await create('Cancelled');
     await check('created a second task', Boolean(cancelled?.id), cancelled);
@@ -393,7 +400,7 @@ async function smoke() {
       taskId: cancelled.id,
       actor: 'smoke',
     });
-    await check('cancel while held', cancel?.status === 'running', cancel);
+    await check('cancel while it runs', cancel?.status === 'running', cancel);
     const ended = await seen('completed', cancelled.id);
     await check(
       'completed as cancelled',

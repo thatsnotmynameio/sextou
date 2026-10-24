@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,6 +22,14 @@ import {
 // package in another folder, reaches too.
 const serverDir = dirname(
   dirname(createRequire(import.meta.url).resolve('@sextou/server/router')),
+);
+
+// The runner runs each task's Taskfile with go-task from the host, as `task`
+// on the PATH: the tests that hand it a task skip without it, as
+// taskfile.test.ts's do.
+const help = spawnSync('task', ['--help'], { encoding: 'utf8' });
+const goTask = test.skipIf(
+  !`${help.stdout}${help.stderr}`.includes('--taskfile'),
 );
 
 // The real logger, writing to memory instead of stdout, so each test reads
@@ -135,12 +143,11 @@ function handler(signal: string) {
 }
 
 // Runs main against the server, for `assignee` alone.
-async function startRunner(assignee: string, holdMs: number) {
+async function startRunner(assignee: string) {
   vi.stubEnv('SEXTOU_RUNNER_SERVER_URL', serverUrl);
   vi.stubEnv('SEXTOU_RUNNER_NAME', `runner-${assignee}`);
   vi.stubEnv('SEXTOU_RUNNER_ASSIGNEES', assignee);
   vi.stubEnv('SEXTOU_RUNNER_POLL_MS', '50');
-  vi.stubEnv('SEXTOU_RUNNER_HOLD_MS', String(holdMs));
   vi.stubEnv('SEXTOU_RUNNER_LOG_LEVEL', 'debug');
   await import('../../src/main');
 }
@@ -182,7 +189,7 @@ afterEach(async () => {
 });
 
 test('main logs that it started, with its name, assignees and server', async () => {
-  await startRunner('started', 300);
+  await startRunner('started');
 
   expect(await logged('started')).toMatchObject({
     level: 30,
@@ -192,45 +199,69 @@ test('main logs that it started, with its name, assignees and server', async () 
   });
 });
 
-test('main claims a task, renews its lease and completes it as succeeded', async () => {
-  const task = await createTask('succeeds');
-  await startRunner('succeeds', 500);
+// The server hands every task its stub Taskfile, which writes a line and
+// runs for 2 seconds.
+goTask(
+  'main claims a task, runs its Taskfile, renews its lease and completes it as succeeded',
+  async () => {
+    const task = await createTask('succeeds');
+    await startRunner('succeeds');
 
-  expect(await logged('claimed')).toMatchObject({
-    taskId: task.id,
-    attempt: 1,
-  });
-  expect(await logged('completed')).toMatchObject({
-    taskId: task.id,
-    outcome: 'succeeded',
-  });
-  expect(messages()).toContain('heartbeat');
-  expect(
-    await call('runners.claim', {
-      claimId: 'after',
-      runner: 'other',
-      assignees: ['succeeds'],
-    }),
-  ).toEqual({ task: null });
-});
+    expect(await logged('claimed')).toMatchObject({
+      taskId: task.id,
+      attempt: 1,
+    });
+    // go-task writes each command to stderr before it runs it.
+    await vi.waitFor(
+      () =>
+        expect(
+          records().filter((record) => record.msg === 'output'),
+        ).toContainEqual(
+          expect.objectContaining({
+            taskId: task.id,
+            stream: 'stdout',
+            line: 'sextou stub',
+          }),
+        ),
+      { timeout: 10_000, interval: 20 },
+    );
+    expect(await logged('completed')).toMatchObject({
+      taskId: task.id,
+      outcome: 'succeeded',
+    });
+    expect(messages()).toContain('heartbeat');
+    expect(
+      await call('runners.claim', {
+        claimId: 'after',
+        runner: 'other',
+        assignees: ['succeeds'],
+      }),
+    ).toEqual({ task: null });
+  },
+);
 
-test('main completes a task as cancelled once someone asks to cancel it', async () => {
-  const task = await createTask('cancels');
-  await startRunner('cancels', 60_000);
-  await logged('claimed');
+goTask(
+  'main completes a task as cancelled once someone asks to cancel it while its Taskfile runs',
+  async () => {
+    const task = await createTask('cancels');
+    await startRunner('cancels');
+    await logged('claimed');
 
-  expect(await call('tasks.cancel', { taskId: task.id, actor: 'me' })).toEqual({
-    status: 'running',
-  });
+    expect(
+      await call('tasks.cancel', { taskId: task.id, actor: 'me' }),
+    ).toEqual({
+      status: 'running',
+    });
 
-  expect(await logged('completed')).toMatchObject({
-    taskId: task.id,
-    outcome: 'cancelled',
-  });
-});
+    expect(await logged('completed')).toMatchObject({
+      taskId: task.id,
+      outcome: 'cancelled',
+    });
+  },
+);
 
 test('main stops on SIGINT and SIGTERM, once, and exits with 0', async () => {
-  await startRunner('stops', 300);
+  await startRunner('stops');
   await logged('started');
 
   await handler('SIGINT')();
@@ -250,7 +281,7 @@ test.each([
 ] as const)(
   'main exits at once with the code of a second %s',
   async (signal, code) => {
-    await startRunner('exits', 60_000);
+    await startRunner('exits');
     await logged('started');
     void handler('SIGINT')();
 

@@ -26,8 +26,14 @@ export interface Config {
   // How long the runner waits before it claims again, when there was no task
   // or no answer, and before it sends a completion again.
   pollMs: number;
-  // How long the runner holds a task before it completes it as succeeded.
-  holdMs: number;
+  // go-task's binary: `task` on the PATH, or a path. Some distributions name
+  // it go-task.
+  taskBin: string;
+  // How long a run may take before the runner stops it and it fails as
+  // timeout.
+  runTimeoutMs: number;
+  // How long a stopped run has to exit after SIGTERM before SIGKILL.
+  killGraceMs: number;
   // Readable log lines instead of JSON.
   dev: boolean;
   // The lowest level the logger writes.
@@ -71,7 +77,13 @@ export function loadConfig(
       () => 30000,
     ),
     pollMs: read('SEXTOU_RUNNER_POLL_MS', parseTimeout, () => 5000),
-    holdMs: read('SEXTOU_RUNNER_HOLD_MS', parseTimeout, () => 10000),
+    taskBin: read('SEXTOU_RUNNER_TASK_BIN', parseBin, () => 'task'),
+    runTimeoutMs: read(
+      'SEXTOU_RUNNER_RUN_TIMEOUT_MS',
+      parseTimeout,
+      () => 21600000,
+    ),
+    killGraceMs: read('SEXTOU_RUNNER_KILL_GRACE_MS', parseTimeout, () => 10000),
     dev: read('SEXTOU_RUNNER_DEV', parseBoolean, () => false),
     logLevel: read('SEXTOU_RUNNER_LOG_LEVEL', parseLogLevel, () => 'info'),
   };
@@ -96,6 +108,15 @@ function parseName(value: string, name: string): string {
   const trimmed = value.trim();
   if (trimmed === '') {
     throw invalid(name, value, 'a name');
+  }
+  return trimmed;
+}
+
+// Trimmed: a command on the PATH or a path.
+function parseBin(value: string, name: string): string {
+  const trimmed = value.trim();
+  if (trimmed === '') {
+    throw invalid(name, value, 'a command or a path');
   }
   return trimmed;
 }

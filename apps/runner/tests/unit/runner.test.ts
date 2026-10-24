@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi, type Mock } from 'vitest';
 import type { Answer, RunnerClient } from '../../src/client';
-import { hold } from '../../src/hold';
 import { createLogger } from '../../src/logger';
 import {
   startRunner,
@@ -8,6 +7,7 @@ import {
   type Execute,
   type Result,
 } from '../../src/runner';
+import { sleep } from '../../src/sleep';
 import { memory } from '../logger';
 
 const pollMs = 1000;
@@ -35,22 +35,22 @@ const leaseLost = {
 // A claim that hands the runner task tsk_1 under a lease of `leaseMs`.
 function task(leaseMs = 3000): Answer<Claimed> {
   return ok({
-    task: {
-      id: 'tsk_1',
-      title: 'Say hi',
-      kind: 'task',
-      priority: 2,
-      parentId: null,
-      assignee: { name: 'dev' },
-      description: null,
-      source: null,
-      status: 'running',
-    },
+    task: { id: 'tsk_1', taskfile: 'version: 3' },
     execution: { id: 'exe_1', attempt: 1, leaseMs },
   });
 }
 
-// Unless a test passes its own, the runner holds each task for holdMs.
+// A run that takes `ms` and succeeds, or fails once its signal aborts.
+function hold(ms: number): Execute {
+  return async (_task, { signal }) => {
+    await sleep(ms, signal);
+    return signal.aborted
+      ? { outcome: 'failed', reason: 'aborted' }
+      : { outcome: 'succeeded' };
+  };
+}
+
+// Unless a test passes its own, each run takes holdMs.
 function start(execute: Execute = hold(holdMs)) {
   let ids = 0;
   runner = startRunner({
@@ -235,7 +235,7 @@ test('startRunner sends a heartbeat again at once when the last one failed after
   expect(client.heartbeat).toHaveBeenCalledTimes(2);
 });
 
-test('startRunner completes a task as succeeded once it held it for holdMs', async () => {
+test('startRunner completes a task as succeeded once its run succeeded', async () => {
   client.claim.mockResolvedValueOnce(task(3000));
   start();
   await vi.advanceTimersByTimeAsync(holdMs - 1);

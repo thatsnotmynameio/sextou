@@ -4,9 +4,9 @@ import { randomUUID } from 'node:crypto';
 import { constants, hostname } from 'node:os';
 import { createRunnerClient } from './client';
 import { loadConfig, type Config } from './config';
-import { hold } from './hold';
 import { createLogger } from './logger';
 import { startRunner } from './runner';
+import { taskfileExecute } from './taskfile';
 
 const config = readConfig();
 if (config) {
@@ -35,9 +35,11 @@ function run(config: Config) {
     name: config.name,
     assignees: config.assignees,
     pollMs: config.pollMs,
-    // Until a task carries the Taskfile runTaskfile runs, the runner holds
-    // each task it claims.
-    execute: hold(config.holdMs),
+    execute: taskfileExecute({
+      bin: config.taskBin,
+      timeoutMs: config.runTimeoutMs,
+      killGraceMs: config.killGraceMs,
+    }),
     logger,
     newId: randomUUID,
   });

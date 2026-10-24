@@ -1,8 +1,30 @@
 import { spawn } from 'node:child_process';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
 import type { Logger } from './logger';
-import type { Result } from './runner';
+import type { Execute, Result } from './runner';
+
+// Runs each task's Taskfile, the plaintext its claim carries: it writes it to
+// Taskfile.yml in a folder of its own under the system's temporary folder,
+// runs its default task there with runTaskfile, and removes the folder once
+// the run ends, however it ended.
+export function taskfileExecute(
+  options: Pick<TaskfileOptions, 'bin' | 'timeoutMs' | 'killGraceMs'>,
+): Execute {
+  return async (task, { signal, logger }) => {
+    const dir = await mkdtemp(join(tmpdir(), 'sextou-run-'));
+    try {
+      const taskfile = join(dir, 'Taskfile.yml');
+      await writeFile(taskfile, task.taskfile);
+      return await runTaskfile({ ...options, taskfile, logger, signal });
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  };
+}
 
 export interface TaskfileOptions {
   // The go-task binary, from the host: `task` on the PATH, or a path. Some
