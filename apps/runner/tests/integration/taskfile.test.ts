@@ -1,4 +1,3 @@
-import { spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -12,20 +11,19 @@ import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import { createLogger } from '../../src/logger';
 import { runTaskfile, taskfileExecute } from '../../src/taskfile';
+import { bin, goTask } from '../go-task';
 import { memory } from '../logger';
 
-// go-task from the host, as `task` on the PATH. The organization's
-// typescript.yml runs this suite with no go-task installed, so the tests skip
-// there; tests.yml installs it, and test:integration's coverage floor fails
-// when they skip. Another `task`, such as Taskwarrior's, has no --taskfile.
-const bin = 'task';
-const help = spawnSync(bin, ['--help'], { encoding: 'utf8' });
-const goTask = test.skipIf(
-  !`${help.stdout}${help.stderr}`.includes('--taskfile'),
-);
+// Long enough for every run that isn't meant to be stopped.
+const limits = { timeoutMs: 20000, killGraceMs: 5000 };
 
 let dir: string;
 let output: ReturnType<typeof memory>;
+
+// A logger that writes each record to `output`.
+function logger() {
+  return createLogger({ level: 'info', pretty: false }, output.destination);
+}
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'sextou-taskfile-'));
@@ -62,8 +60,8 @@ function run(
   path: string,
   {
     signal = new AbortController().signal,
-    timeoutMs = 20000,
-    killGraceMs = 5000,
+    timeoutMs = limits.timeoutMs,
+    killGraceMs = limits.killGraceMs,
     bin: taskBin = bin,
   } = {},
 ) {
@@ -72,7 +70,7 @@ function run(
     taskfile: path,
     timeoutMs,
     killGraceMs,
-    logger: createLogger({ level: 'info', pretty: false }, output.destination),
+    logger: logger(),
     signal,
   });
 }
@@ -290,15 +288,9 @@ goTask(
 
 // Runs a task whose Taskfile is `text` through taskfileExecute.
 function execute(text: string, taskBin = bin) {
-  return taskfileExecute({ bin: taskBin, timeoutMs: 20000, killGraceMs: 5000 })(
+  return taskfileExecute({ bin: taskBin, ...limits })(
     { id: 'tsk_1', taskfile: text },
-    {
-      signal: new AbortController().signal,
-      logger: createLogger(
-        { level: 'info', pretty: false },
-        output.destination,
-      ),
-    },
+    { signal: new AbortController().signal, logger: logger() },
   );
 }
 

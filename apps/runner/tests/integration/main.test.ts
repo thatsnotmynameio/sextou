@@ -1,4 +1,4 @@
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -15,6 +15,7 @@ import {
   vi,
   type MockInstance,
 } from 'vitest';
+import { goTask } from '../go-task';
 
 // The server runs as its own process, from its sources, with its own tsx:
 // the runner imports nothing from it but its router's type. Its folder is
@@ -22,14 +23,6 @@ import {
 // package in another folder, reaches too.
 const serverDir = dirname(
   dirname(createRequire(import.meta.url).resolve('@sextou/server/router')),
-);
-
-// The runner runs each task's Taskfile with go-task from the host, as `task`
-// on the PATH: the tests that hand it a task skip without it, as
-// taskfile.test.ts's do.
-const help = spawnSync('task', ['--help'], { encoding: 'utf8' });
-const goTask = test.skipIf(
-  !`${help.stdout}${help.stderr}`.includes('--taskfile'),
 );
 
 // The real logger, writing to memory instead of stdout, so each test reads
@@ -59,11 +52,18 @@ function records(): LogRecord[] {
   return output.lines.map((line) => JSON.parse(line) as LogRecord);
 }
 
-// Resolves with the first record main wrote whose msg is `msg`.
-function logged(msg: string): Promise<LogRecord> {
+// Resolves with the first record main wrote whose msg is `msg`, and whose
+// fields are those of `fields`.
+function logged(msg: string, fields: LogRecord = {}): Promise<LogRecord> {
   return vi.waitFor(
     () => {
-      const record = records().find((candidate) => candidate.msg === msg);
+      const record = records().find(
+        (candidate) =>
+          candidate.msg === msg &&
+          Object.entries(fields).every(
+            ([key, value]) => candidate[key] === value,
+          ),
+      );
       if (!record) {
         throw new Error(`No ${msg} record yet`);
       }
@@ -212,19 +212,10 @@ goTask(
       attempt: 1,
     });
     // go-task writes each command to stderr before it runs it.
-    await vi.waitFor(
-      () =>
-        expect(
-          records().filter((record) => record.msg === 'output'),
-        ).toContainEqual(
-          expect.objectContaining({
-            taskId: task.id,
-            stream: 'stdout',
-            line: 'sextou stub',
-          }),
-        ),
-      { timeout: 10_000, interval: 20 },
-    );
+    expect(await logged('output', { stream: 'stdout' })).toMatchObject({
+      taskId: task.id,
+      line: 'sextou stub',
+    });
     expect(await logged('completed')).toMatchObject({
       taskId: task.id,
       outcome: 'succeeded',

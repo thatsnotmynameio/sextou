@@ -62,7 +62,7 @@ export function loadConfig(
     return value === undefined ? fallback() : parse(value, name);
   };
 
-  const name = read('SEXTOU_RUNNER_NAME', parseName, hostname);
+  const name = read('SEXTOU_RUNNER_NAME', nonEmpty('a name'), hostname);
   return {
     serverUrl: read(
       'SEXTOU_RUNNER_SERVER_URL',
@@ -77,7 +77,11 @@ export function loadConfig(
       () => 30000,
     ),
     pollMs: read('SEXTOU_RUNNER_POLL_MS', parseTimeout, () => 5000),
-    taskBin: read('SEXTOU_RUNNER_TASK_BIN', parseBin, () => 'task'),
+    taskBin: read(
+      'SEXTOU_RUNNER_TASK_BIN',
+      nonEmpty('a command or a path'),
+      () => 'task',
+    ),
     runTimeoutMs: read(
       'SEXTOU_RUNNER_RUN_TIMEOUT_MS',
       parseTimeout,
@@ -103,22 +107,16 @@ function parseUrl(value: string, name: string): string {
   return url.href.replace(/\/+$/, '');
 }
 
-// Trimmed, as the server trims the names it takes.
-function parseName(value: string, name: string): string {
-  const trimmed = value.trim();
-  if (trimmed === '') {
-    throw invalid(name, value, 'a name');
-  }
-  return trimmed;
-}
-
-// Trimmed: a command on the PATH or a path.
-function parseBin(value: string, name: string): string {
-  const trimmed = value.trim();
-  if (trimmed === '') {
-    throw invalid(name, value, 'a command or a path');
-  }
-  return trimmed;
+// The value trimmed, refused when nothing is left: a name, trimmed as the
+// server trims the names it takes, or go-task's binary.
+function nonEmpty(expected: string) {
+  return (value: string, name: string): string => {
+    const trimmed = value.trim();
+    if (trimmed === '') {
+      throw invalid(name, value, expected);
+    }
+    return trimmed;
+  };
 }
 
 // Names separated by commas, each trimmed: at least one, none empty.

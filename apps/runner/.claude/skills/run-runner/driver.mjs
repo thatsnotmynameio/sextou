@@ -45,8 +45,8 @@ const serverStateFile =
   process.env.RUN_SERVER_STATE ??
   join(tmpdir(), 'sextou-run-server', 'state.json');
 
-// Short enough to watch a whole task in a few seconds, with each heartbeat
-// in the log: the server's stub Taskfile runs for 2 seconds.
+// A short poll, so the runner claims a new task at once, and the debug level,
+// so each heartbeat is in the log.
 const defaults = {
   SEXTOU_RUNNER_NAME: 'run-runner',
   SEXTOU_RUNNER_POLL_MS: '500',
