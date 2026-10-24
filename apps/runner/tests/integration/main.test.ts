@@ -244,6 +244,25 @@ test('main stops on SIGINT and SIGTERM, once, and exits with 0', async () => {
   expect(messages().at(-1)).toBe('stopped');
 });
 
+test.each([
+  ['SIGINT', 130],
+  ['SIGTERM', 143],
+] as const)(
+  'main exits at once with the code of a second %s',
+  async (signal, code) => {
+    await startRunner('exits', 60_000);
+    await logged('started');
+    void handler('SIGINT')();
+
+    const second = on.mock.calls.filter(
+      ([event]) => event === signal,
+    )[1]?.[1] as (signal: NodeJS.Signals) => void;
+    second(signal);
+
+    expect(exit).toHaveBeenCalledWith(code);
+  },
+);
+
 test('main exits with 1 on an invalid variable, without calling the server', async () => {
   vi.stubEnv('SEXTOU_RUNNER_POLL_MS', '0');
 

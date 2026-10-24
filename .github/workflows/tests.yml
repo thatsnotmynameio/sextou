@@ -42,6 +42,10 @@ env:
   pnpm_config_verify_store_integrity: true
   pnpm_config_side_effects_cache: false
   pnpm_config_registry: https://registry.npmjs.org/
+  # The go-task release the runner's integration suite runs, and its
+  # task_linux_amd64.tar.gz checksum from the release's task_checksums.txt.
+  GO_TASK_VERSION: 3.54.0
+  GO_TASK_SHA256: 680859dbb4d881a9c72d4d9a8f510825450849af8567deacd7302c01124416fb
 
 jobs:
   # The matrices of the jobs below, read from each workspace package's
@@ -114,6 +118,19 @@ jobs:
           } >> "$GITHUB_ENV"
       - name: pnpm install
         run: pnpm install --frozen-lockfile --ignore-scripts
+      # Only the runner's integration suite runs go-task, which it takes from
+      # the host, as task on the PATH: the release, checked against its
+      # checksum.
+      - name: go-task
+        if: ${{ matrix.package == 'runner' && matrix.level == 'integration' }}
+        run: |
+          archive="$RUNNER_TEMP/task.tar.gz"
+          curl -fsSL --max-time 120 -o "$archive" \
+            "https://github.com/go-task/task/releases/download/v$GO_TASK_VERSION/task_linux_amd64.tar.gz"
+          echo "$GO_TASK_SHA256  $archive" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/go-task"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/go-task" task
+          echo "$RUNNER_TEMP/go-task" >> "$GITHUB_PATH"
       # Only a component suite renders in a browser.
       - name: Chromium
         if: ${{ matrix.level == 'component' }}
@@ -158,6 +175,18 @@ jobs:
           } >> "$GITHUB_ENV"
       - name: pnpm install
         run: pnpm install --frozen-lockfile --ignore-scripts
+      # The runner's mutation run includes its integration suite, which runs
+      # go-task: the release, checked against its checksum.
+      - name: go-task
+        if: ${{ matrix.package == 'runner' }}
+        run: |
+          archive="$RUNNER_TEMP/task.tar.gz"
+          curl -fsSL --max-time 120 -o "$archive" \
+            "https://github.com/go-task/task/releases/download/v$GO_TASK_VERSION/task_linux_amd64.tar.gz"
+          echo "$GO_TASK_SHA256  $archive" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/go-task"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/go-task" task
+          echo "$RUNNER_TEMP/go-task" >> "$GITHUB_PATH"
       - name: Restore the last result
         if: ${{ github.event_name == 'pull_request' }}
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, expect, test, vi, type Mock } from 'vitest';
 import type { Answer, RunnerClient } from '../../src/client';
+import { hold } from '../../src/hold';
 import { createLogger } from '../../src/logger';
-import { startRunner, type Claimed } from '../../src/runner';
+import {
+  startRunner,
+  type Claimed,
+  type Execute,
+  type Result,
+} from '../../src/runner';
 import { memory } from '../logger';
 
 const pollMs = 1000;
@@ -44,14 +50,15 @@ function task(leaseMs = 3000): Answer<Claimed> {
   });
 }
 
-function start() {
+// Unless a test passes its own, the runner holds each task for holdMs.
+function start(execute: Execute = hold(holdMs)) {
   let ids = 0;
   runner = startRunner({
     client,
     name: 'r1',
     assignees: ['dev'],
     pollMs,
-    holdMs,
+    execute,
     logger: createLogger({ level: 'debug', pretty: false }, output.destination),
     newId: () => `c${++ids}`,
   });
@@ -498,4 +505,288 @@ test('stop while a heartbeat is in flight sends no completion once it is answere
 
   expect(client.heartbeat).toHaveBeenCalledTimes(1);
   expect(client.complete).not.toHaveBeenCalled();
+});
+
+// An execute the test ends: `end` resolves the run it started, `signal` is
+// the one it got.
+function controlled() {
+  const run: {
+    end: (result: Result) => void;
+    fail: (error: Error) => void;
+    signal?: AbortSignal;
+    calls: Parameters<Execute>[];
+  } = { end: () => {}, fail: () => {}, calls: [] };
+  const execute: Execute = (...args) => {
+    run.calls.push(args);
+    run.signal = args[1].signal;
+    return new Promise((resolve, reject) => {
+      run.end = resolve;
+      run.fail = reject;
+    });
+  };
+  return { run, execute };
+}
+
+test('startRunner executes the task it claimed with a logger bound to its ids', async () => {
+  const { run, execute } = controlled();
+  client.claim.mockResolvedValueOnce(task(60000));
+  start(execute);
+  await vi.advanceTimersByTimeAsync(0);
+
+  run.calls[0][1].logger.info('ran');
+
+  expect(run.calls[0][0].id).toBe('tsk_1');
+  expect(run.signal?.aborted).toBe(false);
+  expect(output.records().at(-1)).toMatchObject({
+    msg: 'ran',
+    taskId: 'tsk_1',
+    executionId: 'exe_1',
+    attempt: 1,
+  });
+  run.end({ outcome: 'succeeded' });
+});
+
+test('startRunner sends heartbeats for as long as the run lasts', async () => {
+  const { run, execute } = controlled();
+  client.claim.mockResolvedValueOnce(task(3000));
+  start(execute);
+  await vi.advanceTimersByTimeAsync(holdMs * 3);
+  expect(client.heartbeat).toHaveBeenCalledTimes(30);
+  expect(client.complete).not.toHaveBeenCalled();
+
+  run.end({ outcome: 'succeeded' });
+  await vi.advanceTimersByTimeAsync(holdMs);
+
+  expect(client.heartbeat).toHaveBeenCalledTimes(30);
+  expect(client.complete).toHaveBeenCalledTimes(1);
+});
+
+test('startRunner completes a task as failed with the reason the run gave', async () => {
+  const { run, execute } = controlled();
+  client.claim.mockResolvedValueOnce(task(60000));
+  start(execute);
+  await vi.advanceTimersByTimeAsync(0);
+
+  run.end({ outcome: 'failed', reason: 'exit code 3' });
+  await vi.advanceTimersByTimeAsync(0);
+
+  expect(client.complete.mock.calls).toEqual([
+    [
+      {
+        runner: 'r1',
+        executionId: 'exe_1',
+        outcome: 'failed',
+        reason: 'exit code 3',
+      },
+    ],
+  ]);
+  expect(output.records().at(-1)).toMatchObject({
+    level: 30,
+    msg: 'completed',
+    outcome: 'failed',
+    reason: 'exit code 3',
+  });
+});
+
+test('startRunner completes a task as failed with the message of a run that rejected', async () => {
+  const { run, execute } = controlled();
+  client.claim.mockResolvedValueOnce(task(60000));
+  start(execute);
+  await vi.advanceTimersByTimeAsync(0);
+
+  run.fail(new Error('boom'));
+  await vi.advanceTimersByTimeAsync(0);
+
+  expect(client.complete.mock.calls).toEqual([
+    [{ runner: 'r1', executionId: 'exe_1', outcome: 'failed', reason: 'boom' }],
+  ]);
+});
+
+test('startRunner stops the run a heartbeat says to cancel and completes it as cancelled once it ended', async () => {
+  const { run, execute } = controlled();
+  client.claim.mockResolvedValueOnce(task(3000));
+  client.heartbeat.mockResolvedValueOnce(ok({ cancel: true, leaseMs: 3000 }));
+  start(execute);
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(run.signal?.aborted).toBe(true);
+  expect(client.complete).not.toHaveBeenCalled();
+
+  run.end({ outcome: 'failed', reason: 'signal SIGTERM' });
+  await vi.advanceTimersByTimeAsync(0);
+
+  expect(client.complete.mock.calls).toEqual([
+    [{ runner: 'r1', executionId: 'exe_1', outcome: 'cancelled' }],
+  ]);
+});
+
+test('startRunner stops the run whose heartbeat lost the lease and completes nothing', async () => {
+  const { run, execute } = controlled();
+  client.claim.mockResolvedValueOnce(task(3000));
+  client.heartbeat.mockResolvedValueOnce(leaseLost);
+  start(execute);
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(run.signal?.aborted).toBe(true);
+  expect(client.claim).toHaveBeenCalledTimes(1);
+
+  run.end({ outcome: 'failed', reason: 'signal SIGTERM' });
+  await vi.advanceTimersByTimeAsync(0);
+
+  expect(client.complete).not.toHaveBeenCalled();
+  expect(client.claim).toHaveBeenCalledTimes(2);
+});
+
+test('stop stops the run and resolves once it ended, with no completion', async () => {
+  const { run, execute } = controlled();
+  client.claim.mockResolvedValueOnce(task(3000));
+  start(execute);
+  await vi.advanceTimersByTimeAsync(500);
+  let stopped = false;
+  const stopping = runner?.stop().then(() => {
+    stopped = true;
+  });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(run.signal?.aborted).toBe(true);
+  expect(stopped).toBe(false);
+
+  run.end({ outcome: 'failed', reason: 'signal SIGTERM' });
+  await stopping;
+
+  expect(stopped).toBe(true);
+  expect(client.heartbeat).not.toHaveBeenCalled();
+  expect(client.complete).not.toHaveBeenCalled();
+});
+
+test('startRunner stops the run once its lease ran out with no heartbeat answered, and completes nothing', async () => {
+  const { run, execute } = controlled();
+  client.claim.mockResolvedValueOnce(task(3000));
+  client.heartbeat.mockResolvedValue(noAnswer);
+  start(execute);
+  await vi.advanceTimersByTimeAsync(2999);
+  expect(run.signal?.aborted).toBe(false);
+  expect(client.heartbeat).toHaveBeenCalledTimes(2);
+
+  await vi.advanceTimersByTimeAsync(1);
+  expect(run.signal?.aborted).toBe(true);
+  expect(client.heartbeat).toHaveBeenCalledTimes(2);
+  expect(output.records().at(-1)).toMatchObject({
+    level: 40,
+    msg: 'lease expired',
+    taskId: 'tsk_1',
+    executionId: 'exe_1',
+  });
+
+  run.end({ outcome: 'failed', reason: 'signal SIGTERM' });
+  await vi.advanceTimersByTimeAsync(0);
+
+  expect(client.complete).not.toHaveBeenCalled();
+  expect(client.claim).toHaveBeenCalledTimes(2);
+});
+
+test('startRunner counts the lease from the last heartbeat answered', async () => {
+  const { run, execute } = controlled();
+  client.claim.mockResolvedValueOnce(task(3000));
+  client.heartbeat
+    .mockResolvedValueOnce(ok({ cancel: false, leaseMs: 3000 }))
+    .mockResolvedValue(noAnswer);
+  start(execute);
+  await vi.advanceTimersByTimeAsync(3999);
+  expect(run.signal?.aborted).toBe(false);
+
+  await vi.advanceTimersByTimeAsync(1);
+
+  expect(run.signal?.aborted).toBe(true);
+  run.end({ outcome: 'succeeded' });
+});
+
+test('startRunner stops the run when the heartbeat answer arrives after the lease ran out', async () => {
+  const { run, execute } = controlled();
+  client.claim.mockResolvedValueOnce(task(3000));
+  client.heartbeat.mockImplementationOnce(
+    () => new Promise((resolve) => setTimeout(() => resolve(noAnswer), 2500)),
+  );
+  start(execute);
+  await vi.advanceTimersByTimeAsync(3499);
+  expect(run.signal?.aborted).toBe(false);
+
+  // The answer lands at 3500; the stop goes on the next timer tick.
+  await vi.advanceTimersByTimeAsync(2);
+
+  expect(run.signal?.aborted).toBe(true);
+  expect(client.heartbeat).toHaveBeenCalledTimes(1);
+  run.end({ outcome: 'succeeded' });
+});
+
+test('startRunner completes a task as failed when execute throws before it returns', async () => {
+  client.claim.mockResolvedValueOnce(task(60000));
+  start(() => {
+    throw new Error('no taskfile');
+  });
+  await vi.advanceTimersByTimeAsync(0);
+
+  expect(client.complete.mock.calls).toEqual([
+    [
+      {
+        runner: 'r1',
+        executionId: 'exe_1',
+        outcome: 'failed',
+        reason: 'no taskfile',
+      },
+    ],
+  ]);
+});
+
+test.each([
+  ['a string', 'boom', 'boom'],
+  ['undefined', undefined, 'undefined'],
+])(
+  'startRunner completes a task as failed when execute rejects with %s',
+  async (_name, error, reason) => {
+    client.claim.mockResolvedValueOnce(task(60000));
+    start(() => Promise.reject(error));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(client.complete.mock.calls).toEqual([
+      [{ runner: 'r1', executionId: 'exe_1', outcome: 'failed', reason }],
+    ]);
+  },
+);
+
+test('startRunner keeps renewing the lease while a cancelled run winds down', async () => {
+  const { run, execute } = controlled();
+  client.claim.mockResolvedValueOnce(task(3000));
+  client.heartbeat.mockResolvedValue(ok({ cancel: true, leaseMs: 3000 }));
+  start(execute);
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(run.signal?.aborted).toBe(true);
+  expect(client.heartbeat).toHaveBeenCalledTimes(5);
+  expect(client.complete).not.toHaveBeenCalled();
+
+  run.end({ outcome: 'failed', reason: 'signal SIGTERM' });
+  await vi.advanceTimersByTimeAsync(1000);
+
+  expect(client.heartbeat).toHaveBeenCalledTimes(5);
+  expect(client.complete.mock.calls).toEqual([
+    [{ runner: 'r1', executionId: 'exe_1', outcome: 'cancelled' }],
+  ]);
+});
+
+test('startRunner completes a run that ended before a cancel arrived with how it ended', async () => {
+  const { run, execute } = controlled();
+  client.claim.mockResolvedValueOnce(task(3000));
+  client.heartbeat.mockImplementationOnce(
+    () =>
+      new Promise((resolve) =>
+        setTimeout(() => resolve(ok({ cancel: true, leaseMs: 3000 })), 500),
+      ),
+  );
+  start(execute);
+  await vi.advanceTimersByTimeAsync(1200);
+
+  run.end({ outcome: 'succeeded' });
+  await vi.advanceTimersByTimeAsync(300);
+
+  expect(run.signal?.aborted).toBe(true);
+  expect(client.complete.mock.calls).toEqual([
+    [{ runner: 'r1', executionId: 'exe_1', outcome: 'succeeded' }],
+  ]);
 });

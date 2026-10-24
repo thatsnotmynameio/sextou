@@ -4,9 +4,10 @@ import type { CoverageOptions } from 'vitest/node';
 // The source files the integration suite answers for. The unit suite answers
 // for every other one, so a new file belongs to it until it is listed here.
 //
-// No unit test answers for main.ts, on purpose: it runs the runner against
-// the server, which its test starts as a child process.
-export const integrationOnly = ['src/main.ts'];
+// No unit test answers for these, on purpose: main.ts runs the runner against
+// the server, which its test starts as a child process, and taskfile.ts runs
+// go-task as one.
+export const integrationOnly = ['src/main.ts', 'src/taskfile.ts'];
 
 // Each suite must reach this in every file it answers for, on its own.
 export const coverage = {
