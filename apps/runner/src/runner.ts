@@ -43,8 +43,8 @@ type Outcome = Result['outcome'] | 'cancelled';
 
 // Claims a task, executes it with a heartbeat every third of its lease, and
 // completes it with how the run ended, or as cancelled once a heartbeat says
-// someone asked to cancel it, which stops the run. A lost lease stops the run
-// and drops the task. stop() sends no new call, stops the run, waits for it
+// someone asked to cancel it, which stops the run. A lost lease, or one no
+// heartbeat renewed in time, stops the run and drops the task. stop() sends no new call, stops the run, waits for it
 // and for the call in flight, and resolves; a task it held is left to the
 // server's lease sweep.
 export function startRunner(options: RunnerOptions) {
@@ -86,7 +86,9 @@ async function run(options: RunnerOptions, signal: AbortSignal) {
 // The lease runs from when the server renewed it, which is before its answer
 // arrives: each heartbeat goes a third of a lease after the last call was
 // sent, the claim or a heartbeat, however long that call took to answer. A
-// heartbeat that failed after a long wait is sent again at once.
+// heartbeat that failed after a long wait is sent again at once. A lease no
+// heartbeat renewed in time has run out on the server too, whose sweep may
+// hand the task to another runner: the run stops as on a lost lease.
 async function work(
   options: RunnerOptions,
   held: Held,
@@ -104,37 +106,51 @@ async function work(
   // lease. `finished` aborts once the run ended, which wakes the heartbeat.
   const stopRun = new AbortController();
   const finished = new AbortController();
-  const result = execute(held.task, {
-    signal: AbortSignal.any([signal, stopRun.signal]),
-    logger: logger.child(ids),
-  })
+  const result = Promise.resolve()
+    .then(() =>
+      execute(held.task, {
+        signal: AbortSignal.any([signal, stopRun.signal]),
+        logger: logger.child(ids),
+      }),
+    )
     .catch((error: unknown): Result => ({
       outcome: 'failed',
-      reason: (error as Error).message,
+      reason: error instanceof Error ? error.message : String(error),
     }))
     .finally(() => finished.abort());
   const wake = AbortSignal.any([signal, finished.signal]);
   // Each answer carries the lease the server has now, which paces the next
-  // heartbeat.
+  // heartbeat and sets when the lease runs out.
   let leaseMs = held.execution.leaseMs;
   let next = claimSentAt + leaseMs / 3;
-  let ended: 'cancel' | 'lease_lost' | undefined;
-  while (ended === undefined) {
-    await sleep(next - Date.now(), wake);
+  let leaseEnd = claimSentAt + leaseMs;
+  // A cancel stops the run, and the heartbeat keeps the lease while it winds
+  // down. One that arrives once the run ended changes nothing.
+  let cancelled = false;
+  let lost = false;
+  while (!lost) {
+    await sleep(Math.min(next, leaseEnd) - Date.now(), wake);
     if (wake.aborted) {
+      break;
+    }
+    if (Date.now() >= leaseEnd) {
+      logger.warn(ids, 'lease expired');
+      lost = true;
       break;
     }
     const sentAt = Date.now();
     const beat = await client.heartbeat(ids.executionId);
     if (beat.ok) {
       leaseMs = beat.value.leaseMs;
+      leaseEnd = sentAt + leaseMs;
       logger.debug({ ...ids, cancel: beat.value.cancel }, 'heartbeat');
-      if (beat.value.cancel) {
-        ended = 'cancel';
+      if (beat.value.cancel && !finished.signal.aborted) {
+        cancelled = true;
+        stopRun.abort();
       }
     } else if (beat.failure === 'lease_lost') {
       logger.warn(ids, 'lease lost');
-      ended = 'lease_lost';
+      lost = true;
     } else {
       logger.warn(
         { ...ids, failure: beat.failure, message: beat.message },
@@ -145,13 +161,13 @@ async function work(
   }
   stopRun.abort();
   const ran = await result;
-  if (signal.aborted || ended === 'lease_lost') {
+  if (signal.aborted || lost) {
     return;
   }
   await complete(
     options,
     ids,
-    ended === 'cancel' ? { outcome: 'cancelled' } : ran,
+    cancelled ? { outcome: 'cancelled' } : ran,
     signal,
   );
 }

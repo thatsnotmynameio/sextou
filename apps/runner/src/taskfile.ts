@@ -13,7 +13,8 @@ export interface TaskfileOptions {
   taskfile: string;
   // How long the run may take before it is stopped and fails as timeout.
   timeoutMs: number;
-  // How long a stopped run has to exit after SIGTERM before SIGKILL.
+  // How long a stopped run has to exit after SIGTERM before SIGKILL, and
+  // how long its output may stay open once go-task exited.
   killGraceMs: number;
   // Gets each line the run writes, as an output record.
   logger: Logger;
@@ -26,8 +27,8 @@ export interface TaskfileOptions {
 // --exit-code passes the failed command's own through), the signal that
 // ended it, timeout, or the error that kept it from starting. go-task and
 // every command it starts run in a process group of their own, which a stop
-// signals whole: a command left behind would keep the output open, and the
-// run would never end. Process groups are POSIX's: it doesn't run on Windows.
+// signals whole, as does the runner's own exit. Process groups are POSIX's:
+// it doesn't run on Windows.
 export function runTaskfile({
   bin,
   taskfile,
@@ -48,29 +49,47 @@ export function runTaskfile({
     // aborts once.
     const timeout = AbortSignal.timeout(timeoutMs);
     const stop = AbortSignal.any([signal, timeout]);
+    let exited = false;
+    let timedOut = false;
     let killTimer: NodeJS.Timeout | undefined;
+    let closeTimer: NodeJS.Timeout | undefined;
     const signalGroup = (name: NodeJS.Signals) => {
       try {
         process.kill(-(child.pid as number), name);
       } catch {
-        // The group already exited.
+        // Every process in the group already exited.
       }
     };
     const kill = () => {
+      // A run that exited, whose close is still on its way, ended by itself,
+      // even when the timeout fired meanwhile.
+      if (exited) {
+        return;
+      }
       // Stryker disable next-line StringLiteral: process.kill reads '' as SIGTERM
       signalGroup('SIGTERM');
+      timedOut = timeout.aborted;
       killTimer = setTimeout(() => signalGroup('SIGKILL'), killGraceMs);
     };
+    // The group outlives the runner unless the runner kills it: on exit, as
+    // through process.exit, which runs only what is synchronous.
+    const killOnExit = () => signalGroup('SIGKILL');
     stop.addEventListener('abort', kill);
+    process.on('exit', killOnExit);
     const settle = (result: Result) => {
       // Without it, a run that exited within its grace still gets a SIGKILL
-      // for its group once the grace ends: try/catch drops it.
+      // for its group once the grace ends, which finds no process.
       // Stryker disable next-line CallExpression: a stray signal only
       clearTimeout(killTimer);
+      // Without it, the output of a run that closed by itself is closed again
+      // once the grace ends, which changes nothing.
+      // Stryker disable next-line CallExpression: a stray close only
+      clearTimeout(closeTimer);
       // A run that ended unstopped would leave its kill, and the child, on a
       // signal that may outlive it.
       // Stryker disable next-line StringLiteral,CallExpression: a leak only
       stop.removeEventListener('abort', kill);
+      process.off('exit', killOnExit);
       resolve(result);
     };
 
@@ -79,8 +98,18 @@ export function runTaskfile({
     child.on('error', (error) => {
       settle({ outcome: 'failed', reason: error.message });
     });
+    // A command that left the group, as one setsid starts in the background,
+    // keeps the output open after go-task exited, and no stop reaches it: the
+    // output gets killGraceMs more to close, then is closed.
+    child.on('exit', () => {
+      exited = true;
+      closeTimer = setTimeout(() => {
+        child.stdout.destroy();
+        child.stderr.destroy();
+      }, killGraceMs);
+    });
     child.on('close', (code, signalName) => {
-      if (timeout.aborted) {
+      if (timedOut) {
         settle({ outcome: 'failed', reason: 'timeout' });
       } else if (code === 0) {
         settle({ outcome: 'succeeded' });

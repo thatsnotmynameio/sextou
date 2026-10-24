@@ -10,9 +10,12 @@ import { memory } from '../logger';
 // go-task from the host, as `task` on the PATH. The organization's
 // typescript.yml runs this suite with no go-task installed, so the tests skip
 // there; tests.yml installs it, and test:integration's coverage floor fails
-// when they skip.
+// when they skip. Another `task`, such as Taskwarrior's, has no --taskfile.
 const bin = 'task';
-const goTask = test.skipIf(spawnSync(bin, ['--version']).status !== 0);
+const help = spawnSync(bin, ['--help'], { encoding: 'utf8' });
+const goTask = test.skipIf(
+  !`${help.stdout}${help.stderr}`.includes('--taskfile'),
+);
 
 let dir: string;
 let output: ReturnType<typeof memory>;
@@ -143,7 +146,10 @@ goTask(
   async () => {
     const started = Date.now();
 
-    const result = await run(taskfile(['sleep 30']), { timeoutMs: 300 });
+    const result = await run(taskfile(['sleep 30']), {
+      timeoutMs: 300,
+      killGraceMs: 500,
+    });
 
     expect(result).toEqual({ outcome: 'failed', reason: 'timeout' });
     expect(Date.now() - started).toBeLessThan(5000);
@@ -152,7 +158,7 @@ goTask(
 
 goTask('runTaskfile stops a run once its signal aborts', async () => {
   const controller = new AbortController();
-  const path = taskfile(['echo started', 'sleep 30']);
+  const path = taskfile(['sleep 30 & echo started; wait $!']);
   const started = Date.now();
   // A grace longer than the test: only SIGTERM can end the run in time.
   const running = run(path, { signal: controller.signal, killGraceMs: 60000 });
@@ -198,6 +204,79 @@ test('runTaskfile does not start a run whose signal already aborted', async () =
   await new Promise((resolve) => setTimeout(resolve, 200));
   expect(() => rmSync(marker)).toThrow();
 });
+
+goTask(
+  'runTaskfile ends a run whose output a command outside its group keeps open, once killGraceMs pass',
+  async () => {
+    const started = Date.now();
+
+    // setsid puts sleep in a session of its own, which inherits the output.
+    const result = await run(taskfile(['setsid sleep 3 &', 'echo done']), {
+      killGraceMs: 300,
+    });
+
+    expect(result).toEqual({ outcome: 'succeeded' });
+    expect(lines()).toEqual([{ stream: 'stdout', line: 'done' }]);
+    expect(Date.now() - started).toBeLessThan(2500);
+  },
+);
+
+goTask(
+  'runTaskfile does not count as timeout a run that exited before it, with its output still open',
+  async () => {
+    // go-task exits at once; sleep, in its group, keeps the output open past
+    // the timeout, and ends within the grace. A background command keeps it
+    // open only when another command follows it.
+    const result = await run(taskfile(['sleep 1 &', 'echo done']), {
+      timeoutMs: 300,
+      killGraceMs: 5000,
+    });
+
+    expect(result).toEqual({ outcome: 'succeeded' });
+  },
+);
+
+goTask(
+  'runTaskfile ends a stopped run whose output a command outside its group keeps open',
+  async () => {
+    const controller = new AbortController();
+    const path = taskfile([
+      'setsid sleep 3 &',
+      'sleep 30 & echo started; wait $!',
+    ]);
+    const running = run(path, { signal: controller.signal, killGraceMs: 300 });
+    await waitForLine('started');
+    const stopped = Date.now();
+
+    // SIGTERM ends go-task and its group, the SIGKILL after the grace finds no
+    // process, and the output closes once the grace passes.
+    controller.abort();
+    const result = await running;
+
+    expect(result.outcome).toBe('failed');
+    expect(Date.now() - stopped).toBeLessThan(2500);
+  },
+);
+
+goTask(
+  "runTaskfile kills the run's group when the runner's process exits",
+  async () => {
+    const before = process.listeners('exit');
+    const running = run(taskfile(['echo started', 'sleep 30']));
+    const [killOnExit] = process
+      .listeners('exit')
+      .filter((listener) => !before.includes(listener));
+    await waitForLine('started');
+
+    killOnExit(0);
+
+    expect(await running).toEqual({
+      outcome: 'failed',
+      reason: 'signal SIGKILL',
+    });
+    expect(process.listeners('exit')).toEqual(before);
+  },
+);
 
 async function waitForLine(line: string) {
   while (!lines().some((record) => record.line === line)) {

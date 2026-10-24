@@ -1,7 +1,7 @@
 // The runner's entry point: `pnpm --filter @sextou/runner dev` runs it from
 // source, and loads apps/runner/.env when it exists.
 import { randomUUID } from 'node:crypto';
-import { hostname } from 'node:os';
+import { constants, hostname } from 'node:os';
 import { createRunnerClient } from './client';
 import { loadConfig, type Config } from './config';
 import { hold } from './hold';
@@ -50,11 +50,18 @@ function run(config: Config) {
     'started',
   );
 
-  // The first signal stops once; a second one gets Node's default exit,
-  // which ends a stop stuck on a call in flight.
+  // The first signal stops once; a second one exits at once with the
+  // signal's code, which ends a stop stuck on a call in flight. It exits
+  // through process.exit rather than Node's default, so the exit handlers
+  // still run, which kill a run's processes.
+  const exitNow = (signal: NodeJS.Signals) => {
+    process.exit(128 + constants.signals[signal]);
+  };
   const shutdown = async () => {
     process.off('SIGINT', shutdown);
     process.off('SIGTERM', shutdown);
+    process.on('SIGINT', exitNow);
+    process.on('SIGTERM', exitNow);
     await runner.stop();
     logger.info('stopped');
     process.exit(0);
