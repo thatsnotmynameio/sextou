@@ -12,7 +12,10 @@ test('loadConfig uses every default when no variable is set', () => {
     assignees: ['box'],
     requestTimeoutMs: 30000,
     pollMs: 5000,
-    holdMs: 10000,
+    taskBin: 'task',
+    checkTimeoutMs: 10000,
+    runTimeoutMs: 21600000,
+    killGraceMs: 10000,
     dev: false,
     logLevel: 'info',
   });
@@ -26,7 +29,10 @@ test('loadConfig takes every variable that is set', () => {
       SEXTOU_RUNNER_ASSIGNEES: 'dev,ops',
       SEXTOU_RUNNER_REQUEST_TIMEOUT_MS: '700',
       SEXTOU_RUNNER_POLL_MS: '200',
-      SEXTOU_RUNNER_HOLD_MS: '900',
+      SEXTOU_RUNNER_TASK_BIN: '/opt/go-task',
+      SEXTOU_RUNNER_CHECK_TIMEOUT_MS: '700',
+      SEXTOU_RUNNER_RUN_TIMEOUT_MS: '900',
+      SEXTOU_RUNNER_KILL_GRACE_MS: '800',
       SEXTOU_RUNNER_DEV: 'true',
       SEXTOU_RUNNER_LOG_LEVEL: 'debug',
     }),
@@ -36,7 +42,10 @@ test('loadConfig takes every variable that is set', () => {
     assignees: ['dev', 'ops'],
     requestTimeoutMs: 700,
     pollMs: 200,
-    holdMs: 900,
+    taskBin: '/opt/go-task',
+    checkTimeoutMs: 700,
+    runTimeoutMs: 900,
+    killGraceMs: 800,
     dev: true,
     logLevel: 'debug',
   });
@@ -98,7 +107,9 @@ test.each(['', ' ', 'dev,', ',dev', 'dev,,ops'])(
 test.each([
   ['SEXTOU_RUNNER_REQUEST_TIMEOUT_MS', 'requestTimeoutMs'],
   ['SEXTOU_RUNNER_POLL_MS', 'pollMs'],
-  ['SEXTOU_RUNNER_HOLD_MS', 'holdMs'],
+  ['SEXTOU_RUNNER_CHECK_TIMEOUT_MS', 'checkTimeoutMs'],
+  ['SEXTOU_RUNNER_RUN_TIMEOUT_MS', 'runTimeoutMs'],
+  ['SEXTOU_RUNNER_KILL_GRACE_MS', 'killGraceMs'],
 ] as const)(
   'loadConfig takes %s from 1 to 2147483647 milliseconds',
   (name, key) => {
@@ -112,13 +123,27 @@ test.each([
   ['SEXTOU_RUNNER_REQUEST_TIMEOUT_MS', '2147483648'],
   ['SEXTOU_RUNNER_POLL_MS', '1.5'],
   ['SEXTOU_RUNNER_POLL_MS', ''],
-  ['SEXTOU_RUNNER_HOLD_MS', '-5'],
-  ['SEXTOU_RUNNER_HOLD_MS', '1e3'],
+  ['SEXTOU_RUNNER_RUN_TIMEOUT_MS', '-5'],
+  ['SEXTOU_RUNNER_KILL_GRACE_MS', '1e3'],
+  ['SEXTOU_RUNNER_CHECK_TIMEOUT_MS', '0'],
 ])('loadConfig rejects %s=%j', (name, value) => {
   expect(() => load({ [name]: value })).toThrow(
     `Invalid ${name}: ${JSON.stringify(value)} (expected a whole number of milliseconds from 1 to 2147483647)`,
   );
 });
+
+test('loadConfig trims SEXTOU_RUNNER_TASK_BIN', () => {
+  expect(load({ SEXTOU_RUNNER_TASK_BIN: ' go-task ' }).taskBin).toBe('go-task');
+});
+
+test.each(['', '  '])(
+  'loadConfig rejects SEXTOU_RUNNER_TASK_BIN=%j',
+  (value) => {
+    expect(() => load({ SEXTOU_RUNNER_TASK_BIN: value })).toThrow(
+      `Invalid SEXTOU_RUNNER_TASK_BIN: ${JSON.stringify(value)} (expected a command or a path)`,
+    );
+  },
+);
 
 test.each(['', 'yes', 'TRUE', '1'])(
   'loadConfig rejects SEXTOU_RUNNER_DEV=%j',

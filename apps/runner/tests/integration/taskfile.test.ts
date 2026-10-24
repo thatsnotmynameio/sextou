@@ -1,24 +1,37 @@
-import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, beforeEach, expect, test } from 'vitest';
+import { basename, dirname, join } from 'node:path';
+import {
+  afterEach,
+  beforeEach,
+  expect,
+  onTestFinished,
+  test,
+  vi,
+} from 'vitest';
 import { createLogger } from '../../src/logger';
-import { runTaskfile } from '../../src/taskfile';
+import { checkGoTask, runTaskfile, taskfileExecute } from '../../src/taskfile';
+import { bin, goTask } from '../go-task';
 import { memory } from '../logger';
 
-// go-task from the host, as `task` on the PATH. The organization's
-// typescript.yml runs this suite with no go-task installed, so the tests skip
-// there; tests.yml installs it, and test:integration's coverage floor fails
-// when they skip. Another `task`, such as Taskwarrior's, has no --taskfile.
-const bin = 'task';
-const help = spawnSync(bin, ['--help'], { encoding: 'utf8' });
-const goTask = test.skipIf(
-  !`${help.stdout}${help.stderr}`.includes('--taskfile'),
-);
+// Long enough for every run that isn't meant to be stopped.
+const limits = { timeoutMs: 20000, killGraceMs: 5000 };
 
 let dir: string;
 let output: ReturnType<typeof memory>;
+
+// A logger that writes each record to `output`.
+function logger() {
+  return createLogger({ level: 'info', pretty: false }, output.destination);
+}
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'sextou-taskfile-'));
@@ -34,26 +47,29 @@ afterEach(() => {
 function taskfile(cmds: string[], folder = 'work') {
   mkdirSync(join(dir, folder), { recursive: true });
   const path = join(dir, folder, 'Taskfile.yml');
-  writeFileSync(
-    path,
-    [
-      'version: "3"',
-      'silent: true',
-      'tasks:',
-      '  default:',
-      '    cmds:',
-      ...cmds.map((cmd) => `      - ${JSON.stringify(cmd)}`),
-    ].join('\n'),
-  );
+  writeFileSync(path, plaintext(cmds));
   return path;
+}
+
+// The text of a Taskfile whose default task runs `cmds` with no echo of each
+// command.
+function plaintext(cmds: string[]) {
+  return [
+    'version: "3"',
+    'silent: true',
+    'tasks:',
+    '  default:',
+    '    cmds:',
+    ...cmds.map((cmd) => `      - ${JSON.stringify(cmd)}`),
+  ].join('\n');
 }
 
 function run(
   path: string,
   {
     signal = new AbortController().signal,
-    timeoutMs = 20000,
-    killGraceMs = 5000,
+    timeoutMs = limits.timeoutMs,
+    killGraceMs = limits.killGraceMs,
     bin: taskBin = bin,
   } = {},
 ) {
@@ -62,7 +78,7 @@ function run(
     taskfile: path,
     timeoutMs,
     killGraceMs,
-    logger: createLogger({ level: 'info', pretty: false }, output.destination),
+    logger: logger(),
     signal,
   });
 }
@@ -105,6 +121,39 @@ goTask("runTaskfile runs the commands in the Taskfile's folder", async () => {
   ]);
 });
 
+goTask(
+  "runTaskfile runs go-task in the Taskfile's folder, its USER_WORKING_DIR",
+  async () => {
+    const path = taskfile(['echo {{.USER_WORKING_DIR}}'], 'nested/work');
+
+    await run(path);
+
+    expect(lines()).toEqual([
+      { stream: 'stdout', line: join(dir, 'nested/work') },
+    ]);
+  },
+);
+
+goTask(
+  'runTaskfile kills with SIGKILL what the run left in its group once it ended',
+  async () => {
+    const pidFile = join(dir, 'pid');
+
+    const result = await run(
+      // go-task's own shell waits for its background commands; another
+      // shell leaves them behind. The sleep ignores SIGTERM, as the shell
+      // that started it does.
+      taskfile([
+        `sh -c 'trap "" TERM; sleep 30 > /dev/null 2>&1 & echo $! > ${pidFile}'`,
+      ]),
+    );
+
+    expect(result).toEqual({ outcome: 'succeeded' });
+    const pid = Number(readFileSync(pidFile, 'utf8'));
+    await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow());
+  },
+);
+
 goTask('runTaskfile gives the run no input', async () => {
   expect(await run(taskfile(['cat']), { timeoutMs: 5000 })).toEqual({
     outcome: 'succeeded',
@@ -125,7 +174,7 @@ goTask(
 goTask(
   'runTaskfile resolves failed when the Taskfile does not exist',
   async () => {
-    expect(await run(join(dir, 'missing', 'Taskfile.yml'))).toEqual({
+    expect(await run(join(dir, 'Taskfile.yml'))).toEqual({
       outcome: 'failed',
       reason: 'exit code 100',
     });
@@ -277,6 +326,121 @@ goTask(
     expect(process.listeners('exit')).toEqual(before);
   },
 );
+
+// Runs a task whose Taskfile is `text` through taskfileExecute.
+function execute(text: string, taskBin = bin) {
+  return taskfileExecute({ bin: taskBin, ...limits })(
+    { id: 'tsk_1', taskfile: text },
+    { signal: new AbortController().signal, logger: logger() },
+  );
+}
+
+goTask(
+  "taskfileExecute runs the task's Taskfile in a folder of its own under the temporary folder",
+  async () => {
+    expect(await execute(plaintext(['pwd']))).toEqual({ outcome: 'succeeded' });
+
+    const [{ line }] = lines();
+    expect(dirname(line)).toBe(tmpdir());
+    expect(basename(line)).toMatch(/^sextou-execution-/);
+  },
+);
+
+goTask(
+  'taskfileExecute removes the folder once the run succeeded',
+  async () => {
+    await execute(plaintext(['pwd']));
+
+    await vi.waitFor(() => expect(existsSync(lines()[0].line)).toBe(false));
+  },
+);
+
+goTask('taskfileExecute resolves failed when the run failed', async () => {
+  expect(await execute(plaintext(['exit 4']))).toEqual({
+    outcome: 'failed',
+    reason: 'exit code 4',
+  });
+});
+
+goTask('taskfileExecute removes the folder once the run failed', async () => {
+  await execute(plaintext(['pwd', 'exit 4']));
+
+  await vi.waitFor(() => expect(existsSync(lines()[0].line)).toBe(false));
+});
+
+goTask(
+  "taskfileExecute keeps the run's result when its folder can't be removed",
+  async () => {
+    const result = await execute(
+      plaintext([
+        'mkdir locked',
+        'touch locked/file',
+        'chmod 555 locked',
+        'pwd',
+      ]),
+    );
+
+    expect(result).toEqual({ outcome: 'succeeded' });
+    const folder = lines()[0].line;
+    onTestFinished(() => {
+      chmodSync(join(folder, 'locked'), 0o755);
+      rmSync(folder, { recursive: true, force: true });
+    });
+    await vi.waitFor(() =>
+      expect(output.records()).toContainEqual(
+        expect.objectContaining({ msg: 'folder not removed', dir: folder }),
+      ),
+    );
+  },
+);
+
+test('taskfileExecute resolves failed with the error when the binary does not exist', async () => {
+  const missing = join(dir, 'no-task');
+
+  expect(await execute(plaintext(['true']), missing)).toEqual({
+    outcome: 'failed',
+    reason: `spawn ${missing} ENOENT`,
+  });
+});
+
+// An executable script in `dir` that runs `body`.
+function script(body: string) {
+  const path = join(dir, 'fake-task');
+  writeFileSync(path, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+  return path;
+}
+
+goTask('checkGoTask resolves undefined for go-task', async () => {
+  expect(await checkGoTask(bin, 5000)).toBeUndefined();
+});
+
+test('checkGoTask resolves the error when the binary does not exist', async () => {
+  const missing = join(dir, 'no-task');
+
+  expect(await checkGoTask(missing, 5000)).toBe(`spawn ${missing} ENOENT`);
+});
+
+test('checkGoTask resolves why when the help names no --taskfile', async () => {
+  expect(await checkGoTask(script('echo "task add <description>"'), 5000)).toBe(
+    'its help names no --taskfile',
+  );
+});
+
+test('checkGoTask resolves why when a binary without --taskfile fails', async () => {
+  expect(await checkGoTask(script('exit 2'), 5000)).toBe(
+    'its help names no --taskfile',
+  );
+});
+
+test('checkGoTask takes --taskfile from the help on stderr', async () => {
+  expect(
+    await checkGoTask(script('echo "  -t, --taskfile string" >&2'), 5000),
+  ).toBeUndefined();
+});
+
+test('checkGoTask resolves timeout when the help takes longer than timeoutMs', async () => {
+  expect(await checkGoTask(script('exec sleep 30'), 200)).toBe('timeout');
+});
 
 async function waitForLine(line: string) {
   while (!lines().some((record) => record.line === line)) {

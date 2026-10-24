@@ -45,12 +45,11 @@ const serverStateFile =
   process.env.RUN_SERVER_STATE ??
   join(tmpdir(), 'sextou-run-server', 'state.json');
 
-// Short enough to watch a whole task in a few seconds, with each heartbeat
-// in the log.
+// A short poll, so the runner claims a new task at once, and the debug level,
+// so each heartbeat is in the log.
 const defaults = {
   SEXTOU_RUNNER_NAME: 'run-runner',
   SEXTOU_RUNNER_POLL_MS: '500',
-  SEXTOU_RUNNER_HOLD_MS: '3000',
   SEXTOU_RUNNER_LOG_LEVEL: 'debug',
 };
 
@@ -282,7 +281,7 @@ function serverCommand(args, serverState, env = {}) {
 }
 
 // The runner's whole flow against a server of its own, with a short lease:
-// no server, a task completed as succeeded, a task cancelled while held, and
+// no server, a task completed as succeeded, a task cancelled while its Taskfile runs, and
 // the stop. Touches neither skill's usual state file. Exits 1 at the first
 // step that differs.
 async function smoke() {
@@ -313,12 +312,15 @@ async function smoke() {
   };
   const run = Date.now().toString(36);
   const assignee = `smoke-${run}`;
+  // go-task's binary is the one setting kept from the shell: some
+  // distributions name it go-task.
+  const taskBin = process.env.SEXTOU_RUNNER_TASK_BIN;
   const env = (url) => ({
     ...cleanEnv(),
     ...defaults,
+    ...(taskBin === undefined ? {} : { SEXTOU_RUNNER_TASK_BIN: taskBin }),
     SEXTOU_RUNNER_SERVER_URL: url,
     SEXTOU_RUNNER_NAME: assignee,
-    SEXTOU_RUNNER_HOLD_MS: '1500',
   });
 
   // A step that throws, as a call whose answer isn't what it expects, fails
@@ -382,6 +384,15 @@ async function smoke() {
       succeeded?.outcome === 'succeeded',
       succeeded,
     );
+    await check(
+      'ran the stub Taskfile',
+      records(runner.log).some(
+        (record) =>
+          record.msg === 'output' &&
+          record.taskId === done.id &&
+          record.line === 'sextou stub',
+      ),
+    );
 
     const cancelled = await create('Cancelled');
     await check('created a second task', Boolean(cancelled?.id), cancelled);
@@ -393,7 +404,7 @@ async function smoke() {
       taskId: cancelled.id,
       actor: 'smoke',
     });
-    await check('cancel while held', cancel?.status === 'running', cancel);
+    await check('cancel while it runs', cancel?.status === 'running', cancel);
     const ended = await seen('completed', cancelled.id);
     await check(
       'completed as cancelled',

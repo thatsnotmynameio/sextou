@@ -15,6 +15,7 @@ import {
   vi,
   type MockInstance,
 } from 'vitest';
+import { goTask } from '../go-task';
 
 // The server runs as its own process, from its sources, with its own tsx:
 // the runner imports nothing from it but its router's type. Its folder is
@@ -51,11 +52,18 @@ function records(): LogRecord[] {
   return output.lines.map((line) => JSON.parse(line) as LogRecord);
 }
 
-// Resolves with the first record main wrote whose msg is `msg`.
-function logged(msg: string): Promise<LogRecord> {
+// Resolves with the first record main wrote whose msg is `msg`, and whose
+// fields are those of `fields`.
+function logged(msg: string, fields: LogRecord = {}): Promise<LogRecord> {
   return vi.waitFor(
     () => {
-      const record = records().find((candidate) => candidate.msg === msg);
+      const record = records().find(
+        (candidate) =>
+          candidate.msg === msg &&
+          Object.entries(fields).every(
+            ([key, value]) => candidate[key] === value,
+          ),
+      );
       if (!record) {
         throw new Error(`No ${msg} record yet`);
       }
@@ -135,12 +143,11 @@ function handler(signal: string) {
 }
 
 // Runs main against the server, for `assignee` alone.
-async function startRunner(assignee: string, holdMs: number) {
+async function startRunner(assignee: string) {
   vi.stubEnv('SEXTOU_RUNNER_SERVER_URL', serverUrl);
   vi.stubEnv('SEXTOU_RUNNER_NAME', `runner-${assignee}`);
   vi.stubEnv('SEXTOU_RUNNER_ASSIGNEES', assignee);
   vi.stubEnv('SEXTOU_RUNNER_POLL_MS', '50');
-  vi.stubEnv('SEXTOU_RUNNER_HOLD_MS', String(holdMs));
   vi.stubEnv('SEXTOU_RUNNER_LOG_LEVEL', 'debug');
   await import('../../src/main');
 }
@@ -181,56 +188,74 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-test('main logs that it started, with its name, assignees and server', async () => {
-  await startRunner('started', 300);
+goTask(
+  'main logs that it started, with its name, assignees and server',
+  async () => {
+    await startRunner('started');
 
-  expect(await logged('started')).toMatchObject({
-    level: 30,
-    name: 'runner-started',
-    assignees: ['started'],
-    serverUrl,
-  });
-});
+    expect(await logged('started')).toMatchObject({
+      level: 30,
+      name: 'runner-started',
+      assignees: ['started'],
+      serverUrl,
+    });
+  },
+);
 
-test('main claims a task, renews its lease and completes it as succeeded', async () => {
-  const task = await createTask('succeeds');
-  await startRunner('succeeds', 500);
+// The server hands every task its stub Taskfile, which writes a line and
+// runs for 2 seconds.
+goTask(
+  'main completes a claimed task as succeeded once its Taskfile ran',
+  async () => {
+    const task = await createTask('succeeds');
+    await startRunner('succeeds');
 
-  expect(await logged('claimed')).toMatchObject({
-    taskId: task.id,
-    attempt: 1,
-  });
-  expect(await logged('completed')).toMatchObject({
-    taskId: task.id,
-    outcome: 'succeeded',
-  });
-  expect(messages()).toContain('heartbeat');
-  expect(
-    await call('runners.claim', {
-      claimId: 'after',
-      runner: 'other',
-      assignees: ['succeeds'],
-    }),
-  ).toEqual({ task: null });
-});
+    expect(await logged('claimed')).toMatchObject({
+      taskId: task.id,
+      attempt: 1,
+    });
+    // go-task writes each command to stderr before it runs it.
+    expect(await logged('output', { stream: 'stdout' })).toMatchObject({
+      taskId: task.id,
+      line: 'sextou stub',
+    });
+    expect(await logged('completed')).toMatchObject({
+      taskId: task.id,
+      outcome: 'succeeded',
+    });
+    expect(messages()).toContain('heartbeat');
+    expect(
+      await call('runners.claim', {
+        claimId: 'after',
+        runner: 'other',
+        assignees: ['succeeds'],
+      }),
+    ).toEqual({ task: null });
+  },
+);
 
-test('main completes a task as cancelled once someone asks to cancel it', async () => {
-  const task = await createTask('cancels');
-  await startRunner('cancels', 60_000);
-  await logged('claimed');
+goTask(
+  'main completes a task as cancelled once someone asks to cancel it while its Taskfile runs',
+  async () => {
+    const task = await createTask('cancels');
+    await startRunner('cancels');
+    await logged('claimed');
 
-  expect(await call('tasks.cancel', { taskId: task.id, actor: 'me' })).toEqual({
-    status: 'running',
-  });
+    expect(
+      await call('tasks.cancel', { taskId: task.id, actor: 'me' }),
+    ).toEqual({
+      status: 'running',
+    });
 
-  expect(await logged('completed')).toMatchObject({
-    taskId: task.id,
-    outcome: 'cancelled',
-  });
-});
+    expect(await logged('completed')).toMatchObject({
+      taskId: task.id,
+      outcome: 'cancelled',
+    });
+  },
+);
 
-test('main stops on SIGINT and SIGTERM, once, and exits with 0', async () => {
-  await startRunner('stops', 300);
+goTask('main stops on SIGINT and SIGTERM, once, and exits with 0', async () => {
+  await startRunner('stops');
   await logged('started');
 
   await handler('SIGINT')();
@@ -244,13 +269,13 @@ test('main stops on SIGINT and SIGTERM, once, and exits with 0', async () => {
   expect(messages().at(-1)).toBe('stopped');
 });
 
-test.each([
+goTask.each([
   ['SIGINT', 130],
   ['SIGTERM', 143],
 ] as const)(
   'main exits at once with the code of a second %s',
   async (signal, code) => {
-    await startRunner('exits', 60_000);
+    await startRunner('exits');
     await logged('started');
     void handler('SIGINT')();
 
@@ -262,6 +287,24 @@ test.each([
     expect(exit).toHaveBeenCalledWith(code);
   },
 );
+
+test('main exits with 1 when SEXTOU_RUNNER_TASK_BIN is not go-task, without calling the server', async () => {
+  const missing = join(dir, 'no-task');
+  vi.stubEnv('SEXTOU_RUNNER_TASK_BIN', missing);
+
+  await import('../../src/main');
+
+  await vi.waitFor(() => expect(process.exitCode).toBe(1));
+  expect(records()).toEqual([
+    expect.objectContaining({
+      level: 50,
+      taskBin: missing,
+      reason: `spawn ${missing} ENOENT`,
+      msg: 'SEXTOU_RUNNER_TASK_BIN is not go-task',
+    }),
+  ]);
+  expect(on).not.toHaveBeenCalled();
+});
 
 test('main exits with 1 on an invalid variable, without calling the server', async () => {
   vi.stubEnv('SEXTOU_RUNNER_POLL_MS', '0');

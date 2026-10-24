@@ -26,8 +26,18 @@ export interface Config {
   // How long the runner waits before it claims again, when there was no task
   // or no answer, and before it sends a completion again.
   pollMs: number;
-  // How long the runner holds a task before it completes it as succeeded.
-  holdMs: number;
+  // go-task's binary: `task` on the PATH, or a path. Some distributions name
+  // it go-task.
+  taskBin: string;
+  // How long go-task may take to print its help when the runner starts and
+  // checks it.
+  checkTimeoutMs: number;
+  // How long a run may take before the runner stops it and it fails as
+  // timeout.
+  runTimeoutMs: number;
+  // How long a stopped run has to exit after SIGTERM before SIGKILL, and how
+  // long a run's output may stay open once go-task exited, stopped or not.
+  killGraceMs: number;
   // Readable log lines instead of JSON.
   dev: boolean;
   // The lowest level the logger writes.
@@ -56,7 +66,7 @@ export function loadConfig(
     return value === undefined ? fallback() : parse(value, name);
   };
 
-  const name = read('SEXTOU_RUNNER_NAME', parseName, hostname);
+  const name = read('SEXTOU_RUNNER_NAME', nonEmpty('a name'), hostname);
   return {
     serverUrl: read(
       'SEXTOU_RUNNER_SERVER_URL',
@@ -71,7 +81,22 @@ export function loadConfig(
       () => 30000,
     ),
     pollMs: read('SEXTOU_RUNNER_POLL_MS', parseTimeout, () => 5000),
-    holdMs: read('SEXTOU_RUNNER_HOLD_MS', parseTimeout, () => 10000),
+    taskBin: read(
+      'SEXTOU_RUNNER_TASK_BIN',
+      nonEmpty('a command or a path'),
+      () => 'task',
+    ),
+    checkTimeoutMs: read(
+      'SEXTOU_RUNNER_CHECK_TIMEOUT_MS',
+      parseTimeout,
+      () => 10000,
+    ),
+    runTimeoutMs: read(
+      'SEXTOU_RUNNER_RUN_TIMEOUT_MS',
+      parseTimeout,
+      () => 21600000,
+    ),
+    killGraceMs: read('SEXTOU_RUNNER_KILL_GRACE_MS', parseTimeout, () => 10000),
     dev: read('SEXTOU_RUNNER_DEV', parseBoolean, () => false),
     logLevel: read('SEXTOU_RUNNER_LOG_LEVEL', parseLogLevel, () => 'info'),
   };
@@ -91,13 +116,16 @@ function parseUrl(value: string, name: string): string {
   return url.href.replace(/\/+$/, '');
 }
 
-// Trimmed, as the server trims the names it takes.
-function parseName(value: string, name: string): string {
-  const trimmed = value.trim();
-  if (trimmed === '') {
-    throw invalid(name, value, 'a name');
-  }
-  return trimmed;
+// The value trimmed, refused when nothing is left: a name, trimmed as the
+// server trims the names it takes, or go-task's binary.
+function nonEmpty(expected: string) {
+  return (value: string, name: string): string => {
+    const trimmed = value.trim();
+    if (trimmed === '') {
+      throw invalid(name, value, expected);
+    }
+    return trimmed;
+  };
 }
 
 // Names separated by commas, each trimmed: at least one, none empty.

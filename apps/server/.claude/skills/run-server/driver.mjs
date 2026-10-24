@@ -215,7 +215,10 @@ async function smoke() {
     'claim',
     'runners.claim',
     claim,
-    (s, b) => s === 200 && b.result.data.task?.id === task.id,
+    (s, b) =>
+      s === 200 &&
+      b.result.data.task?.id === task.id &&
+      b.result.data.task.taskfile.includes('default:'),
   );
   const executionId = claimed.execution.id;
   await step(

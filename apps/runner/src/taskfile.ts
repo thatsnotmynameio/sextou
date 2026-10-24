@@ -1,15 +1,70 @@
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
 import type { Logger } from './logger';
-import type { Result } from './runner';
+import type { Execute, Result } from './runner';
+
+// Runs each task's Taskfile, the plaintext its claim carries: it writes it to
+// Taskfile.yml in a folder of its own under the system's temporary folder,
+// runs its default task there with runTaskfile, and resolves with how the run
+// ended. The folder is removed once the run ends, without waiting for it: a
+// large folder takes a while, and the run's result is already settled. A
+// folder that can't be removed, as one the run made read-only, is logged and
+// left behind.
+export function taskfileExecute(
+  options: Pick<TaskfileOptions, 'bin' | 'timeoutMs' | 'killGraceMs'>,
+): Execute {
+  return async (task, { signal, logger }) => {
+    const dir = await mkdtemp(join(tmpdir(), 'sextou-execution-'));
+    try {
+      const taskfile = join(dir, 'Taskfile.yml');
+      await writeFile(taskfile, task.taskfile);
+      return await runTaskfile({ ...options, taskfile, logger, signal });
+    } finally {
+      rm(dir, { recursive: true }).catch((error: Error) =>
+        logger.warn({ dir, error: error.message }, 'folder not removed'),
+      );
+    }
+  };
+}
+
+// Resolves with why `bin` can't run Taskfiles, or undefined when it's
+// go-task: it doesn't start, it takes longer than `timeoutMs` to print its
+// help, or its help names no --taskfile, as Taskwarrior's `task` doesn't.
+export function checkGoTask(
+  bin: string,
+  timeoutMs: number,
+): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    execFile(
+      bin,
+      ['--help'],
+      { timeout: timeoutMs },
+      (error, stdout, stderr) => {
+        if (`${stdout}${stderr}`.includes('--taskfile')) {
+          resolve(undefined);
+        } else if (error?.killed) {
+          resolve('timeout');
+        } else if (typeof error?.code === 'string') {
+          resolve(error.message);
+        } else {
+          resolve('its help names no --taskfile');
+        }
+      },
+    );
+  });
+}
 
 export interface TaskfileOptions {
   // The go-task binary, from the host: `task` on the PATH, or a path. Some
   // distributions name it go-task.
   bin: string;
-  // The Taskfile whose default task runs. go-task runs its commands in the
-  // Taskfile's folder.
+  // The Taskfile whose default task runs. go-task runs in the Taskfile's
+  // folder, as do its commands, so no .taskrc.yml or USER_WORKING_DIR of the
+  // runner's own folder reaches the run.
   taskfile: string;
   // How long the run may take before it is stopped and fails as timeout.
   timeoutMs: number;
@@ -27,8 +82,9 @@ export interface TaskfileOptions {
 // --exit-code passes the failed command's own through), the signal that
 // ended it, timeout, or the error that kept it from starting. go-task and
 // every command it starts run in a process group of their own, which a stop
-// signals whole, as does the runner's own exit. Process groups are POSIX's:
-// it doesn't run on Windows.
+// signals whole, as does the runner's own exit; once the run ends, whatever
+// of the group is left is killed, so nothing it started outlives it. Process
+// groups are POSIX's: it doesn't run on Windows.
 export function runTaskfile({
   bin,
   taskfile,
@@ -42,6 +98,7 @@ export function runTaskfile({
   }
   return new Promise((resolve) => {
     const child = spawn(bin, ['--exit-code', '--taskfile', taskfile], {
+      cwd: dirname(taskfile),
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -57,7 +114,8 @@ export function runTaskfile({
       try {
         process.kill(-(child.pid as number), name);
       } catch {
-        // Every process in the group already exited.
+        // Every process in the group already exited, or go-task never started
+        // and there is no group.
       }
     };
     const kill = () => {
@@ -90,6 +148,9 @@ export function runTaskfile({
       // Stryker disable next-line StringLiteral,CallExpression: a leak only
       stop.removeEventListener('abort', kill);
       process.off('exit', killOnExit);
+      // A command that went to the background without the output, or that
+      // ignored a stop's SIGTERM, is still in the group.
+      signalGroup('SIGKILL');
       resolve(result);
     };
 

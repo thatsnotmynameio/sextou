@@ -41,17 +41,7 @@ function stubFetch(respond: () => Response | Promise<Response>) {
 }
 
 const claimed = {
-  task: {
-    id: 'tsk_1',
-    title: 'Say hi',
-    kind: 'task',
-    priority: 2,
-    parentId: null,
-    assignee: { name: 'dev' },
-    description: null,
-    source: null,
-    status: 'running',
-  },
+  task: { id: 'tsk_1', taskfile: 'version: 3' },
   execution: { id: 'exe_1', attempt: 1, leaseMs: 30000 },
 };
 

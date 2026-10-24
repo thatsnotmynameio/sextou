@@ -523,7 +523,7 @@ test('serves the tasks and the runners procedures over the tasks service', async
   });
 
   expect(claimed).toMatchObject({
-    task: { id: created.id, status: 'running' },
+    task: { id: created.id, taskfile: expect.stringContaining('default:') },
     execution: { attempt: 1, leaseMs: 30000 },
   });
 });

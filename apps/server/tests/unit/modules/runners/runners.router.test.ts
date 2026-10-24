@@ -1,6 +1,7 @@
 import { TRPCError } from '@trpc/server';
 import { expect, test, vi } from 'vitest';
 import { runnersRouter } from '../../../../src/modules/runners/runners.router';
+import { stubTaskfile } from '../../../../src/modules/runners/stub-taskfile';
 import { Outcome, Refusal, Status, type Tasks } from '../../../../src/tasks';
 import { createCallerFactory } from '../../../../src/trpc';
 import { aTask, fakeTasks, testContext } from '../../../tasks';
@@ -15,7 +16,7 @@ const task = aTask({ status: Status.running });
 
 const execution = { id: 'exe_1', attempt: 1, leaseMs: 30000 };
 
-test('runners.claim hands the runner the task and the attempt it holds', async () => {
+test('runners.claim hands the runner the task id, the stub Taskfile and the attempt it holds', async () => {
   const claim = vi.fn(async () => ({ ok: true as const, task, execution }));
 
   expect(
@@ -24,7 +25,7 @@ test('runners.claim hands the runner the task and the attempt it holds', async (
       runner: ' runner-1 ',
       assignees: ['dev', ' qa '],
     }),
-  ).toEqual({ task, execution });
+  ).toEqual({ task: { id: task.id, taskfile: stubTaskfile }, execution });
   expect(claim).toHaveBeenCalledWith({
     claimId: 'claim-1',
     runner: { name: 'runner-1' },
