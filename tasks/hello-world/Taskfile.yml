@@ -1,0 +1,9 @@
+version: '3'
+
+tasks:
+  default:
+    cmds:
+      - python3 hello.py
+      # The run-runner skill's smoke cancels a task while it runs, and wants
+      # a heartbeat in between: the run lasts long enough for both.
+      - sleep 2
