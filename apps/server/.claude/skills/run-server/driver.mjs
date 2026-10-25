@@ -218,7 +218,7 @@ async function smoke() {
     (s, b) =>
       s === 200 &&
       b.result.data.task?.id === task.id &&
-      b.result.data.task.taskfile.includes('default:'),
+      b.result.data.task.source?.taskfile === 'tasks/hello-world/Taskfile.yml',
   );
   const executionId = claimed.execution.id;
   await step(

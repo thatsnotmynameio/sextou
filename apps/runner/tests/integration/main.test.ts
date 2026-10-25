@@ -15,6 +15,7 @@ import {
   vi,
   type MockInstance,
 } from 'vitest';
+import { answer, archive, serve, type Served } from '../archive';
 import { goTask } from '../go-task';
 
 // The server runs as its own process, from its sources, with its own tsx:
@@ -76,6 +77,7 @@ function logged(msg: string, fields: LogRecord = {}): Promise<LogRecord> {
 let dir: string;
 let server: ChildProcess;
 let serverUrl: string;
+let github: Served;
 let on: MockInstance<typeof process.on>;
 let off: MockInstance<typeof process.off>;
 let exit: MockInstance<typeof process.exit>;
@@ -145,6 +147,7 @@ function handler(signal: string) {
 // Runs main against the server, for `assignee` alone.
 async function startRunner(assignee: string) {
   vi.stubEnv('SEXTOU_RUNNER_SERVER_URL', serverUrl);
+  vi.stubEnv('SEXTOU_RUNNER_GITHUB_URL', github.url);
   vi.stubEnv('SEXTOU_RUNNER_NAME', `runner-${assignee}`);
   vi.stubEnv('SEXTOU_RUNNER_ASSIGNEES', assignee);
   vi.stubEnv('SEXTOU_RUNNER_POLL_MS', '50');
@@ -152,8 +155,26 @@ async function startRunner(assignee: string) {
   await import('../../src/main');
 }
 
+// The server's stub points every claim at tasks/hello-world in sextou's
+// repository on GitHub. The runner downloads it from a server on localhost
+// instead, whose tarball has a Taskfile at that path that writes a line and
+// runs for 2 seconds.
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'sextou-runner-'));
+  github = await serve(
+    answer(
+      archive({
+        'tasks/hello-world/Taskfile.yml': [
+          'version: "3"',
+          'tasks:',
+          '  default:',
+          '    cmds:',
+          '      - echo "sextou stub"',
+          '      - sleep 2',
+        ].join('\n'),
+      }),
+    ),
+  );
   serverUrl = await startServer();
 }, 30_000);
 
@@ -163,6 +184,7 @@ afterAll(async () => {
     server.kill('SIGTERM');
     await exited;
   }
+  await github.close();
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -202,8 +224,6 @@ goTask(
   },
 );
 
-// The server hands every task its stub Taskfile, which writes a line and
-// runs for 2 seconds.
 goTask(
   'main completes a claimed task as succeeded once its Taskfile ran',
   async () => {
@@ -219,6 +239,9 @@ goTask(
       taskId: task.id,
       line: 'sextou stub',
     });
+    expect(github.paths.at(-1)).toMatch(
+      /^\/thatsnotmynameio\/sextou\/archive\/[0-9a-f]{40}\.tar\.gz$/,
+    );
     expect(await logged('completed')).toMatchObject({
       taskId: task.id,
       outcome: 'succeeded',

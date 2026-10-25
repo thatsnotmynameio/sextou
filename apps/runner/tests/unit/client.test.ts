@@ -41,7 +41,14 @@ function stubFetch(respond: () => Response | Promise<Response>) {
 }
 
 const claimed = {
-  task: { id: 'tsk_1', taskfile: 'version: 3' },
+  task: {
+    id: 'tsk_1',
+    source: {
+      repo: 'thatsnotmynameio/sextou',
+      sha: '0123456789abcdef0123456789abcdef01234567',
+      taskfile: 'tasks/hello-world/Taskfile.yml',
+    },
+  },
   execution: { id: 'exe_1', attempt: 1, leaseMs: 30000 },
 };
 

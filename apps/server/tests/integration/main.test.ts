@@ -562,7 +562,10 @@ test('serves the tasks and the runners procedures over the tasks service', async
   });
 
   expect(claimed).toMatchObject({
-    task: { id: created.id, taskfile: expect.stringContaining('default:') },
+    task: {
+      id: created.id,
+      source: expect.objectContaining({ repo: 'thatsnotmynameio/sextou' }),
+    },
     execution: { attempt: 1, leaseMs: 30000 },
   });
 });

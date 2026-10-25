@@ -51,6 +51,8 @@ function run(config: Config, logger: Logger) {
     assignees: config.assignees,
     pollMs: config.pollMs,
     execute: taskfileExecute({
+      githubUrl: config.githubUrl,
+      downloadTimeoutMs: config.downloadTimeoutMs,
       bin: config.taskBin,
       timeoutMs: config.runTimeoutMs,
       killGraceMs: config.killGraceMs,

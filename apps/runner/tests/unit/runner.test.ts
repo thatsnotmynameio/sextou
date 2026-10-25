@@ -35,7 +35,14 @@ const leaseLost = {
 // A claim that hands the runner task tsk_1 under a lease of `leaseMs`.
 function task(leaseMs = 3000): Answer<Claimed> {
   return ok({
-    task: { id: 'tsk_1', taskfile: 'version: 3' },
+    task: {
+      id: 'tsk_1',
+      source: {
+        repo: 'thatsnotmynameio/sextou',
+        sha: '0123456789abcdef0123456789abcdef01234567',
+        taskfile: 'tasks/hello-world/Taskfile.yml',
+      },
+    },
     execution: { id: 'exe_1', attempt: 1, leaseMs },
   });
 }

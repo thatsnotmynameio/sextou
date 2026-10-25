@@ -7,7 +7,7 @@ import {
   heartbeatInputSchema,
   heartbeatOutputSchema,
 } from './runners.schema';
-import { stubTaskfile } from './stub-taskfile';
+import { stubSource } from './stub-source';
 
 // What a runner calls: claim a task, heartbeat while it runs, complete it. A
 // heartbeat or a completion for an attempt that lost its lease fails with
@@ -17,7 +17,7 @@ import { stubTaskfile } from './stub-taskfile';
 // was, which succeeds once more. A call the tasks database didn't serve in
 // time fails with TIMEOUT, having written nothing.
 export const runnersRouter = router({
-  // Every task carries the stub Taskfile until tasks carry their own.
+  // Every task runs the stub's Taskfile until tasks carry their own.
   claim: procedure
     .input(claimInputSchema)
     .output(claimOutputSchema)
@@ -32,7 +32,7 @@ export const runnersRouter = router({
       return claimed.task === null
         ? { task: null }
         : {
-            task: { id: claimed.task.id, taskfile: stubTaskfile },
+            task: { id: claimed.task.id, source: stubSource },
             execution: claimed.execution,
           };
     }),

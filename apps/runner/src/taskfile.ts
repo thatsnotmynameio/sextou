@@ -1,27 +1,46 @@
 import { execFile, spawn } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
+import { download } from './download';
 import type { Logger } from './logger';
 import type { Execute, Result } from './runner';
 
-// Runs each task's Taskfile, the plaintext its claim carries: it writes it to
-// Taskfile.yml in a folder of its own under the system's temporary folder,
-// runs its default task there with runTaskfile, and resolves with how the run
-// ended. The folder is removed once the run ends, without waiting for it: a
-// large folder takes a while, and the run's result is already settled. A
-// folder that can't be removed, as one the run made read-only, is logged and
-// left behind.
-export function taskfileExecute(
-  options: Pick<TaskfileOptions, 'bin' | 'timeoutMs' | 'killGraceMs'>,
-): Execute {
-  return async (task, { signal, logger }) => {
+// Runs each task's Taskfile from the repository its source names: it
+// downloads the repository at the source's commit from GitHub into a folder
+// of its own under the system's temporary folder, runs the Taskfile at the
+// source's path there with runTaskfile, beside the files it uses, and
+// resolves with how the run ended. A download that fails resolves failed,
+// with download: and why, and runs nothing. The folder is removed once the
+// run ends, without waiting for it: a large folder takes a while, and the
+// run's result is already settled. A folder that can't be removed, as one the
+// run made read-only, is logged and left behind.
+export function taskfileExecute({
+  githubUrl,
+  downloadTimeoutMs,
+  ...options
+}: Pick<TaskfileOptions, 'bin' | 'timeoutMs' | 'killGraceMs'> & {
+  // Where repositories are downloaded from: GitHub, or a server that answers
+  // its archive URLs.
+  githubUrl: string;
+  // How long downloading and extracting a repository may take.
+  downloadTimeoutMs: number;
+}): Execute {
+  return async ({ source }, { signal, logger }) => {
     const dir = await mkdtemp(join(tmpdir(), 'sextou-execution-'));
     try {
-      const taskfile = join(dir, 'Taskfile.yml');
-      await writeFile(taskfile, task.taskfile);
+      const failed = await download({
+        url: `${githubUrl}/${source.repo}/archive/${source.sha}.tar.gz`,
+        dir,
+        timeoutMs: downloadTimeoutMs,
+        signal,
+      });
+      if (failed !== undefined) {
+        return { outcome: 'failed', reason: `download: ${failed}` };
+      }
+      const taskfile = join(dir, source.taskfile);
       return await runTaskfile({ ...options, taskfile, logger, signal });
     } finally {
       rm(dir, { recursive: true }).catch((error: Error) =>
