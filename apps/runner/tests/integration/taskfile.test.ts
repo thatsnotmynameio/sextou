@@ -540,8 +540,10 @@ goTask(
 goTask(
   'taskfileExecute resolves failed with the error when the context is too large for a command line',
   async () => {
+    // Above every POSIX system's limit: Linux takes 128 KiB per argument,
+    // macOS 1 MiB for the whole command line and environment.
     const { result } = await execute(['true'], {
-      context: { large: 'x'.repeat(200_000) },
+      context: { large: 'x'.repeat(4 * 1024 * 1024) },
     });
 
     expect(result).toEqual({ outcome: 'failed', reason: 'spawn E2BIG' });
