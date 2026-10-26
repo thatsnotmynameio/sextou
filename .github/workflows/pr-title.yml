@@ -1,0 +1,44 @@
+# Every pull request: its title must be a Conventional Commit,
+# type(scope)!: description, with the types .husky/commit-msg allows, which are
+# the action's defaults. main takes changes only by squash, and the squashed
+# commit takes the pull request's title, or its commit's subject when it has
+# only one (squash_merge_commit_title COMMIT_OR_PR_TITLE, thatsnotmynameio/admin's
+# .github/settings.yml): validateSingleCommit checks that subject too. It isn't
+# required yet.
+# pull_request rather than pull_request_target: the action only reads the pull
+# request, which the read-only token of a fork's run can do, and the workflow
+# runs as the pull request has it.
+name: Pull request
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+# A pull request's newer run cancels the older one.
+concurrency:
+  group: ${{ github.workflow }}-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  title:
+    name: pull-request / title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read # reads the pull request's current title and commits
+    steps:
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # As .husky/commit-msg: the description starts right after ": ".
+          subjectPattern: ^\S.*$
+          subjectPatternError: |
+            The description "{subject}" in the title "{title}" starts with a
+            space. Write the title as type(scope): description, e.g.
+            "feat(ui): add the sidebar".
+          # A pull request of one commit is squashed under that commit's
+          # subject, not the title.
+          validateSingleCommit: true
