@@ -58,6 +58,17 @@ test('run hands on each line the program writes, by its stream', async () => {
   ).toEqual({ code: 0, stdout: ['one', 'two'], stderr: ['three'] });
 });
 
+test('run hands on what a child of the program writes after the program exits', async () => {
+  // The child inherits the program's stdout, and writes once it has ended.
+  const child = `setTimeout(() => console.log('late'), 300);`;
+
+  const { stdout } = await node(
+    `require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(child)}], { stdio: 'inherit' }).unref();`,
+  );
+
+  expect(stdout).toEqual(['late']);
+});
+
 test('run resolves with notRun when the program does not start', async () => {
   expect(
     await run(

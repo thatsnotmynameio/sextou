@@ -142,11 +142,11 @@ export function readSettings(context: string, workspace: string): ReadSettings {
     if (value === undefined) {
       continue;
     }
-    const values = read(kind, value);
+    const values = readers[kind](value);
     if (values === undefined) {
       return refuse(`${key} is ${expected[kind]}`);
     }
-    const flag = `--${key.replaceAll(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
+    const flag = `--${kebabCase(key)}`;
     args.push(
       ...values.map((item) => (item === true ? flag : `${flag}=${item}`)),
     );
@@ -155,43 +155,43 @@ export function readSettings(context: string, workspace: string): ReadSettings {
   return { ok: true, settings: { cwd, args, prompt } };
 }
 
-// The values `value` gives an option of `kind`, each one argument, true for
-// the option alone; undefined when it isn't what the kind takes.
-function read(
-  kind: Kind,
-  value: unknown,
-): (string | number | true)[] | undefined {
-  switch (kind) {
-    case 'text':
-      return text(value) ? [value] : undefined;
-    case 'joined':
-      return text(value)
-        ? [value]
-        : texts(value)
-          ? [value.join(',')]
-          : undefined;
-    case 'number':
-      // Only a number is finite: not a string of one.
-      return Number.isFinite(value) ? [value as number] : undefined;
-    case 'list':
-      return text(value)
-        ? [value]
-        : texts(value) && value.length > 0
-          ? value
-          : undefined;
-    case 'json':
-      return json(value);
-    case 'jsons': {
-      const items = Array.isArray(value) ? value.map(json) : [json(value)];
-      return items.length > 0 &&
-        items.every((item): item is [string] => item !== undefined)
-        ? items.flat()
-        : undefined;
-    }
-    case 'flag':
-      return typeof value === 'boolean' ? (value ? [true] : []) : undefined;
-  }
+// allowedTools as allowed-tools.
+function kebabCase(name: string) {
+  return name.replaceAll(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 }
+
+// The values each kind reads from a context value, each one argument, true
+// for the option alone; undefined when it isn't what the kind takes.
+const readers: Record<
+  Kind,
+  (value: unknown) => (string | number | true)[] | undefined
+> = {
+  text: (value) => (text(value) ? [value] : undefined),
+  joined: (value) => {
+    const items = text(value) ? [value] : value;
+    return texts(items) ? [items.join(',')] : undefined;
+  },
+  // Only a number is finite: not a string of one.
+  number: (value) => (Number.isFinite(value) ? [value as number] : undefined),
+  list: (value) => {
+    const items = text(value) ? [value] : value;
+    return texts(items) && items.length > 0 ? items : undefined;
+  },
+  json,
+  jsons: (value) => {
+    const items = (Array.isArray(value) ? value : [value]).map(json);
+    return items.length > 0 &&
+      items.every((item): item is [string] => item !== undefined)
+      ? items.flat()
+      : undefined;
+  },
+  flag: (value) => {
+    if (typeof value !== 'boolean') {
+      return undefined;
+    }
+    return value ? [true] : [];
+  },
+};
 
 // A string an argument can carry: spawn throws on a NUL.
 function text(value: unknown): value is string {

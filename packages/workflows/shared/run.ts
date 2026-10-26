@@ -35,7 +35,7 @@ export function run(
     if (signal.aborted) {
       stop();
     } else {
-      signal.addEventListener('abort', stop, { once: true });
+      signal.addEventListener('abort', stop);
     }
     // A program it stopped is done once it exits, even when a child of it,
     // such as git's git-remote-https, still holds its output open.
@@ -61,7 +61,12 @@ export function run(
     // Stryker disable next-line ArrowFunction: close follows, with a negative code, which ends the same
     child.on('error', () => resolve(notRun));
     child.on('close', (code) => {
+      // Neither changes what the program did: node sends no signal to a
+      // program that exited. They only spare the process a pending timer, and
+      // a signal shared with later programs a listener for this one.
+      // Stryker disable next-line CallExpression: only a timer that does nothing is left
       clearTimeout(kill);
+      // Stryker disable next-line StringLiteral,CallExpression: only a listener that does nothing is left
       signal.removeEventListener('abort', stop);
       resolve(code ?? 1);
     });
