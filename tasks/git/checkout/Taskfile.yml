@@ -1,0 +1,30 @@
+# Clones a repository at a ref into the run's workspace, with checkout.sh. It
+# reads from the task's context:
+#
+#   repo    owner/name, required
+#   ref     a full commit SHA, a branch or a tag, required
+#   path    where in the workspace, . by default
+#   server  where repo lives, an https URL, https://github.com by default
+#
+# Run it as a task's Taskfile, or include it from another (includes:
+# checkout: ../git/checkout) and call checkout:default before the steps that
+# work on the files. It needs sh and git on the runner's machine, and reaches
+# only public repositories. The run's timeout bounds the fetch.
+version: '3'
+
+tasks:
+  default:
+    vars:
+      INPUT:
+        ref: fromJson .CONTEXT
+    # The script gets each input as a variable of its environment, never
+    # pasted into a command. go-task lets the runner's own environment win
+    # over these, hence names no other program sets.
+    env:
+      CHECKOUT_REPO: '{{.INPUT.repo | default ""}}'
+      CHECKOUT_REF: '{{.INPUT.ref | default ""}}'
+      CHECKOUT_PATH: '{{.INPUT.path | default "."}}'
+      CHECKOUT_SERVER: '{{.INPUT.server | default "https://github.com"}}'
+      CHECKOUT_WORKSPACE: '{{.WORKSPACE}}'
+    cmds:
+      - sh {{joinPath .TASKFILE_DIR "checkout.sh" | q}}
