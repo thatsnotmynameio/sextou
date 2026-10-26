@@ -36,14 +36,15 @@ const repository = archive({
 });
 
 // Serves `listener` for the test as GitHub, and downloads a repository from
-// it into `dir`.
+// it into `dir` with the system's tar, or `bin`.
 async function from(
   listener: RequestListener,
-  { timeoutMs = 5000, signal = new AbortController().signal } = {},
+  { timeoutMs = 5000, signal = new AbortController().signal, bin = 'tar' } = {},
 ) {
   const server = await serve(listener);
   onTestFinished(server.close);
   return download({
+    bin,
     githubUrl: server.url,
     repo: 'thatsnotmynameio/sextou',
     sha,
@@ -112,34 +113,37 @@ test('download resolves timeout when the tarball does not end within timeoutMs',
   expect(await from(hang, { timeoutMs: 300 })).toBe('timeout');
 });
 
-// Puts a tar first on the PATH that runs `body`.
+// The path of a tar that runs `body`.
 function fakeTar(body: string) {
   const bin = mkdtempSync(join(tmpdir(), 'sextou-fake-tar-'));
   onTestFinished(() => rmSync(bin, { recursive: true, force: true }));
-  writeFileSync(join(bin, 'tar'), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
-  vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
+  const tar = join(bin, 'tar');
+  writeFileSync(tar, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+  return tar;
 }
 
-// Puts a tar first on the PATH that reads nothing and never exits.
+// The path of a tar that reads nothing and never exits.
 function stuckTar() {
-  fakeTar('exec sleep 60');
+  return fakeTar('exec sleep 60');
 }
 
 test('download resolves timeout when tar does not exit within timeoutMs', async () => {
-  stuckTar();
+  const bin = stuckTar();
 
-  expect(await from(answer(repository), { timeoutMs: 300 })).toBe('timeout');
+  expect(await from(answer(repository), { timeoutMs: 300, bin })).toBe(
+    'timeout',
+  );
 });
 
 test('download resolves aborted when its signal aborts while tar has the whole tarball', async () => {
-  stuckTar();
+  const bin = stuckTar();
   const controller = new AbortController();
   const result = from(
     (request, response) => {
       answer(repository)(request, response);
       setTimeout(() => controller.abort(), 100);
     },
-    { signal: controller.signal },
+    { signal: controller.signal, bin },
   );
 
   expect(await result).toBe('aborted');
@@ -173,6 +177,7 @@ test('download resolves why the request failed', async () => {
 
   expect(
     await download({
+      bin: 'tar',
       githubUrl: server.url,
       repo: 'thatsnotmynameio/sextou',
       sha,
@@ -191,15 +196,17 @@ test("download resolves tar's exit code and stderr for a body that is not gzip",
 });
 
 test('download resolves why tar did not start', async () => {
-  vi.stubEnv('PATH', '');
+  const missing = join(dir, 'no-tar');
 
-  expect(await from(answer(repository))).toBe('spawn tar ENOENT');
+  expect(await from(answer(repository), { bin: missing })).toBe(
+    `spawn ${missing} ENOENT`,
+  );
 });
 
 test("download kills tar when the runner's process exits", async () => {
-  stuckTar();
+  const bin = stuckTar();
   const before = process.listeners('exit');
-  const result = from(answer(repository));
+  const result = from(answer(repository), { bin });
   const killOnExit = await vi.waitFor(() => {
     const [added] = process
       .listeners('exit')
@@ -217,23 +224,21 @@ test("download kills tar when the runner's process exits", async () => {
 });
 
 test('checkTar resolves undefined for the system tar', async () => {
-  expect(await checkTar(5000)).toBeUndefined();
+  expect(await checkTar('tar', 5000)).toBeUndefined();
 });
 
 test('checkTar resolves the error when tar does not exist', async () => {
-  vi.stubEnv('PATH', '');
+  const missing = join(dir, 'no-tar');
 
-  expect(await checkTar(5000)).toBe('spawn tar ENOENT');
+  expect(await checkTar(missing, 5000)).toBe(`spawn ${missing} ENOENT`);
 });
 
 test('checkTar resolves why when tar fails', async () => {
-  fakeTar('exit 3');
+  const bin = fakeTar('exit 3');
 
-  expect(await checkTar(5000)).toMatch(/^Command failed: tar --version/);
+  expect(await checkTar(bin, 5000)).toBe(`Command failed: ${bin} --version\n`);
 });
 
 test('checkTar resolves timeout when tar takes longer than timeoutMs', async () => {
-  stuckTar();
-
-  expect(await checkTar(200)).toBe('timeout');
+  expect(await checkTar(stuckTar(), 200)).toBe('timeout');
 });

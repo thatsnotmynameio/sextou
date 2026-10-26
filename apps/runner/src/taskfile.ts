@@ -20,15 +20,19 @@ import type { Execute, Result } from './runner';
 export function taskfileExecute({
   githubUrl,
   downloadTimeoutMs,
+  tarBin,
   ...options
 }: Pick<TaskfileOptions, 'bin' | 'timeoutMs' | 'killGraceMs'> & {
   githubUrl: string;
   downloadTimeoutMs: number;
+  // tar's binary, which extracts the repository: `tar` on the PATH, or a path.
+  tarBin: string;
 }): Execute {
   return async ({ source }, { signal, logger }) => {
     const dir = await mkdtemp(join(tmpdir(), 'sextou-execution-'));
     try {
       const failed = await download({
+        bin: tarBin,
         githubUrl,
         repo: source.repo,
         sha: source.sha,

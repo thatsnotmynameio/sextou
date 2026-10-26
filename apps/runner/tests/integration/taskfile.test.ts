@@ -327,10 +327,12 @@ async function execute(
   cmds: string[],
   {
     taskBin = bin,
+    tarBin = 'tar',
     files = {},
     listener = answer(archive({ ...files, [path]: plaintext(cmds) })),
   }: {
     taskBin?: string;
+    tarBin?: string;
     files?: Record<string, string>;
     listener?: RequestListener;
   } = {},
@@ -340,6 +342,7 @@ async function execute(
   const result = await taskfileExecute({
     githubUrl: server.url,
     downloadTimeoutMs: 5000,
+    tarBin,
     bin: taskBin,
     ...limits,
   })(
@@ -456,6 +459,15 @@ test('taskfileExecute resolves failed with the error when the binary does not ex
   expect((await execute(['true'], { taskBin: missing })).result).toEqual({
     outcome: 'failed',
     reason: `spawn ${missing} ENOENT`,
+  });
+});
+
+test('taskfileExecute resolves failed with why the download failed when tar does not exist', async () => {
+  const missing = join(dir, 'no-tar');
+
+  expect((await execute(['true'], { tarBin: missing })).result).toEqual({
+    outcome: 'failed',
+    reason: `download: spawn ${missing} ENOENT`,
   });
 });
 
