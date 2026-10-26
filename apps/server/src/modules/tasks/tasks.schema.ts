@@ -19,7 +19,7 @@ const prioritySchema = z.union([
 // values are unknown here, since zod's own JSON check recurses and a deep
 // value would overflow the stack: the tasks check its depth without
 // recursion before they check it is JSON, and refuse it as invalid.
-const contextSchema = z.record(z.string(), z.unknown());
+export const contextSchema = z.record(z.string(), z.unknown());
 
 // A task as every procedure answers it.
 export const taskSchema = z.object({

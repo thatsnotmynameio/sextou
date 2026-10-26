@@ -1,5 +1,8 @@
 import { expect, test } from 'vitest';
-import { sourceSchema } from '../../../../src/modules/runners/runners.schema';
+import {
+  claimOutputSchema,
+  sourceSchema,
+} from '../../../../src/modules/runners/runners.schema';
 
 const source = {
   repo: 'thatsnotmynameio/sextou',
@@ -62,4 +65,29 @@ test('sourceSchema names why it refuses a repository named ..', () => {
   expect(result.error?.issues.map((issue) => issue.message)).toEqual([
     'owner/name',
   ]);
+});
+
+// A claim's answer for a task, with the context a test sets.
+function held(context: unknown) {
+  return {
+    task: { id: 'tsk_1', source, context },
+    execution: { id: 'exe_1', attempt: 1, leaseMs: 30000 },
+  };
+}
+
+test.each([
+  ['a context', { repo: 'org/app', nested: { list: [1, 'a', null] } }],
+  ['an empty context', {}],
+  ['a null context', null],
+])('claimOutputSchema takes a task with %s', (_name, context) => {
+  expect(claimOutputSchema.parse(held(context))).toEqual(held(context));
+});
+
+test.each([
+  ['an array', [1]],
+  ['a string', 'org/app'],
+  ['a number', 7],
+  ['undefined', undefined],
+])('claimOutputSchema refuses %s as context', (_name, context) => {
+  expect(claimOutputSchema.safeParse(held(context)).success).toBe(false);
 });

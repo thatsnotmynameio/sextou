@@ -60,11 +60,19 @@ function run(
     timeoutMs = limits.timeoutMs,
     killGraceMs = limits.killGraceMs,
     bin: taskBin = bin,
+    vars = {},
+  }: {
+    signal?: AbortSignal;
+    timeoutMs?: number;
+    killGraceMs?: number;
+    bin?: string;
+    vars?: Record<string, string>;
   } = {},
 ) {
   return runTaskfile({
     bin: taskBin,
     taskfile: path,
+    vars,
     timeoutMs,
     killGraceMs,
     logger: logger(),
@@ -86,6 +94,17 @@ goTask(
     expect(await run(taskfile(['true']))).toEqual({ outcome: 'succeeded' });
   },
 );
+
+goTask('runTaskfile gives the default task each variable', async () => {
+  await run(taskfile(['echo {{.ONE}}', 'echo {{.TWO | q}}']), {
+    vars: { ONE: 'one', TWO: 'two = words' },
+  });
+
+  expect(lines()).toEqual([
+    { stream: 'stdout', line: 'one' },
+    { stream: 'stdout', line: 'two = words' },
+  ]);
+});
 
 goTask(
   'runTaskfile logs each line of stdout and stderr as an output record',
@@ -322,19 +341,23 @@ const path = 'tasks/test/Taskfile.yml';
 
 // Runs a task through taskfileExecute, whose repository a server for the test
 // serves with `listener`: by default, a tarball with a Taskfile at `path`
-// whose default task runs `cmds`, beside `files`.
+// whose default task runs `cmds`, beside `files`, or the Taskfile `yaml`.
 async function execute(
   cmds: string[],
   {
     taskBin = bin,
     tarBin = 'tar',
     files = {},
-    listener = answer(archive({ ...files, [path]: plaintext(cmds) })),
+    yaml = plaintext(cmds),
+    listener = answer(archive({ ...files, [path]: yaml })),
+    context = null,
   }: {
     taskBin?: string;
     tarBin?: string;
     files?: Record<string, string>;
+    yaml?: string;
     listener?: RequestListener;
+    context?: Record<string, unknown> | null;
   } = {},
 ) {
   const server = await serve(listener);
@@ -349,17 +372,18 @@ async function execute(
     {
       id: 'tsk_1',
       source: { repo: 'thatsnotmynameio/sextou', sha, taskfile: path },
+      context,
     },
     { signal: new AbortController().signal, logger: logger() },
   );
   return { result, paths: server.paths };
 }
 
-// The run's own folder, from the folder its Taskfile ran in, tasks/test
-// inside it, which `pwd` wrote first. It throws on any other line, so a test
-// never removes a folder that isn't a run's.
+// The run's own folder, from the folder its Taskfile ran in,
+// source/tasks/test inside it, which `pwd` wrote first. It throws on any
+// other line, so a test never removes a folder that isn't a run's.
 function runFolder() {
-  const folder = dirname(dirname(lines()[0].line));
+  const folder = dirname(dirname(dirname(lines()[0].line)));
   if (!basename(folder).startsWith('sextou-execution-')) {
     throw new Error(`${folder} is not a run's folder`);
   }
@@ -378,7 +402,7 @@ goTask(
     const { result } = await execute(['pwd']);
 
     expect(result).toEqual({ outcome: 'succeeded' });
-    expect(lines()[0].line.endsWith('/tasks/test')).toBe(true);
+    expect(lines()[0].line.endsWith('/source/tasks/test')).toBe(true);
     expect(dirname(runFolder())).toBe(tmpdir());
   },
 );
@@ -391,6 +415,138 @@ goTask(
     });
 
     expect(lines()).toEqual([{ stream: 'stdout', line: 'hello world' }]);
+  },
+);
+
+// A Taskfile whose default task reads the context into INPUT, then runs
+// `cmds`, each with no echo.
+function contextTaskfile(cmds: string[]) {
+  return [
+    'version: "3"',
+    'silent: true',
+    'tasks:',
+    '  default:',
+    '    vars:',
+    '      INPUT:',
+    '        ref: fromJson .CONTEXT',
+    '    cmds:',
+    ...cmds.map((cmd) => `      - ${JSON.stringify(cmd)}`),
+  ].join('\n');
+}
+
+goTask(
+  "taskfileExecute hands the Taskfile the task's context as JSON in CONTEXT",
+  async () => {
+    const context = { repo: 'org/app', nested: { list: [1, 'a', null] } };
+
+    await execute(['echo {{.CONTEXT | q}}'], { context });
+
+    expect(lines()).toEqual([
+      { stream: 'stdout', line: JSON.stringify(context) },
+    ]);
+  },
+);
+
+goTask(
+  'taskfileExecute hands the Taskfile {} in CONTEXT when the task has no context',
+  async () => {
+    await execute(['echo {{.CONTEXT | q}}']);
+
+    expect(lines()).toEqual([{ stream: 'stdout', line: '{}' }]);
+  },
+);
+
+goTask(
+  'taskfileExecute hands the Taskfile each field of the context through fromJson',
+  async () => {
+    await execute([], {
+      yaml: contextTaskfile([
+        'echo {{.INPUT.repo | q}}',
+        'echo {{.INPUT.n.a}}',
+      ]),
+      context: { repo: 'org/app', n: { a: 7 } },
+    });
+
+    expect(lines()).toEqual([
+      { stream: 'stdout', line: 'org/app' },
+      { stream: 'stdout', line: '7' },
+    ]);
+  },
+);
+
+goTask(
+  'taskfileExecute hands the Taskfile a context value as written, never as a template or a command',
+  async () => {
+    const value = 'a {{.WORKSPACE}} {{{x}}} {{env "HOME"}} $HOME; echo "no"';
+
+    await execute([], {
+      yaml: contextTaskfile(['echo {{.INPUT.value | q}}']),
+      context: { value },
+    });
+
+    expect(lines()).toEqual([{ stream: 'stdout', line: value }]);
+  },
+);
+
+goTask(
+  'taskfileExecute hands the Taskfile an empty workspace in WORKSPACE, beside the repository in the run folder',
+  async () => {
+    await execute(['pwd', 'echo {{.WORKSPACE}}', 'ls -A {{.WORKSPACE | q}}'], {
+      files: { 'tasks/test/hello.txt': 'hello world' },
+    });
+
+    expect(lines().slice(1)).toEqual([
+      { stream: 'stdout', line: join(runFolder(), 'workspace') },
+    ]);
+  },
+);
+
+goTask('taskfileExecute removes the workspace once the run ended', async () => {
+  await execute(['pwd', 'touch {{.WORKSPACE}}/file']);
+
+  const workspace = join(runFolder(), 'workspace');
+  await vi.waitFor(() => expect(existsSync(workspace)).toBe(false));
+});
+
+goTask(
+  'taskfileExecute hands CONTEXT and WORKSPACE to a Taskfile the one it runs includes',
+  async () => {
+    await execute([], {
+      files: {
+        'tasks/included/Taskfile.yml': contextTaskfile([
+          'echo {{.INPUT.repo | q}}',
+          'basename {{.WORKSPACE | q}}',
+        ]),
+      },
+      yaml: [
+        'version: "3"',
+        'includes:',
+        '  included: ../included',
+        'tasks:',
+        '  default:',
+        '    cmds:',
+        '      - task: included:default',
+      ].join('\n'),
+      context: { repo: 'org/app' },
+    });
+
+    expect(lines()).toEqual([
+      { stream: 'stdout', line: 'org/app' },
+      { stream: 'stdout', line: 'workspace' },
+    ]);
+  },
+);
+
+goTask(
+  'taskfileExecute resolves failed with the error when the context is too large for a command line',
+  async () => {
+    // Above every POSIX system's limit: Linux takes 128 KiB per argument,
+    // macOS 1 MiB for the whole command line and environment.
+    const { result } = await execute(['true'], {
+      context: { large: 'x'.repeat(4 * 1024 * 1024) },
+    });
+
+    expect(result).toEqual({ outcome: 'failed', reason: 'spawn E2BIG' });
   },
 );
 

@@ -1,5 +1,5 @@
-import { execFile, spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { type ChildProcessByStdio, execFile, spawn } from 'node:child_process';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -9,14 +9,18 @@ import type { Logger } from '@sextou/logger';
 import type { Execute, Result } from './runner';
 
 // Runs each task's Taskfile from the repository its source names: it
-// downloads the repository at the source's commit from GitHub into a folder
-// of its own under the system's temporary folder, runs the Taskfile at the
-// source's path there with runTaskfile, beside the files it uses, and
-// resolves with how the run ended. A download that fails resolves failed,
-// with download: and why, and runs nothing. The folder is removed once the
-// run ends, without waiting for it: a large folder takes a while, and the
-// run's result is already settled. A folder that can't be removed, as one the
-// run made read-only, is logged and left behind.
+// downloads the repository at the source's commit from GitHub into source/,
+// in a folder of its own under the system's temporary folder, runs the
+// Taskfile at the source's path there with runTaskfile, beside the files it
+// uses, and resolves with how the run ended. The Taskfile gets two
+// variables: CONTEXT, the task's context as JSON ({} when it has none), and
+// WORKSPACE, the path of workspace/, an empty folder beside source/ where
+// the run does its work, as a checkout of another repository. A download
+// that fails resolves failed, with download: and why, and runs nothing. The
+// folder is removed once the run ends, without waiting for it: a large
+// folder takes a while, and the run's result is already settled. A folder
+// that can't be removed, as one the run made read-only, is logged and left
+// behind.
 export function taskfileExecute({
   githubUrl,
   downloadTimeoutMs,
@@ -28,29 +32,53 @@ export function taskfileExecute({
   // tar's binary, which extracts the repository: `tar` on the PATH, or a path.
   tarBin: string;
 }): Execute {
-  return async ({ source }, { signal, logger }) => {
+  return async ({ source, context }, { signal, logger }) => {
     const dir = await mkdtemp(join(tmpdir(), 'sextou-execution-'));
     try {
+      const repository = join(dir, 'source');
+      const workspace = join(dir, 'workspace');
+      await Promise.all([mkdir(repository), mkdir(workspace)]);
       const failed = await download({
         bin: tarBin,
         githubUrl,
         repo: source.repo,
         sha: source.sha,
-        dir,
+        dir: repository,
         timeoutMs: downloadTimeoutMs,
         signal,
       });
       if (failed !== undefined) {
         return { outcome: 'failed', reason: `download: ${failed}` };
       }
-      const taskfile = join(dir, source.taskfile);
-      return await runTaskfile({ ...options, taskfile, logger, signal });
+      return await runTaskfile({
+        ...options,
+        taskfile: join(repository, source.taskfile),
+        vars: { CONTEXT: contextVar(context), WORKSPACE: workspace },
+        logger,
+        signal,
+      });
     } finally {
       rm(dir, { recursive: true }).catch((error: Error) =>
         logger.warn({ dir, error: error.message }, 'folder not removed'),
       );
     }
   };
+}
+
+// The context as the value of a go-task variable: JSON, with every {{
+// written {\u007b, which JSON reads back as {{. go-task reads a variable given
+// on its command line as a template, so a {{ in the context would run as one,
+// reading the run's environment, say; JSON has no {{ outside its strings. A
+// Taskfile reads it with fromJson, which gives the {{ back:
+//
+//   vars:
+//     INPUT:
+//       ref: fromJson .CONTEXT
+//
+// then quotes each value it writes into a command with q, since a template
+// is pasted into the command as text: {{.INPUT.repo | q}}.
+function contextVar(context: Record<string, unknown> | null): string {
+  return JSON.stringify(context ?? {}).replaceAll('{{', String.raw`{\u007b`);
 }
 
 // Resolves with why `bin` can't run Taskfiles, or undefined when it's
@@ -88,6 +116,10 @@ export interface TaskfileOptions {
   // folder, as do its commands, so no .taskrc.yml or USER_WORKING_DIR of the
   // runner's own folder reaches the run.
   taskfile: string;
+  // Variables the default task gets, as go-task's command line sets them:
+  // global, so a Taskfile it includes sees them too. go-task reads each value
+  // as a template.
+  vars: Record<string, string>;
   // How long the run may take before it is stopped and fails as timeout.
   timeoutMs: number;
   // How long a stopped run has to exit after SIGTERM before SIGKILL, and
@@ -110,6 +142,7 @@ export interface TaskfileOptions {
 export function runTaskfile({
   bin,
   taskfile,
+  vars,
   timeoutMs,
   killGraceMs,
   logger,
@@ -119,11 +152,23 @@ export function runTaskfile({
     return Promise.resolve({ outcome: 'failed', reason: 'aborted' });
   }
   return new Promise((resolve) => {
-    const child = spawn(bin, ['--exit-code', '--taskfile', taskfile], {
-      cwd: dirname(taskfile),
-      detached: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    const assignments = Object.entries(vars).map(
+      ([name, value]) => `${name}=${value}`,
+    );
+    const args = ['--exit-code', '--taskfile', taskfile, 'default'];
+    let child: ChildProcessByStdio<null, Readable, Readable>;
+    // spawn emits most errors, but throws some, as E2BIG for a command line
+    // longer than the system takes.
+    try {
+      child = spawn(bin, [...args, ...assignments], {
+        cwd: dirname(taskfile),
+        detached: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (error) {
+      resolve({ outcome: 'failed', reason: (error as Error).message });
+      return;
+    }
     // The run stops on the first of an abort and the timeout: an AbortSignal
     // aborts once.
     const timeout = AbortSignal.timeout(timeoutMs);

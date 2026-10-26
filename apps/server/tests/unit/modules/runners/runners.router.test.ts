@@ -16,7 +16,7 @@ const task = aTask({ status: Status.running });
 
 const execution = { id: 'exe_1', attempt: 1, leaseMs: 30000 };
 
-test('runners.claim hands the runner the task id, the stub source and the attempt it holds', async () => {
+test('runners.claim hands the runner the task id, the stub source, a null context and the attempt it holds', async () => {
   const claim = vi.fn(async () => ({ ok: true as const, task, execution }));
 
   expect(
@@ -25,12 +25,29 @@ test('runners.claim hands the runner the task id, the stub source and the attemp
       runner: ' runner-1 ',
       assignees: ['dev', ' qa '],
     }),
-  ).toEqual({ task: { id: task.id, source: stubSource }, execution });
+  ).toEqual({
+    task: { id: task.id, source: stubSource, context: null },
+    execution,
+  });
   expect(claim).toHaveBeenCalledWith({
     claimId: 'claim-1',
     runner: { name: 'runner-1' },
     assignees: [{ name: 'dev' }, { name: 'qa' }],
   });
+});
+
+test("runners.claim hands the runner the task's context", async () => {
+  const context = { repo: 'org/app', ref: 'main', depth: { n: [1, null] } };
+
+  expect(
+    await caller({
+      claim: async () => ({
+        ok: true,
+        task: aTask({ status: Status.running, context }),
+        execution,
+      }),
+    }).claim({ claimId: 'claim-1', runner: 'runner-1', assignees: ['dev'] }),
+  ).toMatchObject({ task: { context } });
 });
 
 test('runners.claim answers a null task when none is ready', async () => {

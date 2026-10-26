@@ -43,6 +43,7 @@ function task(leaseMs = 3000): Answer<Claimed> {
         sha,
         taskfile: 'tasks/hello-world/Taskfile.yml',
       },
+      context: null,
     },
     execution: { id: 'exe_1', attempt: 1, leaseMs },
   });
