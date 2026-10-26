@@ -9,7 +9,7 @@ import { createApp } from './app';
 import { loadConfig, type Config } from './config';
 import { createDatabase } from './database';
 import { startLeaseSweep } from './lease-sweep';
-import { createLogger } from './logger';
+import { createLogger } from '@sextou/logger';
 import { startServer } from './server';
 import { createTasksService } from './tasks-service';
 

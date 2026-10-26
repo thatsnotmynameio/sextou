@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest';
 import { createLogger } from '../../src/logger';
-import { memory } from '../logger';
+import { memory } from '../../src/testing';
 
 test('createLogger writes an info call as one JSON line', () => {
   const output = memory();

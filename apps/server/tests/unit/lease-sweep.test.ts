@@ -1,7 +1,7 @@
 import { Writable } from 'node:stream';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { startLeaseSweep } from '../../src/lease-sweep';
-import { createLogger } from '../../src/logger';
+import { createLogger } from '@sextou/logger';
 import { Refusal, Status } from '../../src/tasks';
 import type { ExpiredAttempt } from '../../src/tasks';
 

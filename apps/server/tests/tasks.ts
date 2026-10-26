@@ -1,4 +1,4 @@
-import { createLogger } from '../src/logger';
+import { createLogger } from '@sextou/logger';
 import { Status, type Task, type Tasks } from '../src/tasks';
 import type { Context } from '../src/trpc';
 

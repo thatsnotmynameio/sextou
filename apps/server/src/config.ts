@@ -1,19 +1,14 @@
 import path from 'node:path';
+import {
+  invalid,
+  parseBoolean,
+  parseCount,
+  parseOneOf,
+  parseTimeout,
+  reader,
+} from '@sextou/config';
+import { logLevels, type LogLevel } from '@sextou/logger/levels';
 import { defaultDataDirectory } from './data-directory';
-
-// Pino's level names, written out here so config.ts doesn't import Pino, which
-// leaves out silent from its own list.
-const logLevels = [
-  'fatal',
-  'error',
-  'warn',
-  'info',
-  'debug',
-  'trace',
-  'silent',
-] as const;
-
-export type LogLevel = (typeof logLevels)[number];
 
 export interface Config {
   host: string;
@@ -63,14 +58,7 @@ export function loadConfig(
   env: Record<string, string | undefined>,
   { platform, homedir, cwd, storage }: PathContext,
 ): Config {
-  const read = <T>(
-    name: string,
-    parse: (value: string, name: string) => T,
-    fallback: () => T,
-  ): T => {
-    const value = env[name];
-    return value === undefined ? fallback() : parse(value, name);
-  };
+  const read = reader(env);
 
   // A file in the data directory, which is read only when a default needs
   // it, and at most once.
@@ -121,14 +109,12 @@ export function loadConfig(
       () => 5000,
     ),
     dev: read('SEXTOU_SERVER_DEV', parseBoolean, () => false),
-    logLevel: read('SEXTOU_SERVER_LOG_LEVEL', parseLogLevel, () => 'info'),
+    logLevel: read(
+      'SEXTOU_SERVER_LOG_LEVEL',
+      parseOneOf(logLevels),
+      () => 'info',
+    ),
   };
-}
-
-function invalid(name: string, value: string, expected: string) {
-  return new Error(
-    `Invalid ${name}: ${JSON.stringify(value)} (expected ${expected})`,
-  );
 }
 
 // Node binds an empty host to every interface: an empty value is an error,
@@ -179,31 +165,6 @@ function parseOrigin(value: string, name: string): string {
   return url.origin;
 }
 
-// Only digits, from 1 to max.
-function parseCount(
-  value: string,
-  name: string,
-  max: number,
-  expected: string,
-): number {
-  const count = Number(value);
-  if (!/^\d+$/.test(value) || count === 0 || count > max) {
-    throw invalid(name, value, expected);
-  }
-  return count;
-}
-
-// Up to the longest delay setTimeout takes: a longer one fires after 1 ms,
-// which would report the database down or sweep leases nonstop.
-function parseTimeout(value: string, name: string): number {
-  return parseCount(
-    value,
-    name,
-    2147483647,
-    'a whole number of milliseconds from 1 to 2147483647',
-  );
-}
-
 function parseAttempts(value: string, name: string): number {
   return parseCount(
     value,
@@ -211,19 +172,4 @@ function parseAttempts(value: string, name: string): number {
     Number.MAX_SAFE_INTEGER,
     'a whole number of attempts from 1',
   );
-}
-
-function parseBoolean(value: string, name: string): boolean {
-  if (value !== 'true' && value !== 'false') {
-    throw invalid(name, value, 'true or false');
-  }
-  return value === 'true';
-}
-
-function parseLogLevel(value: string, name: string): LogLevel {
-  const level = logLevels.find((candidate) => candidate === value);
-  if (level === undefined) {
-    throw invalid(name, value, `one of ${logLevels.join(', ')}`);
-  }
-  return level;
 }

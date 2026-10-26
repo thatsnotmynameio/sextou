@@ -6,13 +6,15 @@ The desktop app loads the hosted web app by URL, so a web deploy reaches desktop
 
 ## Layout
 
-| Path             | What it is                                                                                                     |
-| ---------------- | -------------------------------------------------------------------------------------------------------------- |
-| `apps/web`       | `@sextou/web`: the React app, with its own Vite build                                                          |
-| `apps/desktop`   | The Electron app (Electron Forge + Vite): `src/main` (main process), `src/preload` (the bridge to the web app) |
-| `apps/server`    | `@sextou/server`: the HTTP server (Hono and tRPC), with its database (drizzle on Turso) and its tasks database |
-| `packages/ui`    | `@sextou/ui`: shared React components and their Storybook                                                      |
-| `packages/tasks` | `@sextou/tasks`: the task graph, in a SQLite file whose path its caller passes                                 |
+| Path              | What it is                                                                                                     |
+| ----------------- | -------------------------------------------------------------------------------------------------------------- |
+| `apps/web`        | `@sextou/web`: the React app, with its own Vite build                                                          |
+| `apps/desktop`    | The Electron app (Electron Forge + Vite): `src/main` (main process), `src/preload` (the bridge to the web app) |
+| `apps/server`     | `@sextou/server`: the HTTP server (Hono and tRPC), with its database (drizzle on Turso) and its tasks database |
+| `packages/ui`     | `@sextou/ui`: shared React components and their Storybook                                                      |
+| `packages/tasks`  | `@sextou/tasks`: the task graph, in a SQLite file whose path its caller passes                                 |
+| `packages/logger` | `@sextou/logger`: the Pino logger the server and the runner share                                              |
+| `packages/config` | `@sextou/config`: the environment variable parsers the server and the runner share                             |
 
 The server and the web app group their code by feature under `src/modules/<feature>/`; AGENTS.md draws both trees and the steps that build a feature. The web app takes only the type of the server's router, never its code.
 

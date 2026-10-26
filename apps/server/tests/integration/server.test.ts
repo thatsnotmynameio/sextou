@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'vitest';
 import { createApp } from '../../src/app';
-import { createLogger } from '../../src/logger';
+import { createLogger } from '@sextou/logger';
 import { startServer, type RunningServer } from '../../src/server';
 import { fakeTasks } from '../tasks';
 

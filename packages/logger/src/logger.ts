@@ -1,6 +1,6 @@
 import { pino, type DestinationStream } from 'pino';
 import PinoPretty from 'pino-pretty';
-import type { LogLevel } from './config';
+import type { LogLevel } from './levels';
 
 export interface LoggerOptions {
   // The lowest level written.
@@ -9,9 +9,9 @@ export interface LoggerOptions {
   pretty: boolean;
 }
 
-// The runner's logger, on stdout unless a test passes another destination.
-// The same as the server's: pino-pretty runs as a stream in this process
-// rather than as Pino's transport, which would load it in a worker thread.
+// A process's logger, on stdout unless a test passes another destination.
+// pino-pretty runs as a stream in this process rather than as Pino's
+// transport, which would load it in a worker thread.
 export function createLogger(
   { level, pretty }: LoggerOptions,
   destination?: DestinationStream,
