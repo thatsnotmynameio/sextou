@@ -78,7 +78,7 @@ export function taskfileExecute({
 // then quotes each value it writes into a command with q, since a template
 // is pasted into the command as text: {{.INPUT.repo | q}}.
 function contextVar(context: Record<string, unknown> | null): string {
-  return JSON.stringify(context ?? {}).replaceAll('{{', '{\\u007b');
+  return JSON.stringify(context ?? {}).replaceAll('{{', String.raw`{\u007b`);
 }
 
 // Resolves with why `bin` can't run Taskfiles, or undefined when it's
