@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.json",
+  // Node runs a Taskfile's scripts from source, stripping their types: only
+  // syntax it can erase, and imports that name the .ts file.
+  "compilerOptions": {
+    "erasableSyntaxOnly": true,
+    "allowImportingTsExtensions": true
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "coverage", "reports", ".stryker-tmp"]
+}
