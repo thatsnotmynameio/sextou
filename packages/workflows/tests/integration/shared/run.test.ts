@@ -7,16 +7,25 @@ import { run } from '../../../shared/run';
 
 const notRun = 127;
 
-// Runs node with `script` until `signal` aborts, with `killGraceMs` of
-// grace, and resolves with its exit code and the lines it wrote.
+// Runs node with `script` until `signal` aborts, or until the script writes
+// the line `abortOn`, as one whose handlers are ready does, with
+// `killGraceMs` of grace, and resolves with its exit code and the lines it
+// wrote.
 async function node(
   script: string,
   {
-    signal = new AbortController().signal,
+    signal,
+    abortOn,
     killGraceMs = 10_000,
     stdin = '',
+  }: {
+    signal?: AbortSignal;
+    abortOn?: string;
+    killGraceMs?: number;
+    stdin?: string;
   } = {},
 ) {
+  const controller = new AbortController();
   const stdout: string[] = [];
   const stderr: string[] = [];
   const code = await run(
@@ -25,10 +34,15 @@ async function node(
     {
       cwd: tmpdir(),
       env: process.env,
-      signal,
+      signal: signal ?? controller.signal,
       killGraceMs,
       stdin,
-      stdout: (line) => stdout.push(line),
+      stdout: (line) => {
+        stdout.push(line);
+        if (line === abortOn) {
+          controller.abort();
+        }
+      },
       stderr: (line) => stderr.push(line),
     },
     notRun,
@@ -36,8 +50,9 @@ async function node(
   return { code, stdout, stderr };
 }
 
-// A script that ignores SIGTERM and lives 30 seconds.
-const stubborn = `process.on('SIGTERM', () => {}); setTimeout(() => {}, 30_000);`;
+// A script that ignores SIGTERM and lives 30 seconds. It writes ready once it
+// ignores SIGTERM, which a signal sent before would end at once.
+const stubborn = `process.on('SIGTERM', () => {}); console.log('ready'); setTimeout(() => {}, 30_000);`;
 
 test('run resolves with the exit code of the program', async () => {
   expect((await node('process.exit(3)')).code).toBe(3);
@@ -87,8 +102,8 @@ test('run resolves with notRun when the program does not start', async () => {
 
 test('run stops the program with SIGTERM when the signal aborts', async () => {
   const { code } = await node(
-    `process.on('SIGTERM', () => process.exit(7)); setTimeout(() => {}, 30_000);`,
-    { signal: AbortSignal.timeout(500) },
+    `process.on('SIGTERM', () => process.exit(7)); console.log('ready'); setTimeout(() => {}, 30_000);`,
+    { abortOn: 'ready' },
   );
 
   expect(code).toBe(7);
@@ -107,7 +122,7 @@ test('run resolves with 1 when a signal ended the program', async () => {
 test('run kills a program that ignores SIGTERM once its grace went by', async () => {
   const started = Date.now();
 
-  await node(stubborn, { signal: AbortSignal.timeout(500), killGraceMs: 500 });
+  await node(stubborn, { abortOn: 'ready', killGraceMs: 500 });
 
   expect(Date.now() - started).toBeLessThan(10_000);
 });
@@ -128,8 +143,8 @@ test('run resolves once a program it stopped exits, though a child of it holds i
   // program's exit ends the wait.
   const child = `process.on('SIGTERM', () => {}); setTimeout(() => {}, 12_000);`;
   await node(
-    `require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(child)}], { stdio: 'inherit' }); process.on('SIGTERM', () => process.exit(0));`,
-    { signal: AbortSignal.timeout(500), killGraceMs: 30_000 },
+    `require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(child)}], { stdio: 'inherit' }); process.on('SIGTERM', () => process.exit(0)); console.log('ready');`,
+    { abortOn: 'ready', killGraceMs: 30_000 },
   );
 
   expect(Date.now() - started).toBeLessThan(10_000);
