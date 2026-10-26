@@ -19,7 +19,7 @@ export function archive(files: Record<string, string>): Buffer {
       mkdirSync(dirname(file), { recursive: true });
       writeFileSync(file, text);
     }
-    return execFileSync('tar', ['-cz', '-C', dir, `sextou-${sha}`]);
+    return execFileSync('tar', ['-cz', '-f', '-', '-C', dir, `sextou-${sha}`]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

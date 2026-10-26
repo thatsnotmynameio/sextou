@@ -17,14 +17,26 @@ export const claimInputSchema = z.object({
 // Taskfile inside it. The runner downloads the repository at that commit and
 // runs the Taskfile there, beside the files it uses.
 export const sourceSchema = z.object({
-  repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/),
+  // owner/name, neither of them . or .., which the URL the runner downloads
+  // from would resolve to another path.
+  repo: z
+    .string()
+    .regex(/^[\w.-]+\/[\w.-]+$/)
+    .refine(
+      (repo) => repo.split('/').every((part) => part !== '.' && part !== '..'),
+      'owner/name',
+    ),
   sha: z.string().regex(/^[0-9a-f]{40}$/),
-  // Relative, and inside the repository: no leading slash, no .. segment.
+  // A file inside the repository, by its relative path: segments separated
+  // by single slashes, none of them empty, . or .., so no leading or trailing
+  // slash either.
   taskfile: z
     .string()
-    .min(1)
     .refine(
-      (path) => !path.startsWith('/') && !path.split('/').includes('..'),
+      (path) =>
+        path
+          .split('/')
+          .every((part) => part !== '' && part !== '.' && part !== '..'),
       'a path inside the repository',
     ),
 });

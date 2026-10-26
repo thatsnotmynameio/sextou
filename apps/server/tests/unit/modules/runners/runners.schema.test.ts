@@ -15,6 +15,10 @@ test.each([
   ['a repository without an owner', { repo: 'sextou' }],
   ['a repository with a space', { repo: 'thatsnotmynameio/sex tou' }],
   ['a repository with a third segment', { repo: 'a/b/c' }],
+  ['a repository whose owner is ..', { repo: '../sextou' }],
+  ['a repository whose name is ..', { repo: 'thatsnotmynameio/..' }],
+  ['a repository whose owner is .', { repo: './sextou' }],
+  ['a repository whose name is .', { repo: 'thatsnotmynameio/.' }],
   ['a short commit', { sha: '0123456' }],
   ['an uppercase commit', { sha: source.sha.toUpperCase() }],
   ['a commit with a trailing character', { sha: `${source.sha}0` }],
@@ -22,8 +26,19 @@ test.each([
   ['an absolute path', { taskfile: '/etc/Taskfile.yml' }],
   ['a path that leaves the repository', { taskfile: '../Taskfile.yml' }],
   ['a path with a .. segment inside', { taskfile: 'tasks/../../x.yml' }],
+  ['the repository itself', { taskfile: '.' }],
+  ['a path with a . segment', { taskfile: './Taskfile.yml' }],
+  ['a folder', { taskfile: 'tasks/hello-world/' }],
+  ['a path with an empty segment', { taskfile: 'tasks//Taskfile.yml' }],
 ])('sourceSchema refuses %s', (_name, change) => {
   expect(sourceSchema.safeParse({ ...source, ...change }).success).toBe(false);
+});
+
+test('sourceSchema takes a repository whose name only starts with a dot', () => {
+  expect(
+    sourceSchema.safeParse({ ...source, repo: 'thatsnotmynameio/.github' })
+      .success,
+  ).toBe(true);
 });
 
 test('sourceSchema takes a path whose segment only starts with ..', () => {
@@ -38,5 +53,13 @@ test('sourceSchema names why it refuses a path that leaves the repository', () =
 
   expect(result.error?.issues.map((issue) => issue.message)).toEqual([
     'a path inside the repository',
+  ]);
+});
+
+test('sourceSchema names why it refuses a repository named ..', () => {
+  const result = sourceSchema.safeParse({ ...source, repo: 'a/..' });
+
+  expect(result.error?.issues.map((issue) => issue.message)).toEqual([
+    'owner/name',
   ]);
 });

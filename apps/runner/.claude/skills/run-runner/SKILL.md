@@ -107,6 +107,7 @@ pnpm --filter @sextou/runner test:mutation     # Stryker, about 1.5 min, fails b
 - **`No server URL: pass --server <url>, …`**: no `--server`, no `SEXTOU_RUNNER_SERVER_URL`, and no server from `run-server`. Start one with `node ../server/.claude/skills/run-server/driver.mjs start`.
 - **`The runner did not start.` followed by `Invalid SEXTOU_RUNNER_…`**: an exported variable has a bad value. The record names it and what it expects.
 - **`The runner did not start.` followed by `SEXTOU_RUNNER_TASK_BIN is not go-task`**: `task` isn't on the PATH, or is another program (Taskwarrior). The record's `reason` says which. Install go-task, or export `SEXTOU_RUNNER_TASK_BIN` with its name or path.
+- **`The runner did not start.` followed by `tar does not run`**: no `tar` on the PATH, or one that fails `tar --version`. The record's `reason` says which. Install tar.
 - **`completed` with `reason: download: …`**: the runner couldn't download the claim's repository: `fetch failed` without network to `SEXTOU_RUNNER_GITHUB_URL`, `HTTP 404` for a commit or repository GitHub doesn't have, `timeout` past `SEXTOU_RUNNER_DOWNLOAD_TIMEOUT_MS`. The task's Taskfile didn't run.
 - **`completed` with `reason: exit code 127`**, and an `output` record `python3: not found`: the stub's Taskfile runs `python3`, which the machine lacks.
 - **`No claimed record.`**: the task's assignee isn't one the runner serves, or the runner's server isn't the one you created the task on. Compare `start`'s `assignees` and `serverUrl` with the task.

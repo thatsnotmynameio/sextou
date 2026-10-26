@@ -1,4 +1,10 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import type { RequestListener } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,7 +16,7 @@ import {
   test,
   vi,
 } from 'vitest';
-import { download } from '../../src/download';
+import { checkTar, download } from '../../src/download';
 import { answer, archive, serve, sha } from '../archive';
 
 let dir: string;
@@ -62,6 +68,13 @@ test('download extracts the tarball without its top folder', async () => {
   expect(readFileSync(join(dir, 'README.md'), 'utf8')).toBe('hello\n');
 });
 
+test('download reads the tarball from stdin when TAPE names another archive', async () => {
+  vi.stubEnv('TAPE', join(dir, 'no-tape'));
+
+  expect(await from(answer(repository))).toBeUndefined();
+  expect(existsSync(join(dir, 'README.md'))).toBe(true);
+});
+
 test('download follows a redirect', async () => {
   const listener: RequestListener = (request, response) => {
     if (request.url === `/thatsnotmynameio/sextou/archive/${sha}.tar.gz`) {
@@ -97,6 +110,39 @@ test('download resolves timeout when no answer comes within timeoutMs', async ()
 
 test('download resolves timeout when the tarball does not end within timeoutMs', async () => {
   expect(await from(hang, { timeoutMs: 300 })).toBe('timeout');
+});
+
+// Puts a tar first on the PATH that runs `body`.
+function fakeTar(body: string) {
+  const bin = mkdtempSync(join(tmpdir(), 'sextou-fake-tar-'));
+  onTestFinished(() => rmSync(bin, { recursive: true, force: true }));
+  writeFileSync(join(bin, 'tar'), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+  vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
+}
+
+// Puts a tar first on the PATH that reads nothing and never exits.
+function stuckTar() {
+  fakeTar('exec sleep 60');
+}
+
+test('download resolves timeout when tar does not exit within timeoutMs', async () => {
+  stuckTar();
+
+  expect(await from(answer(repository), { timeoutMs: 300 })).toBe('timeout');
+});
+
+test('download resolves aborted when its signal aborts while tar has the whole tarball', async () => {
+  stuckTar();
+  const controller = new AbortController();
+  const result = from(
+    (request, response) => {
+      answer(repository)(request, response);
+      setTimeout(() => controller.abort(), 100);
+    },
+    { signal: controller.signal },
+  );
+
+  expect(await result).toBe('aborted');
 });
 
 test('download resolves aborted when its signal aborts before an answer', async () => {
@@ -148,4 +194,46 @@ test('download resolves why tar did not start', async () => {
   vi.stubEnv('PATH', '');
 
   expect(await from(answer(repository))).toBe('spawn tar ENOENT');
+});
+
+test("download kills tar when the runner's process exits", async () => {
+  stuckTar();
+  const before = process.listeners('exit');
+  const result = from(answer(repository));
+  const killOnExit = await vi.waitFor(() => {
+    const [added] = process
+      .listeners('exit')
+      .filter((listener) => !before.includes(listener));
+    if (!added) {
+      throw new Error('tar has not started');
+    }
+    return added;
+  });
+
+  killOnExit(0);
+
+  expect(await result).toBe('tar signal SIGKILL');
+  expect(process.listeners('exit')).toEqual(before);
+});
+
+test('checkTar resolves undefined for the system tar', async () => {
+  expect(await checkTar(5000)).toBeUndefined();
+});
+
+test('checkTar resolves the error when tar does not exist', async () => {
+  vi.stubEnv('PATH', '');
+
+  expect(await checkTar(5000)).toBe('spawn tar ENOENT');
+});
+
+test('checkTar resolves why when tar fails', async () => {
+  fakeTar('exit 3');
+
+  expect(await checkTar(5000)).toMatch(/^Command failed: tar --version/);
+});
+
+test('checkTar resolves timeout when tar takes longer than timeoutMs', async () => {
+  stuckTar();
+
+  expect(await checkTar(200)).toBe('timeout');
 });
