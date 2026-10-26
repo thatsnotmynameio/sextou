@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process';
-import { lstat, mkdir } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import { createInterface } from 'node:readline';
-import { readSettings, readTimeout } from './settings.ts';
+import { readSettings, readTimeout, type Settings } from './settings.ts';
 
 // Exits with 2 on an input it refuses, or a path it can't make a folder,
 // having run no git on it and written nothing.
@@ -38,7 +39,7 @@ export async function checkout(
     );
     return refused;
   }
-  const { url, ref, path } = read.settings;
+  const { path } = read.settings;
   if (await throughSymlink(workspace, path)) {
     log('checkout: path is inside the workspace');
     return refused;
@@ -49,29 +50,63 @@ export async function checkout(
     log('checkout: path holds a repository already');
     return refused;
   }
+  // git's HOME is an empty folder of its own, so no .netrc of the runner's
+  // user hands the server a password.
+  const home = await mkdtemp(join(tmpdir(), 'sextou-checkout-home-'));
+  try {
+    return await clone({
+      env,
+      home,
+      workspace,
+      timeoutMs,
+      log,
+      ...read.settings,
+    });
+  } finally {
+    await rm(home, { recursive: true });
+  }
+}
+
+async function clone({
+  env,
+  home,
+  workspace,
+  timeoutMs,
+  log,
+  url,
+  ref,
+  path,
+}: Settings & {
+  env: NodeJS.ProcessEnv;
+  home: string;
+  workspace: string;
+  timeoutMs: number;
+  log: (line: string) => void;
+}): Promise<number> {
   // A repository that asks for credentials fails at once instead of waiting
   // on a prompt no one answers: no secret comes from the server. Nor does
   // git read the configuration of the runner's user or system, whose
   // credential helpers would hand a private repository the user's token, and
   // whose URL rewrites and hooks would change the run, nor take a setting
   // from the runner's environment: every GIT_ variable goes but the
-  // certificates git trusts, and SSH_ASKPASS, which git asks for a password
-  // too.
+  // certificate file git trusts, and SSH_ASKPASS, which git asks for a
+  // password too, and NETRC, which names another .netrc.
   const gitEnv = {
     ...Object.fromEntries(
       Object.entries(env).filter(
         ([name]) =>
           name !== 'SSH_ASKPASS' &&
-          (!name.startsWith('GIT_') ||
-            name === 'GIT_SSL_CAINFO' ||
-            name === 'GIT_SSL_CAPATH'),
+          name !== 'NETRC' &&
+          (!name.startsWith('GIT_') || name === 'GIT_SSL_CAINFO'),
       ),
     ),
+    HOME: home,
     // Stryker disable next-line StringLiteral: git reads an empty value as false too
     GIT_TERMINAL_PROMPT: '0',
     // Stryker disable next-line StringLiteral: git reads an empty path as no file too
     GIT_CONFIG_GLOBAL: '/dev/null',
-    GIT_CONFIG_NOSYSTEM: '1',
+    // Stryker disable next-line StringLiteral: git reads an empty path as no file too
+    GIT_CONFIG_SYSTEM: '/dev/null',
   };
   // A git that hangs on --version doesn't run either.
   const deadline = AbortSignal.timeout(timeoutMs);

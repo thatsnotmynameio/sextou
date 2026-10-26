@@ -12,12 +12,16 @@ export interface GitServer {
   url: string;
   // The certificate git trusts the server by, for GIT_SSL_CAINFO.
   ca: string;
+  // The Authorization header of each request that carried one, oldest
+  // first; a test empties it.
+  credentials: string[];
   close: () => Promise<void>;
 }
 
 // An HTTPS server on localhost that serves the git repositories under `root`
 // as GitHub does, <url>/<owner>/<name>, through git's own http-backend, with a
-// certificate openssl makes for it. org/private asks for credentials.
+// certificate openssl makes for it. org/private asks for credentials, and
+// refuses any.
 export async function serveGit(root: string): Promise<GitServer> {
   const dir = mkdtempSync(join(tmpdir(), 'sextou-git-server-'));
   const key = join(dir, 'key.pem');
@@ -45,9 +49,15 @@ export async function serveGit(root: string): Promise<GitServer> {
     ],
     { stdio: 'ignore' },
   );
+  const credentials: string[] = [];
   const server = createServer(
     { key: readFileSync(key), cert: readFileSync(ca) },
-    (request, response) => backend(root, request, response),
+    (request, response) => {
+      if (request.headers.authorization !== undefined) {
+        credentials.push(request.headers.authorization);
+      }
+      backend(root, request, response);
+    },
   );
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -55,6 +65,7 @@ export async function serveGit(root: string): Promise<GitServer> {
   return {
     url: `https://127.0.0.1:${port}`,
     ca,
+    credentials,
     close: async () => {
       server.closeAllConnections();
       server.close();

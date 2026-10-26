@@ -61,6 +61,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
   rmSync(dir, { recursive: true, force: true });
   rmSync(join(served, 'org'), { recursive: true, force: true });
+  server.credentials.length = 0;
 });
 
 // Checks out `context`, from the git server unless it names its own, into
@@ -251,8 +252,49 @@ test.each(['GIT_ASKPASS', 'SSH_ASKPASS'])(
       await run({ repo: 'org/private', ref: 'main' }, { [name]: askpass }),
     ).toBe(128);
     expect(existsSync(asked)).toBe(false);
+    expect(server.credentials).toEqual([]);
   },
 );
+
+// A .netrc in `folder` with a password for the git server.
+function netrc(folder: string) {
+  mkdirSync(folder, { recursive: true });
+  const file = join(folder, '.netrc');
+  writeFileSync(file, 'machine 127.0.0.1 login runner password secret\n', {
+    mode: 0o600,
+  });
+  return file;
+}
+
+test("checkout sends the server no password of the .netrc in the runner's HOME", async () => {
+  const home = join(dir, 'home');
+  netrc(home);
+
+  expect(await run({ repo: 'org/private', ref: 'main' }, { HOME: home })).toBe(
+    128,
+  );
+  expect(server.credentials).toEqual([]);
+});
+
+test('checkout sends the server no password of the .netrc NETRC names', async () => {
+  expect(
+    await run(
+      { repo: 'org/private', ref: 'main' },
+      { NETRC: netrc(join(dir, 'other')) },
+    ),
+  ).toBe(128);
+  expect(server.credentials).toEqual([]);
+});
+
+test('checkout removes the HOME it gave git once it ended', async () => {
+  repository(served);
+  const temporary = join(dir, 'tmp');
+  mkdirSync(temporary);
+  vi.stubEnv('TMPDIR', temporary);
+
+  expect(await run({ repo: 'org/app', ref: 'main' })).toBe(0);
+  expect(readdirSync(temporary)).toEqual([]);
+});
 
 test('checkout resolves noGit when git does not run, writing nothing', async () => {
   expect(
