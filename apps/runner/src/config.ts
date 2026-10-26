@@ -1,16 +1,11 @@
-// Pino's level names, written out here so config.ts doesn't import Pino, which
-// leaves out silent from its own list.
-const logLevels = [
-  'fatal',
-  'error',
-  'warn',
-  'info',
-  'debug',
-  'trace',
-  'silent',
-] as const;
-
-export type LogLevel = (typeof logLevels)[number];
+import {
+  invalid,
+  parseBoolean,
+  parseOneOf,
+  parseTimeout,
+  reader,
+} from '@sextou/config';
+import { logLevels, type LogLevel } from '@sextou/logger/levels';
 
 export interface Config {
   // Where the server answers: the client calls `${serverUrl}/trpc`.
@@ -65,14 +60,7 @@ export function loadConfig(
   env: Record<string, string | undefined>,
   { hostname }: ConfigContext,
 ): Config {
-  const read = <T>(
-    name: string,
-    parse: (value: string, name: string) => T,
-    fallback: () => T,
-  ): T => {
-    const value = env[name];
-    return value === undefined ? fallback() : parse(value, name);
-  };
+  const read = reader(env);
 
   const name = read('SEXTOU_RUNNER_NAME', nonEmpty('a name'), hostname);
   return {
@@ -121,14 +109,12 @@ export function loadConfig(
     ),
     killGraceMs: read('SEXTOU_RUNNER_KILL_GRACE_MS', parseTimeout, () => 10000),
     dev: read('SEXTOU_RUNNER_DEV', parseBoolean, () => false),
-    logLevel: read('SEXTOU_RUNNER_LOG_LEVEL', parseLogLevel, () => 'info'),
+    logLevel: read(
+      'SEXTOU_RUNNER_LOG_LEVEL',
+      parseOneOf(logLevels),
+      () => 'info',
+    ),
   };
-}
-
-function invalid(name: string, value: string, expected: string) {
-  return new Error(
-    `Invalid ${name}: ${JSON.stringify(value)} (expected ${expected})`,
-  );
 }
 
 function parseUrl(value: string, name: string): string {
@@ -158,33 +144,4 @@ function parseAssignees(value: string, name: string): string[] {
     throw invalid(name, value, 'names separated by commas');
   }
   return names;
-}
-
-// Up to the longest delay setTimeout takes: a longer one fires after 1 ms,
-// which would claim or heartbeat nonstop.
-function parseTimeout(value: string, name: string): number {
-  const ms = Number(value);
-  if (!/^\d+$/.test(value) || ms === 0 || ms > 2147483647) {
-    throw invalid(
-      name,
-      value,
-      'a whole number of milliseconds from 1 to 2147483647',
-    );
-  }
-  return ms;
-}
-
-function parseBoolean(value: string, name: string): boolean {
-  if (value !== 'true' && value !== 'false') {
-    throw invalid(name, value, 'true or false');
-  }
-  return value === 'true';
-}
-
-function parseLogLevel(value: string, name: string): LogLevel {
-  const level = logLevels.find((candidate) => candidate === value);
-  if (level === undefined) {
-    throw invalid(name, value, `one of ${logLevels.join(', ')}`);
-  }
-  return level;
 }

@@ -22,6 +22,8 @@ const tasksMigrations = join(
 // a native addon, which a bundle can't hold, so it runs with Turso's installed
 // package for its platform. Pino and pino-pretty stay installed too: Pino
 // loads its transports' files at run time, which a bundle doesn't carry.
+// @sextou/logger declares them, and the hoisted node_modules puts them where
+// server.mjs finds them.
 export default defineConfig({
   ssr: {
     noExternal: true,

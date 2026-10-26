@@ -30,10 +30,11 @@ const serverDir = dirname(
 // the records main wrote. Each logger gets a stream of its own, as pino-pretty
 // pipes into it and ends it with the logger.
 const output = vi.hoisted(() => ({ lines: [] as string[] }));
-vi.mock(import('../../src/logger'), async (importOriginal) => {
+vi.mock(import('@sextou/logger'), async (importOriginal) => {
   const logger = await importOriginal();
   const { Writable } = await import('node:stream');
   return {
+    ...logger,
     createLogger: (options) =>
       logger.createLogger(
         options,

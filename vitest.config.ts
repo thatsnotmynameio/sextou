@@ -13,6 +13,8 @@ export default {
       'apps/server/vitest.integration.config.mts',
       'apps/web',
       'apps/web/vitest.integration.config.ts',
+      'packages/config',
+      'packages/logger',
       'packages/tasks',
       'packages/tasks/vitest.integration.config.ts',
       'packages/ui',

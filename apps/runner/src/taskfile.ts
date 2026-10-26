@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
 import { download } from './download';
-import type { Logger } from './logger';
+import type { Logger } from '@sextou/logger';
 import type { Execute, Result } from './runner';
 
 // Runs each task's Taskfile from the repository its source names: it

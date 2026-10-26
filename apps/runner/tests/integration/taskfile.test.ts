@@ -18,11 +18,11 @@ import {
   test,
   vi,
 } from 'vitest';
-import { createLogger } from '../../src/logger';
+import { createLogger } from '@sextou/logger';
 import { checkGoTask, runTaskfile, taskfileExecute } from '../../src/taskfile';
 import { answer, archive, plaintext, serve, sha } from '../archive';
 import { bin, goTask } from '../go-task';
-import { memory } from '../logger';
+import { memory } from '@sextou/logger/testing';
 
 // Long enough for every run that isn't meant to be stopped.
 const limits = { timeoutMs: 20000, killGraceMs: 5000 };

@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { openTasks } from '@sextou/tasks';
 import { connect } from '@tursodatabase/database';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { createLogger } from '../../src/logger';
+import { createLogger } from '@sextou/logger';
 import {
   type NewTask,
   Outcome,
