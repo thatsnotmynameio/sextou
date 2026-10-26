@@ -25,6 +25,19 @@ export function archive(files: Record<string, string>): Buffer {
   }
 }
 
+// The text of a Taskfile whose default task runs `cmds` with no echo of each
+// command.
+export function plaintext(cmds: string[]) {
+  return [
+    'version: "3"',
+    'silent: true',
+    'tasks:',
+    '  default:',
+    '    cmds:',
+    ...cmds.map((cmd) => `      - ${JSON.stringify(cmd)}`),
+  ].join('\n');
+}
+
 // Answers every request with `body`.
 export function answer(body: Buffer): RequestListener {
   return (_request, response) => {

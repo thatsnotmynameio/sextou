@@ -4,10 +4,13 @@ import { pipeline } from 'node:stream/promises';
 import type { ReadableStream } from 'node:stream/web';
 
 export interface DownloadOptions {
-  // A gzipped tarball whose entries sit in one top folder, as GitHub's
-  // archive of a repository at a commit, <name>-<sha>/.
-  url: string;
-  // The folder the tarball's top folder is extracted into, which must exist.
+  // Where repositories are downloaded from: GitHub, or a server that answers
+  // its archive URLs.
+  githubUrl: string;
+  // The repository, owner/name, and the commit to download it at.
+  repo: string;
+  sha: string;
+  // The folder the repository's files are extracted into, which must exist.
   dir: string;
   // How long the download and the extraction may take together.
   timeoutMs: number;
@@ -15,14 +18,17 @@ export interface DownloadOptions {
   signal: AbortSignal;
 }
 
-// Downloads a gzipped tarball and extracts it into `dir` with the system's
-// tar, without its top folder, and resolves with why it failed, or undefined
-// once it's extracted: HTTP and the status, timeout, aborted, why the request
+// Downloads a repository at a commit, as GitHub's gzipped tarball of it,
+// <githubUrl>/<repo>/archive/<sha>.tar.gz, and extracts it into `dir` with the
+// system's tar, without the tarball's one top folder (<name>-<sha>/). It
+// resolves with why it failed, or undefined once it's extracted: HTTP and the status, timeout, aborted, why the request
 // or tar didn't start, or tar's exit code and what it wrote on stderr. A stop
 // ends the download, which ends tar's input, and waits for tar to exit, so
 // nothing writes to `dir` afterwards.
 export async function download({
-  url,
+  githubUrl,
+  repo,
+  sha,
   dir,
   timeoutMs,
   signal,
@@ -32,7 +38,9 @@ export async function download({
   const stopped = () => (timeout.aborted ? 'timeout' : 'aborted');
   let response: Response;
   try {
-    response = await fetch(url, { signal: stop });
+    response = await fetch(`${githubUrl}/${repo}/archive/${sha}.tar.gz`, {
+      signal: stop,
+    });
   } catch (error) {
     return stop.aborted ? stopped() : (error as Error).message;
   }

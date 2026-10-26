@@ -11,7 +11,7 @@ import {
   vi,
 } from 'vitest';
 import { download } from '../../src/download';
-import { answer, archive, serve } from '../archive';
+import { answer, archive, serve, sha } from '../archive';
 
 let dir: string;
 
@@ -29,14 +29,22 @@ const repository = archive({
   'README.md': 'hello\n',
 });
 
-// Serves `listener` for the test, and downloads its root's URL into `dir`.
+// Serves `listener` for the test as GitHub, and downloads a repository from
+// it into `dir`.
 async function from(
   listener: RequestListener,
   { timeoutMs = 5000, signal = new AbortController().signal } = {},
 ) {
   const server = await serve(listener);
   onTestFinished(server.close);
-  return download({ url: `${server.url}/archive`, dir, timeoutMs, signal });
+  return download({
+    githubUrl: server.url,
+    repo: 'thatsnotmynameio/sextou',
+    sha,
+    dir,
+    timeoutMs,
+    signal,
+  });
 }
 
 // Answers with the headers and part of the repository's tarball, then holds
@@ -56,7 +64,7 @@ test('download extracts the tarball without its top folder', async () => {
 
 test('download follows a redirect', async () => {
   const listener: RequestListener = (request, response) => {
-    if (request.url === '/archive') {
+    if (request.url === `/thatsnotmynameio/sextou/archive/${sha}.tar.gz`) {
       response.writeHead(302, { location: '/codeload' }).end();
     } else {
       response.end(repository);
@@ -119,7 +127,9 @@ test('download resolves why the request failed', async () => {
 
   expect(
     await download({
-      url: server.url,
+      githubUrl: server.url,
+      repo: 'thatsnotmynameio/sextou',
+      sha,
       dir,
       timeoutMs: 5000,
       signal: new AbortController().signal,

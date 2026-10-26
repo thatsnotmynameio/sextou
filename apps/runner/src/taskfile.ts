@@ -22,17 +22,16 @@ export function taskfileExecute({
   downloadTimeoutMs,
   ...options
 }: Pick<TaskfileOptions, 'bin' | 'timeoutMs' | 'killGraceMs'> & {
-  // Where repositories are downloaded from: GitHub, or a server that answers
-  // its archive URLs.
   githubUrl: string;
-  // How long downloading and extracting a repository may take.
   downloadTimeoutMs: number;
 }): Execute {
   return async ({ source }, { signal, logger }) => {
     const dir = await mkdtemp(join(tmpdir(), 'sextou-execution-'));
     try {
       const failed = await download({
-        url: `${githubUrl}/${source.repo}/archive/${source.sha}.tar.gz`,
+        githubUrl,
+        repo: source.repo,
+        sha: source.sha,
         dir,
         timeoutMs: downloadTimeoutMs,
         signal,

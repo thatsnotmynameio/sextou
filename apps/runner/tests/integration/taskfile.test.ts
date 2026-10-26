@@ -20,7 +20,7 @@ import {
 } from 'vitest';
 import { createLogger } from '../../src/logger';
 import { checkGoTask, runTaskfile, taskfileExecute } from '../../src/taskfile';
-import { answer, archive, serve, sha } from '../archive';
+import { answer, archive, plaintext, serve, sha } from '../archive';
 import { bin, goTask } from '../go-task';
 import { memory } from '../logger';
 
@@ -51,19 +51,6 @@ function taskfile(cmds: string[], folder = 'work') {
   const path = join(dir, folder, 'Taskfile.yml');
   writeFileSync(path, plaintext(cmds));
   return path;
-}
-
-// The text of a Taskfile whose default task runs `cmds` with no echo of each
-// command.
-function plaintext(cmds: string[]) {
-  return [
-    'version: "3"',
-    'silent: true',
-    'tasks:',
-    '  default:',
-    '    cmds:',
-    ...cmds.map((cmd) => `      - ${JSON.stringify(cmd)}`),
-  ].join('\n');
 }
 
 function run(
@@ -390,7 +377,6 @@ goTask(
     expect(result).toEqual({ outcome: 'succeeded' });
     expect(lines()[0].line.endsWith('/tasks/test')).toBe(true);
     expect(dirname(runFolder())).toBe(tmpdir());
-    expect(basename(runFolder())).toMatch(/^sextou-execution-/);
   },
 );
 

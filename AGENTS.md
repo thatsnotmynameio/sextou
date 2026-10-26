@@ -91,7 +91,7 @@ apps/runner/
     client.ts                  the runners procedures over tRPC, each answering an Answer
     runner.ts                  the loop: claim, execute with heartbeats, complete
     sleep.ts                   a sleep an abort ends
-    download.ts                downloads a gzipped tarball and extracts it with tar
+    download.ts                downloads a repository at a commit from GitHub and extracts it with tar
     taskfile.ts                runs a Taskfile's default task with go-task; the execute main.ts passes
   tests/
     logger.ts                  memory, a destination that keeps each line a logger writes

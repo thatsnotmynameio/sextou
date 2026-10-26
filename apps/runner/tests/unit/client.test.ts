@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { createRunnerClient, timeoutFetch } from '../../src/client';
+import { sha } from '../archive';
 
 const serverUrl = 'http://server.test';
 
@@ -45,7 +46,7 @@ const claimed = {
     id: 'tsk_1',
     source: {
       repo: 'thatsnotmynameio/sextou',
-      sha: '0123456789abcdef0123456789abcdef01234567',
+      sha,
       taskfile: 'tasks/hello-world/Taskfile.yml',
     },
   },

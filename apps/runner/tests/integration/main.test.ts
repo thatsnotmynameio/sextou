@@ -15,7 +15,7 @@ import {
   vi,
   type MockInstance,
 } from 'vitest';
-import { answer, archive, serve, type Served } from '../archive';
+import { answer, archive, plaintext, serve, type Served } from '../archive';
 import { goTask } from '../go-task';
 
 // The server runs as its own process, from its sources, with its own tsx:
@@ -164,14 +164,10 @@ beforeAll(async () => {
   github = await serve(
     answer(
       archive({
-        'tasks/hello-world/Taskfile.yml': [
-          'version: "3"',
-          'tasks:',
-          '  default:',
-          '    cmds:',
-          '      - echo "sextou stub"',
-          '      - sleep 2',
-        ].join('\n'),
+        'tasks/hello-world/Taskfile.yml': plaintext([
+          'echo "sextou stub"',
+          'sleep 2',
+        ]),
       }),
     ),
   );
