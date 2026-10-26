@@ -22,7 +22,7 @@
   "devDependencies": {
     "@stryker-mutator/core": "10.0.0",
     "@stryker-mutator/vitest-runner": "10.0.0",
-    "@types/node": "^24.19.2",
+    "@types/node": "^26.6.5",
     "@vitest/coverage-v8": "^5.0.5",
     "drizzle-kit": "1.0.0-rc.5",
     "pino": "^10.4.0",
