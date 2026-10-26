@@ -3,5 +3,6 @@
 /// <reference types="node" />
 
 // The folder of @sextou/tasks' migrations, relative to the bundle: defined
-// only by the production build (vite.config.mts), undeclared from source.
+// only by the production build (vite.config.mts), undeclared from source, so
+// it also tells the build from source.
 declare const __TASKS_MIGRATIONS__: string | undefined;

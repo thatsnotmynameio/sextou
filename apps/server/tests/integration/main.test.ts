@@ -146,6 +146,9 @@ beforeEach(() => {
   }
   // A test that looks at the tasks database's file sets its own path.
   vi.stubEnv('SEXTOU_SERVER_TASKS_DB', ':memory:');
+  // From source the default is the checkout's apps/server/storage, which no
+  // test may write into.
+  vi.stubEnv('SEXTOU_SERVER_DATA_DIR', join(dir, 'data'));
   // No sweep fires unless a test asks for one, so none outlives its test
   // and writes into the next one's records.
   vi.stubEnv('SEXTOU_SERVER_LEASE_SWEEP_MS', '2147483647');
@@ -235,10 +238,26 @@ test('logs readable lines, not JSON, with SEXTOU_SERVER_DEV=true', async () => {
   expect(() => records()).toThrow(SyntaxError);
 });
 
-// Covers AE1. The default path is the Linux one; CI runs Linux.
+// Covers AE1.
+test('creates the data directory and the database in it when no database path is given', async () => {
+  await import('../../src/main');
+
+  expect(await health()).toMatchObject({ database: 'up' });
+  expect(existsSync(join(dir, 'data', 'sextou.db'))).toBe(true);
+});
+
+// The production build defines __TASKS_MIGRATIONS__, here as the package's own
+// folder seen from src/, and then the default is the user's data directory,
+// under the mocked home. The default path is the Linux one; CI runs Linux.
 test.runIf(process.platform === 'linux')(
-  'creates the data directory and the database in it when no path is given',
+  'creates the database in the user data directory in the production build when no path is given',
   async () => {
+    vi.stubGlobal(
+      '__TASKS_MIGRATIONS__',
+      join('..', '..', '..', 'packages', 'tasks', 'drizzle'),
+    );
+    vi.stubEnv('SEXTOU_SERVER_DATA_DIR', undefined);
+
     await import('../../src/main');
 
     expect(await health()).toMatchObject({ database: 'up' });
@@ -246,22 +265,43 @@ test.runIf(process.platform === 'linux')(
   },
 );
 
-test.runIf(process.platform === 'linux')(
-  'opens the tasks database in the data directory when no path is given',
-  async () => {
-    vi.stubEnv('SEXTOU_SERVER_TASKS_DB', undefined);
+test('opens the tasks database in the data directory when no path is given', async () => {
+  vi.stubEnv('SEXTOU_SERVER_TASKS_DB', undefined);
 
-    await import('../../src/main');
+  await import('../../src/main');
 
-    expect(createTasksService).toHaveBeenCalledWith(
-      join(dir, '.local/share/sextou/tasks.db'),
-      expect.objectContaining({
-        logger: expect.objectContaining({ error: expect.any(Function) }),
-      }),
-    );
-    expect(existsSync(join(dir, '.local/share/sextou/tasks.db'))).toBe(true);
-  },
-);
+  expect(createTasksService).toHaveBeenCalledWith(
+    join(dir, 'data', 'tasks.db'),
+    expect.objectContaining({
+      logger: expect.objectContaining({ error: expect.any(Function) }),
+    }),
+  );
+  expect(existsSync(join(dir, 'data', 'tasks.db'))).toBe(true);
+});
+
+// From source, the default is apps/server/storage. The service opens
+// ':memory:' instead of the path main hands it, so the checkout's own
+// databases stay untouched.
+test('opens the tasks database in apps/server/storage from source when no path is given', async () => {
+  vi.stubEnv('SEXTOU_SERVER_DATA_DIR', undefined);
+  vi.stubEnv('SEXTOU_SERVER_DATABASE', ':memory:');
+  vi.stubEnv('SEXTOU_SERVER_TASKS_DB', undefined);
+  const { createTasksService: real } = await vi.importActual<{
+    createTasksService: typeof createTasksService;
+  }>('../../src/tasks-service');
+  vi.mocked(createTasksService).mockImplementationOnce((_path, options) =>
+    real(':memory:', options),
+  );
+
+  await import('../../src/main');
+
+  expect(createTasksService).toHaveBeenCalledWith(
+    join(import.meta.dirname, '..', '..', 'storage', 'tasks.db'),
+    expect.objectContaining({
+      logger: expect.objectContaining({ error: expect.any(Function) }),
+    }),
+  );
+});
 
 test('starts the tasks service at SEXTOU_SERVER_TASKS_DB before listening', async () => {
   const path = join(dir, 'tasks', 'tasks.db');
@@ -392,7 +432,6 @@ test('listens and reports the database down when its folder is a file', async ()
 });
 
 test('creates no folder for an in-memory database', async () => {
-  vi.stubEnv('SEXTOU_SERVER_DATA_DIR', join(dir, 'data'));
   vi.stubEnv('SEXTOU_SERVER_DATABASE', ':memory:');
 
   await import('../../src/main');

@@ -142,6 +142,32 @@ test('loadConfig keeps a configured database outside the data directory', () => 
   ).toBe('/x.db');
 });
 
+test('loadConfig puts both databases in storage, without reading the home directory, when no path is set', () => {
+  const config = loadConfig(
+    {},
+    {
+      ...paths,
+      storage: '/repo/storage',
+      homedir: () => {
+        throw new Error('read the home directory');
+      },
+    },
+  );
+  expect(config).toMatchObject({
+    database: '/repo/storage/sextou.db',
+    tasksDb: '/repo/storage/tasks.db',
+  });
+});
+
+test('loadConfig prefers SEXTOU_SERVER_DATA_DIR to storage', () => {
+  expect(
+    loadConfig(
+      { SEXTOU_SERVER_DATA_DIR: '/d' },
+      { ...paths, storage: '/repo/storage' },
+    ),
+  ).toMatchObject({ database: '/d/sextou.db', tasksDb: '/d/tasks.db' });
+});
+
 test('loadConfig resolves a relative data directory against the working directory', () => {
   expect(load({ SEXTOU_SERVER_DATA_DIR: 'data' }).database).toBe(
     '/work/data/sextou.db',
