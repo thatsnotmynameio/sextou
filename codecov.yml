@@ -1,0 +1,17 @@
+# Codecov reports coverage. It doesn't gate it: each suite's own 90% floor,
+# in tests.yml, is the gate. tests.yml uploads one report per package and
+# level, flagged "<package>-<level>".
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+# The pull request's comment shows the whole project's coverage and each
+# flag's, beside the lines the pull request changed.
+comment:
+  layout: 'diff, flags, files'
+  hide_project_coverage: false
