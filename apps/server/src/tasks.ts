@@ -44,6 +44,9 @@ export interface Task {
   description: string | null;
   // A URL or a file path where the task's longer text lives.
   source: string | null;
+  // A JSON object the creator stores with the task, which the server never
+  // reads: the repository and commit a reusable Taskfile works on, say.
+  context: Record<string, unknown> | null;
   status: Status;
 }
 
@@ -55,6 +58,7 @@ export interface NewTask {
   assignee: Actor;
   description?: string;
   source?: string;
+  context?: Record<string, unknown>;
   createdBy: Actor;
 }
 

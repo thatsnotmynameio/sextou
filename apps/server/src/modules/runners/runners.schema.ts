@@ -12,12 +12,41 @@ export const claimInputSchema = z.object({
   assignees: z.array(nameSchema).min(1),
 });
 
+// Where the Taskfile a task runs lives: a public GitHub repository, at a
+// commit, so what runs is fixed when the task is claimed, and the path to the
+// Taskfile inside it. The runner downloads the repository at that commit and
+// runs the Taskfile there, beside the files it uses.
+export const sourceSchema = z.object({
+  // owner/name, neither of them . or .., which the URL the runner downloads
+  // from would resolve to another path.
+  repo: z
+    .string()
+    .regex(/^[\w.-]+\/[\w.-]+$/)
+    .refine(
+      (repo) => repo.split('/').every((part) => part !== '.' && part !== '..'),
+      'owner/name',
+    ),
+  sha: z.string().regex(/^[0-9a-f]{40}$/),
+  // A file inside the repository, by its relative path: segments separated
+  // by single slashes, none of them empty, . or .., so no leading or trailing
+  // slash either.
+  taskfile: z
+    .string()
+    .refine(
+      (path) =>
+        path
+          .split('/')
+          .every((part) => part !== '' && part !== '.' && part !== '..'),
+      'a path inside the repository',
+    ),
+});
+
 // The task the runner now holds and the attempt it runs, or no task. The
-// task carries what the runner runs, not its planning fields: its id, and the
-// Taskfile whose default task the runner runs, as plaintext.
+// task carries what the runner runs, not its planning fields: its id, and
+// where the Taskfile whose default task the runner runs lives.
 export const claimOutputSchema = z.union([
   z.object({
-    task: z.object({ id: idSchema, taskfile: z.string().min(1) }),
+    task: z.object({ id: idSchema, source: sourceSchema }),
     execution: z.object({
       id: idSchema,
       attempt: z.number().int().min(1),

@@ -51,6 +51,9 @@ export interface PathContext {
   homedir: () => string;
   // The directory a relative path is resolved against.
   cwd: string;
+  // The data directory when none is configured; unset, the user's data
+  // directory for the platform.
+  storage?: string;
 }
 
 // The server's configuration, from the environment: each variable has a
@@ -58,7 +61,7 @@ export interface PathContext {
 // variable on an invalid value.
 export function loadConfig(
   env: Record<string, string | undefined>,
-  { platform, homedir, cwd }: PathContext,
+  { platform, homedir, cwd, storage }: PathContext,
 ): Config {
   const read = <T>(
     name: string,
@@ -76,7 +79,7 @@ export function loadConfig(
     dataDirectory ??= read(
       'SEXTOU_SERVER_DATA_DIR',
       (value, name) => parseDataDir(value, name, cwd),
-      () => defaultDataDirectory(platform, env, homedir()),
+      () => storage ?? defaultDataDirectory(platform, env, homedir()),
     );
     return path.join(dataDirectory, file);
   };

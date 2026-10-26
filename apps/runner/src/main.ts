@@ -6,6 +6,7 @@ import { createRunnerClient } from './client';
 import { loadConfig, type Config } from './config';
 import { createLogger, type Logger } from './logger';
 import { startRunner } from './runner';
+import { checkTar } from './download';
 import { checkGoTask, taskfileExecute } from './taskfile';
 
 const config = readConfig();
@@ -28,8 +29,8 @@ function readConfig(): Config | undefined {
   }
 }
 
-// A runner whose go-task doesn't run would fail every task it claims: it
-// stops before it calls the server instead.
+// A runner whose go-task or tar doesn't run would fail every task it claims:
+// it stops before it calls the server instead.
 async function start(config: Config) {
   const logger = createLogger({ level: config.logLevel, pretty: config.dev });
   const reason = await checkGoTask(config.taskBin, config.checkTimeoutMs);
@@ -38,6 +39,12 @@ async function start(config: Config) {
       { taskBin: config.taskBin, reason },
       'SEXTOU_RUNNER_TASK_BIN is not go-task',
     );
+    process.exitCode = 1;
+    return;
+  }
+  const tarReason = await checkTar(config.checkTimeoutMs);
+  if (tarReason !== undefined) {
+    logger.error({ reason: tarReason }, 'tar does not run');
     process.exitCode = 1;
     return;
   }
@@ -51,6 +58,8 @@ function run(config: Config, logger: Logger) {
     assignees: config.assignees,
     pollMs: config.pollMs,
     execute: taskfileExecute({
+      githubUrl: config.githubUrl,
+      downloadTimeoutMs: config.downloadTimeoutMs,
       bin: config.taskBin,
       timeoutMs: config.runTimeoutMs,
       killGraceMs: config.killGraceMs,

@@ -1,9 +1,16 @@
 CREATE TABLE `task_executions` (
-	`task_id` text PRIMARY KEY,
+	`id` text PRIMARY KEY,
+	`task_id` text NOT NULL,
+	`attempt` integer NOT NULL,
 	`actor` text NOT NULL,
+	`claim_id` text NOT NULL,
 	`log_path` text,
 	`result_path` text,
-	CONSTRAINT `fk_task_executions_task_id_tasks_id_fk` FOREIGN KEY (`task_id`) REFERENCES `tasks`(`id`)
+	`expires_at` integer,
+	`cancel_requested_by` text,
+	`cancel_reason` text,
+	CONSTRAINT `fk_task_executions_task_id_tasks_id_fk` FOREIGN KEY (`task_id`) REFERENCES `tasks`(`id`),
+	CONSTRAINT "task_execution_attempt" CHECK("attempt" >= 1)
 );
 --> statement-breakpoint
 CREATE TABLE `task_links` (
@@ -23,8 +30,8 @@ CREATE TABLE `task_status_changes` (
 	`reason` text,
 	`time_changed` integer NOT NULL,
 	CONSTRAINT `fk_task_status_changes_task_id_tasks_id_fk` FOREIGN KEY (`task_id`) REFERENCES `tasks`(`id`),
-	CONSTRAINT "task_status_change_from_status" CHECK("from_status" IN ('open', 'running', 'succeeded', 'failed', 'skipped')),
-	CONSTRAINT "task_status_change_to_status" CHECK("to_status" IN ('open', 'running', 'succeeded', 'failed', 'skipped'))
+	CONSTRAINT "task_status_change_from_status" CHECK("from_status" IN ('open', 'running', 'succeeded', 'failed', 'skipped', 'cancelled')),
+	CONSTRAINT "task_status_change_to_status" CHECK("to_status" IN ('open', 'running', 'succeeded', 'failed', 'skipped', 'cancelled'))
 );
 --> statement-breakpoint
 CREATE TABLE `tasks` (
@@ -36,13 +43,18 @@ CREATE TABLE `tasks` (
 	`assignee` text NOT NULL,
 	`description` text,
 	`source_path` text,
+	`context` text,
 	`status` text NOT NULL,
 	`holding_blockers` integer DEFAULT 0 NOT NULL,
 	CONSTRAINT `fk_tasks_parent_id_tasks_id_fk` FOREIGN KEY (`parent_id`) REFERENCES `tasks`(`id`),
 	CONSTRAINT "task_priority" CHECK("priority" BETWEEN 0 AND 4),
-	CONSTRAINT "task_status" CHECK("status" IN ('open', 'running', 'succeeded', 'failed', 'skipped')),
-	CONSTRAINT "task_holding_blockers" CHECK("holding_blockers" >= 0)
+	CONSTRAINT "task_status" CHECK("status" IN ('open', 'running', 'succeeded', 'failed', 'skipped', 'cancelled')),
+	CONSTRAINT "task_holding_blockers" CHECK("holding_blockers" >= 0),
+	CONSTRAINT "task_context" CHECK(CASE WHEN json_valid("context") THEN json_type("context") = 'object' ELSE "context" IS NULL END)
 );
 --> statement-breakpoint
+CREATE UNIQUE INDEX `task_execution_task_attempt` ON `task_executions` (`task_id`,`attempt`);--> statement-breakpoint
+CREATE UNIQUE INDEX `task_execution_claim` ON `task_executions` (`actor`,`claim_id`);--> statement-breakpoint
+CREATE INDEX `task_execution_lease` ON `task_executions` (`expires_at`) WHERE "task_executions"."expires_at" IS NOT NULL;--> statement-breakpoint
 CREATE INDEX `task_link_blocker` ON `task_links` (`blocker_id`);--> statement-breakpoint
 CREATE INDEX `task_ready` ON `tasks` (`assignee`,`priority`) WHERE "tasks"."status" = 'open' AND "tasks"."holding_blockers" = 0;

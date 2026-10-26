@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { createRunnerClient, timeoutFetch } from '../../src/client';
+import { sha } from '../archive';
 
 const serverUrl = 'http://server.test';
 
@@ -41,7 +42,14 @@ function stubFetch(respond: () => Response | Promise<Response>) {
 }
 
 const claimed = {
-  task: { id: 'tsk_1', taskfile: 'version: 3' },
+  task: {
+    id: 'tsk_1',
+    source: {
+      repo: 'thatsnotmynameio/sextou',
+      sha,
+      taskfile: 'tasks/hello-world/Taskfile.yml',
+    },
+  },
   execution: { id: 'exe_1', attempt: 1, leaseMs: 30000 },
 };
 

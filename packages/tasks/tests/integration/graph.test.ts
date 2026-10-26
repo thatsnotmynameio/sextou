@@ -236,6 +236,7 @@ test('createTask creates an open task that is ready, recording who created it an
       assignee: 'dev',
       description: null,
       sourcePath: null,
+      context: null,
       status: Status.open,
     },
   });
@@ -277,6 +278,82 @@ test('createTask keeps the description and source path, trimmed at the ends only
     description: 'Parse the input.\n\nThen print it.',
     source_path: 'https://github.com/o/r/issues/1',
   });
+});
+
+// The context a test stores with a task.
+const context = { repo: 'org/app', sha: 'abc', depth: 1, lfs: false };
+
+function createWithContext(title: string, value: unknown = context) {
+  return tasks.createTask({
+    title,
+    kind: 'task',
+    priority: 2,
+    assignee: 'dev',
+    createdBy: 'planner',
+    context: value as never,
+  });
+}
+
+// A context nested this many objects deep, counting itself.
+function nested(depth: number) {
+  let value: unknown = 1;
+  for (let level = 0; level < depth; level += 1) {
+    value = { a: value };
+  }
+  return value;
+}
+
+test('createTask stores a context nested as deep as Turso accepts', async () => {
+  expect(await createWithContext('A', nested(500))).toMatchObject({
+    ok: true,
+  });
+  expect(
+    await connection().get('SELECT json_valid(context) AS valid FROM tasks'),
+  ).toEqual({ valid: 1 });
+});
+
+test(`createTask refuses a context nested deeper than Turso accepts as ${Reason.invalid}, writing nothing`, async () => {
+  expect(await createWithContext('A', nested(501))).toEqual({
+    ok: false,
+    reason: Reason.invalid,
+  });
+  expect(await rows()).toBe(0);
+});
+
+test('createTask keeps the context as given, stored as JSON', async () => {
+  const result = await createWithContext('A');
+  expect(result).toMatchObject({ ok: true, task: { context } });
+  expect(
+    await connection().get(
+      "SELECT context ->> '$.repo' AS repo, json_type(context) AS type FROM tasks",
+    ),
+  ).toEqual({ repo: 'org/app', type: 'object' });
+});
+
+test('createTask stores a context left out as null', async () => {
+  await create('A');
+  expect(await connection().get('SELECT context FROM tasks')).toEqual({
+    context: null,
+  });
+});
+
+test('listReady returns the context of each ready task', async () => {
+  await createWithContext('A');
+  await create('B');
+  expect(
+    await tasks.listReady({ assignees: ['dev'], limit: 10 }),
+  ).toMatchObject({
+    ok: true,
+    tasks: [
+      { title: 'A', context },
+      { title: 'B', context: null },
+    ],
+  });
+});
+
+test('claimTask hands out the task with its context', async () => {
+  await createWithContext('A');
+  expect(await claim()).toMatchObject({ ok: true, task: { context } });
 });
 
 test('createTask stores a file path as the source path, as given', async () => {
@@ -365,6 +442,9 @@ test.each([
   { title: 'A', kind: 'task', priority: 2, assignee: 7 },
   { title: 'A', kind: 'task', priority: 2, assignee: 'dev', description: 42 },
   { title: 'A', kind: 'task', priority: 2, assignee: 'dev', sourcePath: 42 },
+  { title: 'A', kind: 'task', priority: 2, assignee: 'dev', context: ['x'] },
+  { title: 'A', kind: 'task', priority: 2, assignee: 'dev', context: 'x' },
+  { title: 'A', kind: 'task', priority: 2, assignee: 'dev', context: null },
   { title: 'A', kind: 'task', priority: 2, assignee: 'dev', createdBy: '' },
   { title: 'A', kind: 'task', priority: 2, assignee: 'dev', createdBy: ' ' },
   { title: 'A', kind: 'task', priority: 2, assignee: 'dev', createdBy: 7 },

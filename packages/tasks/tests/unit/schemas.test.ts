@@ -23,6 +23,7 @@ test('createTaskSchema outputs a new task with its texts trimmed', () => {
       assignee: ' dev ',
       description: ' Parse the input. ',
       sourcePath: ' ./notes/task.md ',
+      context: { repo: ' org/app ', depth: 1, tags: ['a'], ref: null },
       createdBy: ' planner ',
     }),
   ).toEqual({
@@ -33,11 +34,12 @@ test('createTaskSchema outputs a new task with its texts trimmed', () => {
     assignee: 'dev',
     description: 'Parse the input.',
     sourcePath: './notes/task.md',
+    context: { repo: ' org/app ', depth: 1, tags: ['a'], ref: null },
     createdBy: 'planner',
   });
 });
 
-test('createTaskSchema outputs null for a description and source path left out', () => {
+test('createTaskSchema outputs null for a description, source path and context left out', () => {
   expect(
     createTaskSchema.parse({
       title: 'A',
@@ -53,8 +55,74 @@ test('createTaskSchema outputs null for a description and source path left out',
     assignee: 'dev',
     description: null,
     sourcePath: null,
+    context: null,
     createdBy: 'planner',
   });
+});
+
+test('createTaskSchema outputs an empty context as given', () => {
+  expect(
+    createTaskSchema.parse({
+      title: 'A',
+      kind: 'task',
+      priority: 0,
+      assignee: 'dev',
+      context: {},
+      createdBy: 'planner',
+    }),
+  ).toMatchObject({ context: {} });
+});
+
+// A context whose innermost value sits inside this many objects and arrays,
+// counting the context itself, alternating the two.
+function nested(depth: number) {
+  let value: unknown = 1;
+  for (let level = 1; level < depth; level += 1) {
+    value = level % 2 === 0 ? { a: value } : [value];
+  }
+  return { a: value };
+}
+
+function parseContext(context: unknown) {
+  return createTaskSchema.safeParse({
+    title: 'A',
+    kind: 'task',
+    priority: 0,
+    assignee: 'dev',
+    context,
+    createdBy: 'planner',
+  });
+}
+
+test.each([
+  ['an array', ['org/app']],
+  ['a string', 'org/app'],
+  ['a number', 7],
+  ['null', null],
+  ['a value that is not a number in JSON', { depth: Number.NaN }],
+  ['a function', { run: () => 'x' }],
+  ['undefined inside it', { repo: undefined }],
+  ['a date', { at: new Date(0) }],
+])('createTaskSchema refuses a context that is %s', (_name, context) => {
+  expect(parseContext(context).success).toBe(false);
+});
+
+test('createTaskSchema accepts a context nested 500 levels deep, as deep as Turso stores', () => {
+  expect(parseContext(nested(500)).success).toBe(true);
+});
+
+test('createTaskSchema refuses a context nested 501 levels deep', () => {
+  expect(parseContext(nested(501)).success).toBe(false);
+});
+
+test('createTaskSchema refuses a context nested far deeper without overflowing the stack', () => {
+  expect(parseContext(nested(100_000)).success).toBe(false);
+});
+
+test('createTaskSchema refuses a context that holds itself', () => {
+  const context: Record<string, unknown> = {};
+  context.self = context;
+  expect(parseContext(context).success).toBe(false);
 });
 
 test.each([linkSchema, unlinkSchema])(

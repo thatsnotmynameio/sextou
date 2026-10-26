@@ -1,6 +1,8 @@
 # Weekly pull requests for new versions of the actions, pinned by SHA, and of
 # the dependencies in pnpm-lock.yaml. A version is proposed only once it is 7
-# days old, so a compromised release has time to be pulled.
+# days old, so a compromised release has time to be pulled. Their titles are
+# Conventional Commits with the scope deps (ci(deps): …, build(deps): …), which
+# the pull request title check accepts.
 version: 2
 updates:
   - package-ecosystem: 'github-actions'
@@ -11,6 +13,7 @@ updates:
       default-days: 7
     commit-message:
       prefix: 'ci'
+      include: 'scope'
     groups:
       actions:
         patterns: ['*']
@@ -23,7 +26,8 @@ updates:
     cooldown:
       default-days: 7
     commit-message:
-      prefix: 'deps'
+      prefix: 'build'
+      include: 'scope'
     groups:
       npm:
         patterns: ['*']

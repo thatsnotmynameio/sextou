@@ -8,6 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
+import type { RequestListener } from 'node:http';
 import { basename, dirname, join } from 'node:path';
 import {
   afterEach,
@@ -19,6 +20,7 @@ import {
 } from 'vitest';
 import { createLogger } from '../../src/logger';
 import { checkGoTask, runTaskfile, taskfileExecute } from '../../src/taskfile';
+import { answer, archive, plaintext, serve, sha } from '../archive';
 import { bin, goTask } from '../go-task';
 import { memory } from '../logger';
 
@@ -49,19 +51,6 @@ function taskfile(cmds: string[], folder = 'work') {
   const path = join(dir, folder, 'Taskfile.yml');
   writeFileSync(path, plaintext(cmds));
   return path;
-}
-
-// The text of a Taskfile whose default task runs `cmds` with no echo of each
-// command.
-function plaintext(cmds: string[]) {
-  return [
-    'version: "3"',
-    'silent: true',
-    'tasks:',
-    '  default:',
-    '    cmds:',
-    ...cmds.map((cmd) => `      - ${JSON.stringify(cmd)}`),
-  ].join('\n');
 }
 
 function run(
@@ -327,63 +316,130 @@ goTask(
   },
 );
 
-// Runs a task whose Taskfile is `text` through taskfileExecute.
-function execute(text: string, taskBin = bin) {
-  return taskfileExecute({ bin: taskBin, ...limits })(
-    { id: 'tsk_1', taskfile: text },
+// Where the tasks taskfileExecute runs keep their Taskfile, in the
+// repository their source names.
+const path = 'tasks/test/Taskfile.yml';
+
+// Runs a task through taskfileExecute, whose repository a server for the test
+// serves with `listener`: by default, a tarball with a Taskfile at `path`
+// whose default task runs `cmds`, beside `files`.
+async function execute(
+  cmds: string[],
+  {
+    taskBin = bin,
+    files = {},
+    listener = answer(archive({ ...files, [path]: plaintext(cmds) })),
+  }: {
+    taskBin?: string;
+    files?: Record<string, string>;
+    listener?: RequestListener;
+  } = {},
+) {
+  const server = await serve(listener);
+  onTestFinished(server.close);
+  const result = await taskfileExecute({
+    githubUrl: server.url,
+    downloadTimeoutMs: 5000,
+    bin: taskBin,
+    ...limits,
+  })(
+    {
+      id: 'tsk_1',
+      source: { repo: 'thatsnotmynameio/sextou', sha, taskfile: path },
+    },
     { signal: new AbortController().signal, logger: logger() },
   );
+  return { result, paths: server.paths };
 }
 
-goTask(
-  "taskfileExecute runs the task's Taskfile in a folder of its own under the temporary folder",
-  async () => {
-    expect(await execute(plaintext(['pwd']))).toEqual({ outcome: 'succeeded' });
+// The run's own folder, from the folder its Taskfile ran in, tasks/test
+// inside it, which `pwd` wrote first. It throws on any other line, so a test
+// never removes a folder that isn't a run's.
+function runFolder() {
+  const folder = dirname(dirname(lines()[0].line));
+  if (!basename(folder).startsWith('sextou-execution-')) {
+    throw new Error(`${folder} is not a run's folder`);
+  }
+  return folder;
+}
 
-    const [{ line }] = lines();
-    expect(dirname(line)).toBe(tmpdir());
-    expect(basename(line)).toMatch(/^sextou-execution-/);
+test('taskfileExecute downloads the repository of the source at its commit', async () => {
+  const { paths } = await execute(['true']);
+
+  expect(paths).toEqual([`/thatsnotmynameio/sextou/archive/${sha}.tar.gz`]);
+});
+
+goTask(
+  'taskfileExecute runs the Taskfile at its path in a folder of its own under the temporary folder',
+  async () => {
+    const { result } = await execute(['pwd']);
+
+    expect(result).toEqual({ outcome: 'succeeded' });
+    expect(lines()[0].line.endsWith('/tasks/test')).toBe(true);
+    expect(dirname(runFolder())).toBe(tmpdir());
   },
 );
+
+goTask(
+  'taskfileExecute runs the Taskfile beside the files of its repository',
+  async () => {
+    await execute(['cat hello.txt'], {
+      files: { 'tasks/test/hello.txt': 'hello world' },
+    });
+
+    expect(lines()).toEqual([{ stream: 'stdout', line: 'hello world' }]);
+  },
+);
+
+test('taskfileExecute resolves failed with why the download failed, without running go-task', async () => {
+  const notFound: RequestListener = (_request, response) => {
+    response.writeHead(404).end();
+  };
+
+  const { result } = await execute(['true'], {
+    taskBin: join(dir, 'no-task'),
+    listener: notFound,
+  });
+
+  expect(result).toEqual({ outcome: 'failed', reason: 'download: HTTP 404' });
+});
 
 goTask(
   'taskfileExecute removes the folder once the run succeeded',
   async () => {
-    await execute(plaintext(['pwd']));
+    await execute(['pwd']);
 
-    await vi.waitFor(() => expect(existsSync(lines()[0].line)).toBe(false));
+    await vi.waitFor(() => expect(existsSync(runFolder())).toBe(false));
   },
 );
 
 goTask('taskfileExecute resolves failed when the run failed', async () => {
-  expect(await execute(plaintext(['exit 4']))).toEqual({
+  expect((await execute(['exit 4'])).result).toEqual({
     outcome: 'failed',
     reason: 'exit code 4',
   });
 });
 
 goTask('taskfileExecute removes the folder once the run failed', async () => {
-  await execute(plaintext(['pwd', 'exit 4']));
+  await execute(['pwd', 'exit 4']);
 
-  await vi.waitFor(() => expect(existsSync(lines()[0].line)).toBe(false));
+  await vi.waitFor(() => expect(existsSync(runFolder())).toBe(false));
 });
 
 goTask(
   "taskfileExecute keeps the run's result when its folder can't be removed",
   async () => {
-    const result = await execute(
-      plaintext([
-        'mkdir locked',
-        'touch locked/file',
-        'chmod 555 locked',
-        'pwd',
-      ]),
-    );
+    const { result } = await execute([
+      'pwd',
+      'mkdir locked',
+      'touch locked/file',
+      'chmod 555 locked',
+    ]);
 
     expect(result).toEqual({ outcome: 'succeeded' });
-    const folder = lines()[0].line;
+    const folder = runFolder();
     onTestFinished(() => {
-      chmodSync(join(folder, 'locked'), 0o755);
+      chmodSync(join(lines()[0].line, 'locked'), 0o755);
       rmSync(folder, { recursive: true, force: true });
     });
     await vi.waitFor(() =>
@@ -397,7 +453,7 @@ goTask(
 test('taskfileExecute resolves failed with the error when the binary does not exist', async () => {
   const missing = join(dir, 'no-task');
 
-  expect(await execute(plaintext(['true']), missing)).toEqual({
+  expect((await execute(['true'], { taskBin: missing })).result).toEqual({
     outcome: 'failed',
     reason: `spawn ${missing} ENOENT`,
   });

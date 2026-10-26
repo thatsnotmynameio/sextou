@@ -32,6 +32,12 @@ export interface Config {
   // How long go-task may take to print its help when the runner starts and
   // checks it.
   checkTimeoutMs: number;
+  // Where the runner downloads a task's repository from: GitHub, whose
+  // ${githubUrl}/<owner>/<name>/archive/<sha>.tar.gz serves it at a commit.
+  githubUrl: string;
+  // How long downloading and extracting a task's repository may take before
+  // the run fails, without running its Taskfile.
+  downloadTimeoutMs: number;
   // How long a run may take before the runner stops it and it fails as
   // timeout.
   runTimeoutMs: number;
@@ -90,6 +96,16 @@ export function loadConfig(
       'SEXTOU_RUNNER_CHECK_TIMEOUT_MS',
       parseTimeout,
       () => 10000,
+    ),
+    githubUrl: read(
+      'SEXTOU_RUNNER_GITHUB_URL',
+      parseUrl,
+      () => 'https://github.com',
+    ),
+    downloadTimeoutMs: read(
+      'SEXTOU_RUNNER_DOWNLOAD_TIMEOUT_MS',
+      parseTimeout,
+      () => 300000,
     ),
     runTimeoutMs: read(
       'SEXTOU_RUNNER_RUN_TIMEOUT_MS',

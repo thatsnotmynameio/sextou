@@ -42,6 +42,7 @@ export function aTask(fields: Partial<Task> = {}): Task {
     assignee: { name: 'dev' },
     description: null,
     source: null,
+    context: null,
     status: Status.open,
     ...fields,
   };

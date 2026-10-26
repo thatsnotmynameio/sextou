@@ -1,4 +1,5 @@
 import {
+  type Context,
   type Logger,
   openTasks,
   type Task as StoredTask,
@@ -89,6 +90,8 @@ export function createTasksService(
         assignee: task.assignee.name,
         description: task.description,
         sourcePath: task.source,
+        // The library refuses a context that isn't a JSON object as invalid.
+        context: task.context as Context | undefined,
         createdBy: task.createdBy.name,
       });
       return result.ok
@@ -180,6 +183,7 @@ function toTask(task: StoredTask): Task {
     assignee: { name: task.assignee },
     description: task.description,
     source: task.sourcePath,
+    context: task.context,
     status: task.status,
   };
 }
