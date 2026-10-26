@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
@@ -11,7 +11,6 @@ import {
   beforeAll,
   beforeEach,
   expect,
-  onTestFinished,
   test,
   vi,
   type MockInstance,
@@ -327,13 +326,10 @@ test('main exits with 1 when SEXTOU_RUNNER_TASK_BIN is not go-task, without call
 });
 
 goTask(
-  'main exits with 1 when tar does not run, without calling the server',
+  'main exits with 1 when SEXTOU_RUNNER_TAR_BIN does not run, without calling the server',
   async () => {
-    // A PATH with go-task alone on it.
-    const bin = mkdtempSync(join(tmpdir(), 'sextou-no-tar-'));
-    onTestFinished(() => rmSync(bin, { recursive: true, force: true }));
-    symlinkSync(goTaskPath(), join(bin, 'task'));
-    vi.stubEnv('PATH', bin);
+    const missing = join(dir, 'no-tar');
+    vi.stubEnv('SEXTOU_RUNNER_TAR_BIN', missing);
 
     await import('../../src/main');
 
@@ -341,21 +337,14 @@ goTask(
     expect(records()).toEqual([
       expect.objectContaining({
         level: 50,
-        reason: 'spawn tar ENOENT',
-        msg: 'tar does not run',
+        tarBin: missing,
+        reason: `spawn ${missing} ENOENT`,
+        msg: 'SEXTOU_RUNNER_TAR_BIN does not run',
       }),
     ]);
     expect(on).not.toHaveBeenCalled();
   },
 );
-
-// Where go-task is, on the PATH.
-function goTaskPath() {
-  const folder = (process.env.PATH ?? '')
-    .split(':')
-    .find((candidate) => existsSync(join(candidate, 'task')));
-  return join(folder as string, 'task');
-}
 
 test('main exits with 1 on an invalid variable, without calling the server', async () => {
   vi.stubEnv('SEXTOU_RUNNER_POLL_MS', '0');

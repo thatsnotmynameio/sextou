@@ -4,6 +4,8 @@ import { pipeline } from 'node:stream/promises';
 import type { ReadableStream } from 'node:stream/web';
 
 export interface DownloadOptions {
+  // tar's binary: `tar` on the PATH, or a path.
+  bin: string;
   // Where repositories are downloaded from: GitHub, or a server that answers
   // its archive URLs.
   githubUrl: string;
@@ -19,8 +21,8 @@ export interface DownloadOptions {
 }
 
 // Downloads a repository at a commit, as GitHub's gzipped tarball of it,
-// <githubUrl>/<repo>/archive/<sha>.tar.gz, and extracts it into `dir` with the
-// system's tar, without the tarball's one top folder (<name>-<sha>/). It
+// <githubUrl>/<repo>/archive/<sha>.tar.gz, and extracts it into `dir` with
+// tar, `bin`, without the tarball's one top folder (<name>-<sha>/). It
 // resolves with why it failed, or undefined once it's extracted: HTTP and the
 // status, timeout, aborted, why the request or tar didn't start, or tar's exit
 // code, or the signal that ended it, and what it wrote on stderr. A stop ends
@@ -28,6 +30,7 @@ export interface DownloadOptions {
 // whole, and waits for tar to exit, so nothing writes to `dir` afterwards; the
 // runner's exit kills it too.
 export async function download({
+  bin,
   githubUrl,
   repo,
   sha,
@@ -57,7 +60,7 @@ export async function download({
   // reads the archive from stdin even when TAPE names another one. The stop
   // kills it with SIGTERM.
   const tar = spawn(
-    'tar',
+    bin,
     ['-xz', '-f', '-', '--strip-components=1', '-C', dir],
     { signal: stop },
   );
@@ -105,12 +108,15 @@ export async function download({
   return undefined;
 }
 
-// Resolves with why the system's tar doesn't run, or undefined when it does:
-// it doesn't start, it fails, or it takes longer than `timeoutMs` to print its
+// Resolves with why tar, `bin`, doesn't run, or undefined when it does: it
+// doesn't start, it fails, or it takes longer than `timeoutMs` to print its
 // version.
-export function checkTar(timeoutMs: number): Promise<string | undefined> {
+export function checkTar(
+  bin: string,
+  timeoutMs: number,
+): Promise<string | undefined> {
   return new Promise((resolve) => {
-    execFile('tar', ['--version'], { timeout: timeoutMs }, (error) => {
+    execFile(bin, ['--version'], { timeout: timeoutMs }, (error) => {
       if (error === null) {
         resolve(undefined);
       } else if (error.killed) {

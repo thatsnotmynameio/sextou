@@ -312,13 +312,15 @@ async function smoke() {
   };
   const run = Date.now().toString(36);
   const assignee = `smoke-${run}`;
-  // go-task's binary is the one setting kept from the shell: some
-  // distributions name it go-task.
+  // go-task's and tar's binaries are the settings kept from the shell: some
+  // distributions name go-task go-task.
   const taskBin = process.env.SEXTOU_RUNNER_TASK_BIN;
+  const tarBin = process.env.SEXTOU_RUNNER_TAR_BIN;
   const env = (url) => ({
     ...cleanEnv(),
     ...defaults,
     ...(taskBin === undefined ? {} : { SEXTOU_RUNNER_TASK_BIN: taskBin }),
+    ...(tarBin === undefined ? {} : { SEXTOU_RUNNER_TAR_BIN: tarBin }),
     SEXTOU_RUNNER_SERVER_URL: url,
     SEXTOU_RUNNER_NAME: assignee,
   });

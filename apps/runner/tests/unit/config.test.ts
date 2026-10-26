@@ -13,6 +13,7 @@ test('loadConfig uses every default when no variable is set', () => {
     requestTimeoutMs: 30000,
     pollMs: 5000,
     taskBin: 'task',
+    tarBin: 'tar',
     checkTimeoutMs: 10000,
     githubUrl: 'https://github.com',
     downloadTimeoutMs: 300000,
@@ -32,6 +33,7 @@ test('loadConfig takes every variable that is set', () => {
       SEXTOU_RUNNER_REQUEST_TIMEOUT_MS: '700',
       SEXTOU_RUNNER_POLL_MS: '200',
       SEXTOU_RUNNER_TASK_BIN: '/opt/go-task',
+      SEXTOU_RUNNER_TAR_BIN: '/usr/bin/bsdtar',
       SEXTOU_RUNNER_CHECK_TIMEOUT_MS: '700',
       SEXTOU_RUNNER_GITHUB_URL: 'https://git.example',
       SEXTOU_RUNNER_DOWNLOAD_TIMEOUT_MS: '600',
@@ -47,6 +49,7 @@ test('loadConfig takes every variable that is set', () => {
     requestTimeoutMs: 700,
     pollMs: 200,
     taskBin: '/opt/go-task',
+    tarBin: '/usr/bin/bsdtar',
     checkTimeoutMs: 700,
     githubUrl: 'https://git.example',
     downloadTimeoutMs: 600,
@@ -161,6 +164,19 @@ test.each(['', '  '])(
   (value) => {
     expect(() => load({ SEXTOU_RUNNER_TASK_BIN: value })).toThrow(
       `Invalid SEXTOU_RUNNER_TASK_BIN: ${JSON.stringify(value)} (expected a command or a path)`,
+    );
+  },
+);
+
+test('loadConfig trims SEXTOU_RUNNER_TAR_BIN', () => {
+  expect(load({ SEXTOU_RUNNER_TAR_BIN: ' gtar ' }).tarBin).toBe('gtar');
+});
+
+test.each(['', '  '])(
+  'loadConfig rejects SEXTOU_RUNNER_TAR_BIN=%j',
+  (value) => {
+    expect(() => load({ SEXTOU_RUNNER_TAR_BIN: value })).toThrow(
+      `Invalid SEXTOU_RUNNER_TAR_BIN: ${JSON.stringify(value)} (expected a command or a path)`,
     );
   },
 );

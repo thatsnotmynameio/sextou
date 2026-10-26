@@ -29,6 +29,8 @@ export interface Config {
   // go-task's binary: `task` on the PATH, or a path. Some distributions name
   // it go-task.
   taskBin: string;
+  // tar's binary: `tar` on the PATH, or a path.
+  tarBin: string;
   // How long go-task may take to print its help when the runner starts and
   // checks it.
   checkTimeoutMs: number;
@@ -92,6 +94,11 @@ export function loadConfig(
       nonEmpty('a command or a path'),
       () => 'task',
     ),
+    tarBin: read(
+      'SEXTOU_RUNNER_TAR_BIN',
+      nonEmpty('a command or a path'),
+      () => 'tar',
+    ),
     checkTimeoutMs: read(
       'SEXTOU_RUNNER_CHECK_TIMEOUT_MS',
       parseTimeout,
@@ -133,7 +140,7 @@ function parseUrl(value: string, name: string): string {
 }
 
 // The value trimmed, refused when nothing is left: a name, trimmed as the
-// server trims the names it takes, or go-task's binary.
+// server trims the names it takes, or go-task's or tar's binary.
 function nonEmpty(expected: string) {
   return (value: string, name: string): string => {
     const trimmed = value.trim();

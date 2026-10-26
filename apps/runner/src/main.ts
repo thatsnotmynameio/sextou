@@ -42,9 +42,12 @@ async function start(config: Config) {
     process.exitCode = 1;
     return;
   }
-  const tarReason = await checkTar(config.checkTimeoutMs);
+  const tarReason = await checkTar(config.tarBin, config.checkTimeoutMs);
   if (tarReason !== undefined) {
-    logger.error({ reason: tarReason }, 'tar does not run');
+    logger.error(
+      { tarBin: config.tarBin, reason: tarReason },
+      'SEXTOU_RUNNER_TAR_BIN does not run',
+    );
     process.exitCode = 1;
     return;
   }
@@ -60,6 +63,7 @@ function run(config: Config, logger: Logger) {
     execute: taskfileExecute({
       githubUrl: config.githubUrl,
       downloadTimeoutMs: config.downloadTimeoutMs,
+      tarBin: config.tarBin,
       bin: config.taskBin,
       timeoutMs: config.runTimeoutMs,
       killGraceMs: config.killGraceMs,
