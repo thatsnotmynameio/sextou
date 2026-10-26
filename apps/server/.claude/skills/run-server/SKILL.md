@@ -71,7 +71,7 @@ curl -s -X POST http://127.0.0.1:4310/trpc/runners.claim -H 'content-type: appli
 pnpm --filter @sextou/server dev   # tsx watch on http://127.0.0.1:4310, reads apps/server/.env if present. Ctrl-C to stop.
 ```
 
-It uses the real data folder (`~/.local/share/sextou` on Linux) and the fixed port 4310. An agent should use the driver instead.
+It keeps its databases in `apps/server/storage`, the checkout's own, and listens on the fixed port 4310. An agent should use the driver instead, which never touches that folder.
 
 ## Test
 

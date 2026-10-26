@@ -27,6 +27,7 @@ function readConfig(): Config | undefined {
       platform: process.platform,
       homedir,
       cwd: process.cwd(),
+      storage: storage(),
     });
   } catch (error) {
     createLogger({ level: 'info', pretty: false }).error(
@@ -122,6 +123,15 @@ async function serve(config: Config) {
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
+}
+
+// The data directory when none is configured: from source, apps/server's
+// storage folder, so each checkout has its own databases; in the production
+// build, undefined, so loadConfig picks the user's data directory.
+function storage() {
+  return typeof __TASKS_MIGRATIONS__ === 'string'
+    ? undefined
+    : join(import.meta.dirname, '..', 'storage');
 }
 
 // Where @sextou/tasks' migrations are: beside server.mjs in the production
