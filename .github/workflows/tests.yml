@@ -95,6 +95,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+      id-token: write # the Codecov upload's OIDC, instead of a token
     strategy:
       fail-fast: false
       matrix:
@@ -142,6 +143,18 @@ jobs:
           DIR: ${{ matrix.dir }}
           LEVEL: ${{ matrix.level }}
         run: pnpm --dir "$DIR" run "test:$LEVEL"
+      # Codecov shows each level's coverage under the flag "<package>-<level>".
+      # The 90% floor above stays the gate: the upload runs when the tests
+      # fail too, and an upload that fails leaves the check as the tests left it.
+      - name: Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          use_oidc: true
+          files: ${{ matrix.dir }}/coverage/${{ matrix.level }}/coverage-final.json
+          disable_search: true
+          flags: ${{ matrix.package }}-${{ matrix.level }}
+          name: ${{ matrix.package }} / ${{ matrix.level }}
 
   mutation:
     name: ${{ matrix.package }} / mutation
