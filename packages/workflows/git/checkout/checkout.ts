@@ -1,25 +1,31 @@
-import { spawn } from 'node:child_process';
 import { lstat, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, relative, sep } from 'node:path';
-import { createInterface } from 'node:readline';
-import { readSettings, readTimeout, type Settings } from './settings.ts';
+import { join } from 'node:path';
+import { run } from '../../shared/run.ts';
+import {
+  defaultKillGraceMs,
+  readBin,
+  readTimeout,
+} from '../../shared/settings.ts';
+import { throughSymlink } from '../../shared/workspace.ts';
+import { defaultTimeoutMs, readSettings, type Settings } from './settings.ts';
 
 // Exits with 2 on an input it refuses, or a path it can't make a folder,
 // having run no git on it and written nothing.
 export const refused = 2;
 // Exits with 127 when git doesn't run, having written nothing.
 export const noGit = 127;
-// Exits with 124 when git took longer than CHECKOUT_TIMEOUT_MS, which kills
-// it, as timeout(1) does.
+// Exits with 124 when git took longer than CHECKOUT_TIMEOUT_MS, which stops
+// it, as timeout(1) does: SIGTERM, then SIGKILL once CHECKOUT_KILL_GRACE_MS
+// went by.
 export const timedOut = 124;
 
 // Clones the repository the task's context names (CHECKOUT_CONTEXT, as JSON)
 // into the run's workspace (CHECKOUT_WORKSPACE): a shallow fetch of that one
 // ref, checked out detached. `env` is the environment git runs with, and
 // `log` gets each line the checkout writes, git's included. git is the
-// program CHECKOUT_GIT_BIN names, a command on the PATH or a path, git on
-// the PATH when it is unset or empty.
+// program CHECKOUT_GIT_BIN names, a command on the PATH or an absolute path,
+// git on the PATH when it is unset or empty.
 // Resolves with the exit code: refused, noGit, timedOut, or that of the first git
 // command that failed, else 0.
 export async function checkout(
@@ -34,14 +40,30 @@ export async function checkout(
     log(`checkout: ${read.reason}`);
     return refused;
   }
-  const timeoutMs = readTimeout(env.CHECKOUT_TIMEOUT_MS);
+  const timeoutMs = readTimeout(env.CHECKOUT_TIMEOUT_MS, defaultTimeoutMs);
   if (timeoutMs === undefined) {
     log(
       'checkout: CHECKOUT_TIMEOUT_MS is a whole number of milliseconds from 1 to 2147483647',
     );
     return refused;
   }
-  const gitBin = env.CHECKOUT_GIT_BIN || 'git';
+  const killGraceMs = readTimeout(
+    env.CHECKOUT_KILL_GRACE_MS,
+    defaultKillGraceMs,
+  );
+  if (killGraceMs === undefined) {
+    log(
+      'checkout: CHECKOUT_KILL_GRACE_MS is a whole number of milliseconds from 1 to 2147483647',
+    );
+    return refused;
+  }
+  const gitBin = readBin(env.CHECKOUT_GIT_BIN, 'git');
+  if (gitBin === undefined) {
+    log(
+      'checkout: CHECKOUT_GIT_BIN is a command on the PATH or an absolute path',
+    );
+    return refused;
+  }
   const { path } = read.settings;
   if (await throughSymlink(workspace, path)) {
     log('checkout: path is inside the workspace');
@@ -63,6 +85,7 @@ export async function checkout(
       home,
       workspace,
       timeoutMs,
+      killGraceMs,
       log,
       ...read.settings,
     });
@@ -77,6 +100,7 @@ async function clone({
   home,
   workspace,
   timeoutMs,
+  killGraceMs,
   log,
   url,
   ref,
@@ -87,6 +111,7 @@ async function clone({
   home: string;
   workspace: string;
   timeoutMs: number;
+  killGraceMs: number;
   log: (line: string) => void;
 }): Promise<number> {
   // A repository that asks for credentials fails at once instead of waiting
@@ -116,7 +141,14 @@ async function clone({
   };
   // A git that hangs on --version doesn't run either.
   const deadline = AbortSignal.timeout(timeoutMs);
-  if ((await git(gitBin, ['--version'], workspace, gitEnv, deadline)) !== 0) {
+  if (
+    (await run(
+      gitBin,
+      ['--version'],
+      { cwd: workspace, env: gitEnv, signal: deadline, killGraceMs },
+      noGit,
+    )) !== 0
+  ) {
     log('checkout: git does not run');
     return noGit;
   }
@@ -133,7 +165,19 @@ async function clone({
     ['fetch', '-q', '--no-tags', '--depth=1', 'origin', ref],
     ['checkout', '-q', '--force', '--detach', 'FETCH_HEAD'],
   ]) {
-    const code = await git(gitBin, args, path, gitEnv, deadline, log);
+    const code = await run(
+      gitBin,
+      args,
+      {
+        cwd: path,
+        env: gitEnv,
+        signal: deadline,
+        killGraceMs,
+        stdout: log,
+        stderr: log,
+      },
+      noGit,
+    );
     if (deadline.aborted) {
       log(`checkout: git took longer than ${timeoutMs} ms`);
       return timedOut;
@@ -147,46 +191,4 @@ async function clone({
 
 async function exists(path: string) {
   return (await lstat(path).catch(() => undefined)) !== undefined;
-}
-
-// Whether `path` goes through a symlink below the workspace, as one an
-// earlier checkout into it left, which would lead mkdir and git out of it.
-async function throughSymlink(workspace: string, path: string) {
-  let current = workspace;
-  for (const name of relative(workspace, path).split(sep)) {
-    current = join(current, name);
-    const stats = await lstat(current).catch(() => undefined);
-    if (stats === undefined) {
-      return false;
-    }
-    if (stats.isSymbolicLink()) {
-      return true;
-    }
-  }
-  return false;
-}
-
-// Runs `bin`, git, in `cwd` until `signal` aborts, which kills it, and resolves with
-// its exit code: noGit when it doesn't start or was killed, 1 when another
-// signal ended it. `log` gets each line it writes, on stdout or stderr; with
-// none, they go nowhere.
-function git(
-  bin: string,
-  args: string[],
-  cwd: string,
-  env: NodeJS.ProcessEnv,
-  signal: AbortSignal,
-  log?: (line: string) => void,
-): Promise<number> {
-  return new Promise((resolve) => {
-    const child = spawn(bin, args, { cwd, env, signal });
-    for (const input of [child.stdout, child.stderr]) {
-      createInterface({ input, crlfDelay: Infinity }).on('line', (line) =>
-        log?.(line),
-      );
-    }
-    // Stryker disable next-line ArrowFunction: close follows, with a negative code, which ends the same
-    child.on('error', () => resolve(noGit));
-    child.on('close', (code) => resolve(code ?? 1));
-  });
 }

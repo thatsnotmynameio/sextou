@@ -2,7 +2,6 @@ import { expect, test } from 'vitest';
 import {
   defaultTimeoutMs,
   readSettings,
-  readTimeout,
 } from '../../../../git/checkout/settings';
 
 const workspace = '/work/space';
@@ -166,28 +165,6 @@ test.each([
   });
 });
 
-test('readTimeout is 5 minutes when CHECKOUT_TIMEOUT_MS is not set', () => {
-  expect(readTimeout(undefined)).toBe(defaultTimeoutMs);
+test('the checkout may take 5 minutes when CHECKOUT_TIMEOUT_MS is not set', () => {
   expect(defaultTimeoutMs).toBe(300_000);
-});
-
-test.each([
-  ['1', 1],
-  ['1000', 1000],
-  ['2147483647', 2147483647],
-])('readTimeout takes %s milliseconds', (value, ms) => {
-  expect(readTimeout(value)).toBe(ms);
-});
-
-test.each([
-  ['0', '0'],
-  ['a negative number', '-1'],
-  ['a fraction', '1.5'],
-  ['more than a timer takes', '2147483648'],
-  ['a leading zero', '010'],
-  ['a space', ' 10'],
-  ['a unit', '10s'],
-  ['an empty value', ''],
-])('readTimeout refuses %s', (_name, value) => {
-  expect(readTimeout(value)).toBeUndefined();
 });

@@ -133,6 +133,11 @@ goTask(
     const { first } = repository(served);
     const tasks = join(dir, 'tasks');
     cpSync(join(folder, '..'), join(tasks, 'git'), { recursive: true });
+    // The code its script shares with the other workflows, as a runner
+    // downloads the whole repository.
+    cpSync(join(folder, '../../shared'), join(tasks, 'shared'), {
+      recursive: true,
+    });
     mkdirSync(join(tasks, 'build'));
     const taskfile = join(tasks, 'build/Taskfile.yml');
     writeFileSync(

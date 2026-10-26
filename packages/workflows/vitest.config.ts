@@ -5,8 +5,16 @@ import type { CoverageOptions } from 'vitest/node';
 // for every other one, so a new file belongs to it until it is listed here.
 //
 // No unit test answers for these, on purpose: git/checkout/checkout.ts runs
-// git as a child process, against a git server on localhost.
-export const integrationOnly = ['git/checkout/checkout.ts'];
+// git as a child process, against a git server on localhost;
+// harness/claude-headless/headless.ts runs claude as one, a fake the test
+// writes to disk; shared/run.ts runs both, and shared/workspace.ts reads
+// folders on disk, through both.
+export const integrationOnly = [
+  'git/checkout/checkout.ts',
+  'harness/claude-headless/headless.ts',
+  'shared/run.ts',
+  'shared/workspace.ts',
+];
 
 // Each suite must reach this in every file it answers for, on its own: the
 // scripts the Taskfiles run, every .ts file beside a Taskfile. A script's

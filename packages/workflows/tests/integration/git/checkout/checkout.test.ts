@@ -401,6 +401,30 @@ test('checkout refuses a CHECKOUT_TIMEOUT_MS that is not a number of millisecond
   expect(readdirSync(workspace)).toEqual([]);
 });
 
+test('checkout refuses a CHECKOUT_KILL_GRACE_MS that is not a number of milliseconds', async () => {
+  expect(
+    await run(
+      { repo: 'org/app', ref: 'main' },
+      { CHECKOUT_KILL_GRACE_MS: '0' },
+    ),
+  ).toBe(refused);
+  expect(logged).toEqual([
+    'checkout: CHECKOUT_KILL_GRACE_MS is a whole number of milliseconds from 1 to 2147483647',
+  ]);
+});
+
+test('checkout refuses a CHECKOUT_GIT_BIN that is a relative path, which would resolve in the workspace', async () => {
+  expect(
+    await run(
+      { repo: 'org/app', ref: 'main' },
+      { CHECKOUT_GIT_BIN: 'bin/git' },
+    ),
+  ).toBe(refused);
+  expect(logged).toEqual([
+    'checkout: CHECKOUT_GIT_BIN is a command on the PATH or an absolute path',
+  ]);
+});
+
 test('checkout kills git and resolves timedOut when it takes longer than CHECKOUT_TIMEOUT_MS', async () => {
   // A server that takes the connection and never answers.
   const sockets: Socket[] = [];
