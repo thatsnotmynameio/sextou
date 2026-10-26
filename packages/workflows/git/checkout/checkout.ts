@@ -53,9 +53,20 @@ export async function checkout(
   // on a prompt no one answers: no secret comes from the server. Nor does
   // git read the configuration of the runner's user or system, whose
   // credential helpers would hand a private repository the user's token, and
-  // whose URL rewrites and hooks would change the run.
+  // whose URL rewrites and hooks would change the run, nor take a setting
+  // from the runner's environment: every GIT_ variable goes but the
+  // certificates git trusts, and SSH_ASKPASS, which git asks for a password
+  // too.
   const gitEnv = {
-    ...env,
+    ...Object.fromEntries(
+      Object.entries(env).filter(
+        ([name]) =>
+          name !== 'SSH_ASKPASS' &&
+          (!name.startsWith('GIT_') ||
+            name === 'GIT_SSL_CAINFO' ||
+            name === 'GIT_SSL_CAPATH'),
+      ),
+    ),
     // Stryker disable next-line StringLiteral: git reads an empty value as false too
     GIT_TERMINAL_PROMPT: '0',
     // Stryker disable next-line StringLiteral: git reads an empty path as no file too

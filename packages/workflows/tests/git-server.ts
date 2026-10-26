@@ -17,7 +17,7 @@ export interface GitServer {
 
 // An HTTPS server on localhost that serves the git repositories under `root`
 // as GitHub does, <url>/<owner>/<name>, through git's own http-backend, with a
-// certificate openssl makes for it.
+// certificate openssl makes for it. org/private asks for credentials.
 export async function serveGit(root: string): Promise<GitServer> {
   const dir = mkdtempSync(join(tmpdir(), 'sextou-git-server-'));
   const key = join(dir, 'key.pem');
@@ -73,6 +73,12 @@ function backend(
   response: ServerResponse,
 ) {
   const url = new URL(request.url ?? '/', 'https://127.0.0.1');
+  // A private repository, which asks for credentials and takes none.
+  if (url.pathname.startsWith('/org/private/')) {
+    response.writeHead(401, { 'WWW-Authenticate': 'Basic realm="private"' });
+    response.end();
+    return;
+  }
   const header = (name: string) => {
     const value = request.headers[name];
     return typeof value === 'string' ? value : '';

@@ -1,4 +1,5 @@
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -206,11 +207,52 @@ function rewrite() {
 test.each([
   ['user', () => ({ GIT_CONFIG_GLOBAL: rewrite() })],
   ['system', () => ({ GIT_CONFIG_SYSTEM: rewrite(), GIT_CONFIG_NOSYSTEM: '' })],
+  [
+    'environment, in GIT_CONFIG_PARAMETERS',
+    () => ({
+      GIT_CONFIG_PARAMETERS: `'url.${server.url}/org/missing.insteadof'='${server.url}/org/app'`,
+    }),
+  ],
+  [
+    'environment, in GIT_CONFIG_COUNT',
+    () => ({
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: `url.${server.url}/org/missing.insteadOf`,
+      GIT_CONFIG_VALUE_0: `${server.url}/org/app`,
+    }),
+  ],
 ])("checkout reads no configuration of the runner's %s", async (_name, env) => {
   repository(served);
 
   expect(await run({ repo: 'org/app', ref: 'main' }, env())).toBe(0);
 });
+
+test('checkout checks out into the workspace whatever GIT_DIR the runner has', async () => {
+  repository(served);
+  const elsewhere = join(dir, 'elsewhere');
+
+  expect(
+    await run({ repo: 'org/app', ref: 'main' }, { GIT_DIR: elsewhere }),
+  ).toBe(0);
+  expect(readFileSync(join(workspace, 'file.txt'), 'utf8')).toBe('second');
+  expect(existsSync(elsewhere)).toBe(false);
+});
+
+test.each(['GIT_ASKPASS', 'SSH_ASKPASS'])(
+  "checkout asks no password of the runner's %s for a repository that wants one",
+  async (name) => {
+    const asked = join(dir, 'asked');
+    const askpass = join(dir, 'askpass');
+    writeFileSync(askpass, `#!/bin/sh\ntouch '${asked}'\necho secret\n`, {
+      mode: 0o755,
+    });
+
+    expect(
+      await run({ repo: 'org/private', ref: 'main' }, { [name]: askpass }),
+    ).toBe(128);
+    expect(existsSync(asked)).toBe(false);
+  },
+);
 
 test('checkout resolves noGit when git does not run, writing nothing', async () => {
   expect(
