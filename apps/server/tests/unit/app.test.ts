@@ -1,8 +1,8 @@
 import { expect, test } from 'vitest';
 import { createApp, type AppOptions } from '../../src/app';
-import { createLogger } from '../../src/logger';
+import { createLogger } from '@sextou/logger';
 import { Refusal, type Tasks } from '../../src/tasks';
-import { memory } from '../logger';
+import { memory } from '@sextou/logger/testing';
 import { fakeTasks } from '../tasks';
 
 const webOrigin = 'http://localhost:5173';

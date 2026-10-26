@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi, type Mock } from 'vitest';
 import type { Answer, RunnerClient } from '../../src/client';
-import { createLogger } from '../../src/logger';
+import { createLogger } from '@sextou/logger';
 import {
   startRunner,
   type Claimed,
@@ -8,7 +8,7 @@ import {
   type Result,
 } from '../../src/runner';
 import { sleep } from '../../src/sleep';
-import { memory } from '../logger';
+import { memory } from '@sextou/logger/testing';
 import { sha } from '../archive';
 
 const pollMs = 1000;

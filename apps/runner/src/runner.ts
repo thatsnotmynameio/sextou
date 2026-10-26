@@ -1,5 +1,5 @@
 import type { RunnerClient } from './client';
-import type { Logger } from './logger';
+import type { Logger } from '@sextou/logger';
 import { sleep } from './sleep';
 
 // What a claim answers: a task and its attempt, or no task.

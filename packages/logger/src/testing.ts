@@ -1,6 +1,6 @@
 import { Writable } from 'node:stream';
 
-// A destination that keeps each line a logger writes.
+// A destination that keeps each line a logger writes, for tests.
 export function memory() {
   const lines: string[] = [];
   return {

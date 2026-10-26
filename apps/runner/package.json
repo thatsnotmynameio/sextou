@@ -13,9 +13,9 @@
     "test:mutation": "stryker run"
   },
   "dependencies": {
-    "@trpc/client": "^11.19.0",
-    "pino": "^10.4.0",
-    "pino-pretty": "^13.2.0"
+    "@sextou/config": "workspace:*",
+    "@sextou/logger": "workspace:*",
+    "@trpc/client": "^11.19.0"
   },
   "devDependencies": {
     "@sextou/server": "workspace:*",

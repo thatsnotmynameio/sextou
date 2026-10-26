@@ -44,10 +44,11 @@ vi.mock(import('../../src/database'), async (importOriginal) => {
 // The real logger, writing to memory instead of stdout, so each test reads
 // the records main wrote.
 const output = vi.hoisted(() => ({ lines: [] as string[] }));
-vi.mock(import('../../src/logger'), async (importOriginal) => {
+vi.mock(import('@sextou/logger'), async (importOriginal) => {
   const logger = await importOriginal();
   const { Writable } = await import('node:stream');
   return {
+    ...logger,
     createLogger: (options) =>
       logger.createLogger(
         options,

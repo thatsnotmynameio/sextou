@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { constants, hostname } from 'node:os';
 import { createRunnerClient } from './client';
 import { loadConfig, type Config } from './config';
-import { createLogger, type Logger } from './logger';
+import { createLogger, type Logger } from '@sextou/logger';
 import { startRunner } from './runner';
 import { checkTar } from './download';
 import { checkGoTask, taskfileExecute } from './taskfile';
