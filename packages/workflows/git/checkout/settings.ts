@@ -61,19 +61,23 @@ export function readSettings(context: string, workspace: string): ReadSettings {
   }
 
   // One that starts with - would reach git fetch as an option, and one with
-  // : or * is a refspec, which fetches other refs and writes them.
+  // : or * is a refspec, which fetches other refs and writes them. A NUL ends
+  // no argument: spawn throws on it.
   if (
     typeof ref !== 'string' ||
     ref === '' ||
     ref.startsWith('-') ||
-    /[:*\s]/.test(ref)
+    /[:*\s\0]/.test(ref)
   ) {
     return refuse('ref is a commit, a branch or a tag');
   }
 
+  // A NUL reaches no file: mkdir throws on it.
   const root = resolve(workspace);
   const destination =
-    typeof path === 'string' ? resolve(root, path) : undefined;
+    typeof path === 'string' && !path.includes('\0')
+      ? resolve(root, path)
+      : undefined;
   if (
     destination === undefined ||
     (destination !== root && !destination.startsWith(root + sep))
@@ -101,4 +105,19 @@ export function readSettings(context: string, workspace: string): ReadSettings {
 
 function refuse(reason: string): ReadSettings {
   return { ok: false, reason };
+}
+
+// How long the checkout's git may take, all its commands together: 5 minutes
+// unless CHECKOUT_TIMEOUT_MS, from the runner's environment, sets another
+// whole number of milliseconds, from 1 to 2147483647, the most a timer
+// takes, as the runner's own settings. Undefined when it is set to anything
+// else.
+export const defaultTimeoutMs = 300_000;
+
+export function readTimeout(value: string | undefined): number | undefined {
+  if (value === undefined) {
+    return defaultTimeoutMs;
+  }
+  const ms = Number(value);
+  return /^[1-9]\d*$/.test(value) && ms <= 2147483647 ? ms : undefined;
 }

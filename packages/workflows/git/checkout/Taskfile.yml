@@ -9,7 +9,10 @@
 # Run it as a task's Taskfile, or include it from another (includes:
 # checkout: ../git/checkout) and call checkout:default before the steps that
 # work on the files. It needs node and git on the runner's machine, and
-# reaches only public repositories. The run's timeout bounds the fetch.
+# reaches only public repositories. Its git may take 5 minutes, all of it
+# together, unless CHECKOUT_TIMEOUT_MS in the runner's environment sets
+# another number of milliseconds. One checkout per path: a second one into
+# a folder that holds a repository fails.
 version: '3'
 
 tasks:

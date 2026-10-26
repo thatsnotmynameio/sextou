@@ -5,6 +5,7 @@ import {
   readFileSync,
   rmSync,
   symlinkSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -17,7 +18,13 @@ import {
   test,
   vi,
 } from 'vitest';
-import { checkout, noGit, refused } from '../../../../git/checkout/checkout';
+import { createServer, type Socket } from 'node:net';
+import {
+  checkout,
+  noGit,
+  refused,
+  timedOut,
+} from '../../../../git/checkout/checkout';
 import { serveGit, type GitServer } from '../../../git-server';
 import { git, isolateGit, repository } from '../../../repository';
 
@@ -174,6 +181,37 @@ test('checkout takes a path beside a symlink', async () => {
   expect(await run({ repo: 'org/app', ref: 'main', path: 'code' })).toBe(0);
 });
 
+test('checkout refuses a path where a file is, running no git on it', async () => {
+  repository(served);
+  writeFileSync(join(workspace, 'code'), '');
+
+  expect(await run({ repo: 'org/app', ref: 'main', path: 'code' })).toBe(
+    refused,
+  );
+  expect(logged).toEqual([
+    `checkout: EEXIST: file already exists, mkdir '${join(workspace, 'code')}'`,
+  ]);
+});
+
+// A configuration that sends a fetch of org/app to org/missing.
+function rewrite() {
+  const file = join(dir, 'gitconfig');
+  writeFileSync(
+    file,
+    `[url "${server.url}/org/missing"]\n\tinsteadOf = ${server.url}/org/app\n`,
+  );
+  return file;
+}
+
+test.each([
+  ['user', () => ({ GIT_CONFIG_GLOBAL: rewrite() })],
+  ['system', () => ({ GIT_CONFIG_SYSTEM: rewrite(), GIT_CONFIG_NOSYSTEM: '' })],
+])("checkout reads no configuration of the runner's %s", async (_name, env) => {
+  repository(served);
+
+  expect(await run({ repo: 'org/app', ref: 'main' }, env())).toBe(0);
+});
+
 test('checkout resolves noGit when git does not run, writing nothing', async () => {
   expect(
     await run({ repo: 'org/app', ref: 'main' }, { PATH: join(dir, 'empty') }),
@@ -207,4 +245,54 @@ test('checkout logs nothing of the version check', async () => {
 
 test('checkout resolves git exit code when the server has no such repository', async () => {
   expect(await run({ repo: 'org/missing', ref: 'main' })).toBe(128);
+});
+
+test('checkout refuses a second checkout into the same path, leaving the first as it was', async () => {
+  const { first } = repository(served);
+  await run({ repo: 'org/app', ref: first });
+
+  expect(await run({ repo: 'org/app', ref: 'feature' })).toBe(refused);
+  expect(logged).toContain('checkout: path holds a repository already');
+  expect(git(workspace, 'rev-parse', 'HEAD')).toBe(first);
+});
+
+test('checkout takes a second checkout into another path', async () => {
+  const { first, feature } = repository(served);
+  await run({ repo: 'org/app', ref: first, path: 'one' });
+
+  expect(await run({ repo: 'org/app', ref: 'feature', path: 'two' })).toBe(0);
+  expect(git(join(workspace, 'two'), 'rev-parse', 'HEAD')).toBe(feature);
+});
+
+test('checkout refuses a CHECKOUT_TIMEOUT_MS that is not a number of milliseconds, writing nothing', async () => {
+  expect(
+    await run({ repo: 'org/app', ref: 'main' }, { CHECKOUT_TIMEOUT_MS: '10s' }),
+  ).toBe(refused);
+  expect(logged).toEqual([
+    'checkout: CHECKOUT_TIMEOUT_MS is a whole number of milliseconds from 1 to 2147483647',
+  ]);
+  expect(readdirSync(workspace)).toEqual([]);
+});
+
+test('checkout kills git and resolves timedOut when it takes longer than CHECKOUT_TIMEOUT_MS', async () => {
+  // A server that takes the connection and never answers.
+  const sockets: Socket[] = [];
+  const silent = createServer((socket) => sockets.push(socket));
+  silent.listen(0, '127.0.0.1');
+  await new Promise((resolve) => silent.once('listening', resolve));
+  const { port } = silent.address() as { port: number };
+  const started = Date.now();
+
+  const code = await run(
+    { repo: 'org/app', ref: 'main', server: `https://127.0.0.1:${port}` },
+    { CHECKOUT_TIMEOUT_MS: '500' },
+  );
+
+  for (const socket of sockets) {
+    socket.destroy();
+  }
+  silent.close();
+  expect(code).toBe(timedOut);
+  expect(logged).toContain('checkout: git took longer than 500 ms');
+  expect(Date.now() - started).toBeLessThan(5000);
 });

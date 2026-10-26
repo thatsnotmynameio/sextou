@@ -1,5 +1,9 @@
 import { expect, test } from 'vitest';
-import { readSettings } from '../../../../git/checkout/settings';
+import {
+  defaultTimeoutMs,
+  readSettings,
+  readTimeout,
+} from '../../../../git/checkout/settings';
 
 const workspace = '/work/space';
 
@@ -125,6 +129,7 @@ test.each([
   ['a ref with a space', 'main other'],
   ['a ref with a second line', 'main\nother'],
   ['a ref with a tab', 'main\tother'],
+  ['a ref with a NUL', 'main\0'],
 ])('readSettings refuses %s', (_name, ref) => {
   expect(read({ ref })).toEqual({
     ok: false,
@@ -138,6 +143,7 @@ test.each([
   ['a path that leaves the workspace', 'code/../../out'],
   ['an absolute path outside the workspace', '/tmp/out'],
   ['a sibling that starts like the workspace', '../space-other'],
+  ['a path with a NUL', 'code\0'],
 ])('readSettings refuses %s', (_name, path) => {
   expect(read({ path })).toEqual({
     ok: false,
@@ -158,4 +164,30 @@ test.each([
     ok: false,
     reason: 'server is an https URL',
   });
+});
+
+test('readTimeout is 5 minutes when CHECKOUT_TIMEOUT_MS is not set', () => {
+  expect(readTimeout(undefined)).toBe(defaultTimeoutMs);
+  expect(defaultTimeoutMs).toBe(300_000);
+});
+
+test.each([
+  ['1', 1],
+  ['1000', 1000],
+  ['2147483647', 2147483647],
+])('readTimeout takes %s milliseconds', (value, ms) => {
+  expect(readTimeout(value)).toBe(ms);
+});
+
+test.each([
+  ['0', '0'],
+  ['a negative number', '-1'],
+  ['a fraction', '1.5'],
+  ['more than a timer takes', '2147483648'],
+  ['a leading zero', '010'],
+  ['a space', ' 10'],
+  ['a unit', '10s'],
+  ['an empty value', ''],
+])('readTimeout refuses %s', (_name, value) => {
+  expect(readTimeout(value)).toBeUndefined();
 });
