@@ -176,8 +176,9 @@ async function request(procedure, input) {
   return { status: response.status, body: await response.json() };
 }
 
-// One runner's whole flow: create, claim, heartbeat, cancel, complete, and
-// the conflict a lost lease gets. Exits 1 at the first step that differs.
+// One runner's whole flow: create with a context, claim, heartbeat, cancel,
+// complete, and the conflict a lost lease gets. Exits 1 at the first step
+// that differs.
 async function smoke() {
   const run = Date.now().toString(36);
   const steps = [];
@@ -200,11 +201,28 @@ async function smoke() {
     undefined,
     (s, b) => s === 200 && b.result.data.database === 'up',
   );
+  const context = { repo: 'thatsnotmynameio/sextou', ref: 'main' };
+  const newTask = {
+    title: 'Smoke',
+    kind: 'task',
+    priority: 2,
+    assignee,
+    createdBy: 'smoke',
+  };
   const task = await step(
     'create',
     'tasks.create',
-    { title: 'Smoke', kind: 'task', priority: 2, assignee, createdBy: 'smoke' },
-    (s, b) => s === 200 && b.result.data.status === 'open',
+    { ...newTask, context },
+    (s, b) =>
+      s === 200 &&
+      b.result.data.status === 'open' &&
+      JSON.stringify(b.result.data.context) === JSON.stringify(context),
+  );
+  await step(
+    'create, context not an object',
+    'tasks.create',
+    { ...newTask, context: [] },
+    (s) => s === 400,
   );
   const claim = {
     claimId: `c-${run}`,

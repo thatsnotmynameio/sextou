@@ -220,6 +220,7 @@ test('create returns the open task it created, with the fields it was given', as
       priority: 1,
       description: 'Cover the service',
       source: '/specs/tests.md',
+      context: { repo: 'org/app', commit: { sha: 'abc' } },
     }),
   );
 
@@ -234,8 +235,31 @@ test('create returns the open task it created, with the fields it was given', as
       assignee: dev,
       description: 'Cover the service',
       source: '/specs/tests.md',
+      context: { repo: 'org/app', commit: { sha: 'abc' } },
       status: Status.open,
     },
+  });
+});
+
+test('create without a context returns the task with a null context', async () => {
+  const tasks = await startedService();
+
+  expect(await tasks.create(newTask())).toMatchObject({
+    ok: true,
+    task: { context: null },
+  });
+});
+
+test('create refuses a context nested deeper than 500 levels as invalid', async () => {
+  const tasks = await startedService();
+  let deep: Record<string, unknown> = {};
+  for (let level = 0; level < 500; level += 1) {
+    deep = { deep };
+  }
+
+  expect(await tasks.create(newTask({ context: deep }))).toEqual({
+    ok: false,
+    refusal: Refusal.invalid,
   });
 });
 

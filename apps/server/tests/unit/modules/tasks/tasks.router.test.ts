@@ -13,7 +13,8 @@ function caller(tasks: Partial<Tasks>) {
 const task = aTask();
 
 test('tasks.create creates the task with the names it was given', async () => {
-  const child = { ...task, parentId: 'tsk_0' };
+  const context = { repo: 'org/app', commit: { sha: 'abc' } };
+  const child = { ...task, parentId: 'tsk_0', context };
   const create = vi.fn(async () => ({ ok: true as const, task: child }));
 
   expect(
@@ -25,6 +26,7 @@ test('tasks.create creates the task with the names it was given', async () => {
       assignee: ' dev ',
       description: 'Cover it',
       source: '/specs/tests.md',
+      context,
       createdBy: 'planner',
     }),
   ).toEqual(child);
@@ -36,6 +38,7 @@ test('tasks.create creates the task with the names it was given', async () => {
     assignee: { name: 'dev' },
     description: 'Cover it',
     source: '/specs/tests.md',
+    context,
     createdBy: { name: 'planner' },
   });
 });
@@ -67,6 +70,44 @@ test.each([5, -1, 1.5])(
         kind: 'task',
         priority: priority as never,
         assignee: 'dev',
+        createdBy: 'planner',
+      }),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+  },
+);
+
+test('tasks.create answers a context nested 10,000 levels without walking it', async () => {
+  let deep: Record<string, unknown> = {};
+  for (let level = 0; level < 10_000; level += 1) {
+    deep = { deep };
+  }
+  const create: Tasks['create'] = async ({ context }) => ({
+    ok: true,
+    task: aTask({ context }),
+  });
+
+  const created = await caller({ create }).create({
+    title: 'A',
+    kind: 'task',
+    priority: 2,
+    assignee: 'dev',
+    context: deep,
+    createdBy: 'planner',
+  });
+
+  expect(created.context?.deep).toBe(deep.deep);
+});
+
+test.each([[['org/app']], ['org/app'], [null]])(
+  'tasks.create refuses the context %j as BAD_REQUEST',
+  async (context) => {
+    await expect(
+      caller({}).create({
+        title: 'A',
+        kind: 'task',
+        priority: 2,
+        assignee: 'dev',
+        context: context as never,
         createdBy: 'planner',
       }),
     ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
