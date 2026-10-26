@@ -87,8 +87,9 @@ async function query(sql) {
   }
 }
 
-// A task's whole life on an in-memory graph with a fake clock: links,
-// ready list, claim and its resend, renew, the lease expiring into a second
+// A task's whole life on an in-memory graph with a fake clock: a context
+// stored and handed out with the claim, one refused, links, ready list,
+// claim and its resend, renew, the lease expiring into a second
 // attempt, a stale finish refused, cancel requested and seen, finish and its
 // resend, and the blocked task freed. Exits 1 at the first step that differs.
 async function smoke() {
@@ -107,25 +108,34 @@ async function smoke() {
     }
     return result;
   };
-  const newTask = (title) => ({
+  const newTask = (title, context) => ({
     title,
     kind: 'task',
     priority: 2,
     assignee: 'dev',
     createdBy: 'smoke',
+    context,
   });
+  const context = { repo: 'org/app', sha: 'abc' };
+  const sameContext = (task) =>
+    JSON.stringify(task.context) === JSON.stringify(context);
   const ready = () => tasks.listReady({ assignees: ['dev'], limit: 10 });
   const ids = (result) => result.tasks.map((task) => task.id);
 
   const { task: a } = await step(
     'create a',
-    () => tasks.createTask(newTask('A')),
-    (r) => r.ok && r.task.status === 'open',
+    () => tasks.createTask(newTask('A', context)),
+    (r) => r.ok && r.task.status === 'open' && sameContext(r.task),
   );
   const { task: b } = await step(
-    'create b',
+    'create b, no context',
     () => tasks.createTask(newTask('B')),
-    (r) => r.ok,
+    (r) => r.ok && r.task.context === null,
+  );
+  await step(
+    'create with a context that is not an object',
+    () => tasks.createTask(newTask('C', ['x'])),
+    (r) => !r.ok && r.reason === 'invalid',
   );
   await step(
     'link b blocked by a',
@@ -146,7 +156,11 @@ async function smoke() {
   const first = await step(
     'claim a',
     () => tasks.claimTask(claim),
-    (r) => r.ok && r.task?.id === a.id && r.execution.attempt === 1,
+    (r) =>
+      r.ok &&
+      r.task?.id === a.id &&
+      sameContext(r.task) &&
+      r.execution.attempt === 1,
   );
   await step(
     'claim resent',

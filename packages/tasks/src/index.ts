@@ -13,6 +13,7 @@ export {
   assignTaskSchema,
   cancelTaskSchema,
   claimTaskSchema,
+  type Context,
   createTaskSchema,
   expireExecutionsSchema,
   finishTaskSchema,

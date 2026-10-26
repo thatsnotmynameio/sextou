@@ -44,13 +44,14 @@ test('schema.ts has no change without a migration', async () => {
   expect(result).toMatchObject({ status: 'no_changes' });
 });
 
-test('the schema requires an assignee on a task and leaves its description and source path optional', async () => {
+test('the schema requires an assignee on a task and leaves its description, source path and context optional', async () => {
   expect(
     await connection().all(
-      "SELECT name, \"notnull\" FROM pragma_table_info('tasks') WHERE name IN ('assignee', 'description', 'source_path') ORDER BY name",
+      "SELECT name, \"notnull\" FROM pragma_table_info('tasks') WHERE name IN ('assignee', 'context', 'description', 'source_path') ORDER BY name",
     ),
   ).toEqual([
     { name: 'assignee', notnull: 1 },
+    { name: 'context', notnull: 0 },
     { name: 'description', notnull: 0 },
     { name: 'source_path', notnull: 0 },
   ]);
@@ -196,4 +197,43 @@ test('the status checks refuse a status that is not a state, on a task and on ei
   expect(
     await connection().get('SELECT count(*) AS n FROM task_status_changes'),
   ).toEqual({ n: 0 });
+});
+
+function insertContext(context: string | null) {
+  return connection().run(
+    "INSERT INTO tasks (id, title, kind, priority, assignee, status, context) VALUES ('tsk_a', 'T', 'step', 0, 'bot', 'open', ?)",
+    context,
+  );
+}
+
+test('the context check accepts JSON', async () => {
+  await insertContext('{"repo":"org/app"}');
+  expect(await connection().get('SELECT context FROM tasks')).toEqual({
+    context: '{"repo":"org/app"}',
+  });
+});
+
+test('the context check accepts no context', async () => {
+  await insertContext(null);
+  expect(await connection().get('SELECT context FROM tasks')).toEqual({
+    context: null,
+  });
+});
+
+test.each(['[1]', '"org/app"', '7', 'null'])(
+  'the context check refuses JSON that is not an object, %s',
+  async (context) => {
+    await expect(insertContext(context)).rejects.toThrow(
+      /CHECK constraint failed/,
+    );
+  },
+);
+
+test('the context check refuses text that is not JSON', async () => {
+  await expect(insertContext('{repo')).rejects.toThrow(
+    /CHECK constraint failed/,
+  );
+  expect(await connection().get('SELECT count(*) AS n FROM tasks')).toEqual({
+    n: 0,
+  });
 });
