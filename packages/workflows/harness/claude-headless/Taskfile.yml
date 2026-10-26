@@ -1,0 +1,39 @@
+# Runs claude -p in the run's workspace, with headless.ts. It reads from the
+# task's context:
+#
+#   prompt    what claude is asked, required; it goes through claude's stdin
+#   path      where in the workspace claude runs, . by default; a folder
+#             that exists, such as the repository a checkout left there
+#   worktree  true, or a name: claude works in a new git worktree of the
+#             repository at path, which it creates
+#
+# and claude's options, each under its name in camelCase: model, effort,
+# permissionMode, allowedTools, mcpConfig and the rest settings.ts lists.
+# Every other key is left for the other steps of the run.
+#
+# It works on what the workspace already holds: it fetches nothing. claude
+# runs with the runner's environment, so its login or its key is the
+# runner's, and the prompt does whatever the run hands on, a push included.
+# The context rules claude whole: with options such as
+# permissionMode: bypassPermissions or addDir, it reaches past the workspace
+# to anything the runner's user can, so a runner runs it only for tasks of
+# people it trusts with that.
+#
+# It needs node and claude on the runner's machine. claude may take an hour,
+# unless CLAUDE_HEADLESS_TIMEOUT_MS in the runner's environment sets another
+# number of milliseconds; then it gets SIGTERM, and SIGKILL 10 seconds later,
+# unless CLAUDE_HEADLESS_KILL_GRACE_MS there sets another. claude is the
+# program CLAUDE_HEADLESS_BIN there names, a command on the PATH or an
+# absolute path, claude on the PATH by default.
+version: '3'
+
+tasks:
+  default:
+    # The script gets the context and the workspace through its environment,
+    # never pasted into a command. go-task lets the runner's own environment
+    # win over these, hence names no other program sets.
+    env:
+      CLAUDE_HEADLESS_CONTEXT: '{{.CONTEXT}}'
+      CLAUDE_HEADLESS_WORKSPACE: '{{.WORKSPACE}}'
+    cmds:
+      - node {{joinPath .TASKFILE_DIR "main.ts" | q}}

@@ -1,4 +1,4 @@
-import { isAbsolute, resolve, sep } from 'node:path';
+import { insideWorkspace, readContext } from '../../shared/settings.ts';
 
 // What a checkout clones, and where.
 export interface Settings {
@@ -29,19 +29,9 @@ const part = /^[\w.-]+$/;
 //
 // and refuses, with why, an input that would take git elsewhere than asked.
 export function readSettings(context: string, workspace: string): ReadSettings {
-  if (!isAbsolute(workspace)) {
-    return refuse('workspace is an absolute path');
-  }
-  let input: unknown;
-  // Stryker disable BlockStatement: an input left undefined refuses the same, below
-  try {
-    input = JSON.parse(context);
-  } catch {
-    return refuse('context is a JSON object');
-  }
-  // Stryker restore BlockStatement
-  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
-    return refuse('context is a JSON object');
+  const input = readContext(context, workspace);
+  if (!input.ok) {
+    return input;
   }
   const {
     repo,
@@ -49,7 +39,7 @@ export function readSettings(context: string, workspace: string): ReadSettings {
     // Stryker disable next-line StringLiteral: an empty path resolves to the workspace too
     path = '.',
     server = 'https://github.com',
-  } = input as Record<string, unknown>;
+  } = input.fields;
 
   // Neither part . nor .., which the URL would resolve to another path.
   const parts = typeof repo === 'string' ? repo.split('/') : undefined;
@@ -72,16 +62,8 @@ export function readSettings(context: string, workspace: string): ReadSettings {
     return refuse('ref is a commit, a branch or a tag');
   }
 
-  // A NUL reaches no file: mkdir throws on it.
-  const root = resolve(workspace);
-  const destination =
-    typeof path === 'string' && !path.includes('\0')
-      ? resolve(root, path)
-      : undefined;
-  if (
-    destination === undefined ||
-    (destination !== root && !destination.startsWith(root + sep))
-  ) {
+  const destination = insideWorkspace(workspace, path);
+  if (destination === undefined) {
     return refuse('path is inside the workspace');
   }
 
@@ -108,16 +90,5 @@ function refuse(reason: string): ReadSettings {
 }
 
 // How long the checkout's git may take, all its commands together: 5 minutes
-// unless CHECKOUT_TIMEOUT_MS, from the runner's environment, sets another
-// whole number of milliseconds, from 1 to 2147483647, the most a timer
-// takes, as the runner's own settings. Undefined when it is set to anything
-// else.
+// unless CHECKOUT_TIMEOUT_MS, from the runner's environment, sets another.
 export const defaultTimeoutMs = 300_000;
-
-export function readTimeout(value: string | undefined): number | undefined {
-  if (value === undefined) {
-    return defaultTimeoutMs;
-  }
-  const ms = Number(value);
-  return /^[1-9]\d*$/.test(value) && ms <= 2147483647 ? ms : undefined;
-}

@@ -1,0 +1,221 @@
+import { insideWorkspace, readContext } from '../../shared/settings.ts';
+
+// What a run of claude -p gets.
+export interface Settings {
+  // Where claude runs: an absolute path inside the workspace, or the
+  // workspace itself.
+  cwd: string;
+  // Its arguments, -p first, each option as --name=value, so a value that
+  // starts with - is never read as another option.
+  args: string[];
+  // What claude is asked, through its stdin, never as an argument.
+  prompt: string;
+}
+
+export type ReadSettings =
+  | { ok: true; settings: Settings }
+  | { ok: false; reason: string };
+
+// How an option of claude's CLI reads its value from the context:
+//
+//   text    a string: --name=value
+//   joined  a string, or a list of strings joined with commas
+//   number  a finite number
+//   list    a string, or a list of strings: one --name=item for each
+//   json    an object, written as JSON, or a string: a file's path or JSON
+//   jsons   one json, or a list of them: one --name=item for each
+//
+// An empty list, which would pass no argument and leave claude's default as
+// it is, is refused: tools: [] would give claude every tool. An empty
+// string is what says none, as claude's --tools "".
+//   flag    true adds --name, false leaves it out
+type Kind = 'text' | 'joined' | 'number' | 'list' | 'json' | 'jsons' | 'flag';
+
+// The options of claude's CLI a context may set, each under the option's
+// name in camelCase (allowedTools for --allowed-tools), in the order they
+// reach claude. The value is checked only for its type: claude refuses a
+// value it doesn't take, so a value a newer claude adds needs no change
+// here. Left out: the options of an interactive session (--chrome, --ide,
+// --tmux and the like), those that resume a conversation the runner doesn't
+// have (--continue, --resume), those that would read the prompt otherwise
+// (--input-format), and --debug and --debug-file, claude's diagnostics, not
+// the run's output.
+const options: Record<string, Kind> = {
+  model: 'text',
+  fallbackModel: 'joined',
+  effort: 'text',
+  agent: 'text',
+  agents: 'json',
+  systemPrompt: 'text',
+  appendSystemPrompt: 'text',
+  permissionMode: 'text',
+  permissionPrompts: 'text',
+  dangerouslySkipPermissions: 'flag',
+  allowDangerouslySkipPermissions: 'flag',
+  tools: 'list',
+  allowedTools: 'list',
+  disallowedTools: 'list',
+  addDir: 'list',
+  settings: 'json',
+  settingSources: 'joined',
+  mcpConfig: 'jsons',
+  strictMcpConfig: 'flag',
+  pluginDir: 'list',
+  pluginUrl: 'list',
+  bare: 'flag',
+  safeMode: 'flag',
+  restricted: 'flag',
+  disableSlashCommands: 'flag',
+  excludeDynamicSystemPromptSections: 'flag',
+  jsonSchema: 'json',
+  maxBudgetUsd: 'number',
+  autocompact: 'text',
+  betas: 'list',
+  name: 'text',
+  sessionId: 'text',
+  noSessionPersistence: 'flag',
+  outputFormat: 'text',
+  verbose: 'flag',
+  includePartialMessages: 'flag',
+  includeHookEvents: 'flag',
+  forwardSubagentText: 'flag',
+};
+
+// What each kind takes, said in a refusal.
+const expected: Record<Kind, string> = {
+  text: 'a string',
+  joined: 'a string or a list of strings',
+  number: 'a number',
+  list: 'a string or a non-empty list of strings',
+  json: 'an object or a string',
+  jsons: 'an object, a string or a non-empty list of them',
+  flag: 'true or false',
+};
+
+// A worktree's name: letters, digits, _, . and -, not starting with -.
+const worktreeName = /^[\w.][\w.-]*$/;
+
+// Reads a run's settings from the task's context, as JSON, and the run's
+// workspace, an absolute path:
+//
+//   prompt    what claude is asked, required
+//   path      where in the workspace claude runs, . by default
+//   worktree  true, or a name: claude works in a new git worktree of the
+//             repository at path, which it creates
+//
+// and the options `options` lists. Every other key is left for the other
+// steps of the run, such as a checkout before it.
+export function readSettings(context: string, workspace: string): ReadSettings {
+  const input = readContext(context, workspace);
+  if (!input.ok) {
+    return input;
+  }
+  const { fields } = input;
+  // Stryker disable next-line StringLiteral: an empty path resolves to the workspace too
+  const { prompt, path = '.', worktree } = fields;
+
+  if (typeof prompt !== 'string' || prompt.trim() === '') {
+    return refuse('prompt is a string with text');
+  }
+
+  const cwd = insideWorkspace(workspace, path);
+  if (cwd === undefined) {
+    return refuse('path is inside the workspace');
+  }
+
+  const args = ['-p'];
+  if (worktree === true) {
+    args.push('--worktree');
+  } else if (
+    typeof worktree === 'string' &&
+    worktreeName.test(worktree) &&
+    worktree !== '.' &&
+    worktree !== '..'
+  ) {
+    args.push(`--worktree=${worktree}`);
+  } else if (worktree !== undefined && worktree !== false) {
+    return refuse('worktree is true, false or a name');
+  }
+
+  for (const [key, kind] of Object.entries(options)) {
+    const value = fields[key];
+    if (value === undefined) {
+      continue;
+    }
+    const values = read(kind, value);
+    if (values === undefined) {
+      return refuse(`${key} is ${expected[kind]}`);
+    }
+    const flag = `--${key.replaceAll(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
+    args.push(
+      ...values.map((item) => (item === true ? flag : `${flag}=${item}`)),
+    );
+  }
+
+  return { ok: true, settings: { cwd, args, prompt } };
+}
+
+// The values `value` gives an option of `kind`, each one argument, true for
+// the option alone; undefined when it isn't what the kind takes.
+function read(
+  kind: Kind,
+  value: unknown,
+): (string | number | true)[] | undefined {
+  switch (kind) {
+    case 'text':
+      return text(value) ? [value] : undefined;
+    case 'joined':
+      return text(value)
+        ? [value]
+        : texts(value)
+          ? [value.join(',')]
+          : undefined;
+    case 'number':
+      // Only a number is finite: not a string of one.
+      return Number.isFinite(value) ? [value as number] : undefined;
+    case 'list':
+      return text(value)
+        ? [value]
+        : texts(value) && value.length > 0
+          ? value
+          : undefined;
+    case 'json':
+      return json(value);
+    case 'jsons': {
+      const items = Array.isArray(value) ? value.map(json) : [json(value)];
+      return items.length > 0 &&
+        items.every((item): item is [string] => item !== undefined)
+        ? items.flat()
+        : undefined;
+    }
+    case 'flag':
+      return typeof value === 'boolean' ? (value ? [true] : []) : undefined;
+  }
+}
+
+// A string an argument can carry: spawn throws on a NUL.
+function text(value: unknown): value is string {
+  return typeof value === 'string' && !value.includes('\0');
+}
+
+function texts(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(text);
+}
+
+// An object, written as JSON, or a string as it is.
+function json(value: unknown): [string] | undefined {
+  if (text(value)) {
+    return [value];
+  }
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? [JSON.stringify(value)]
+    : undefined;
+}
+
+function refuse(reason: string): ReadSettings {
+  return { ok: false, reason };
+}
+
+// How long claude may take: an hour unless CLAUDE_HEADLESS_TIMEOUT_MS, from
+// the runner's environment, sets another.
+export const defaultTimeoutMs = 3_600_000;

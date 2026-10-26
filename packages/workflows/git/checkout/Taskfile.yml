@@ -11,10 +11,11 @@
 # work on the files. It needs node and git on the runner's machine, and
 # reaches only public repositories. Its git may take 5 minutes, all of it
 # together, unless CHECKOUT_TIMEOUT_MS in the runner's environment sets
-# another number of milliseconds, and its git is the program
-# CHECKOUT_GIT_BIN there names, a command on the PATH or a path, git on the
-# PATH by default. One checkout per path: a second one into
-# a folder that holds a repository fails.
+# another number of milliseconds; then it gets SIGTERM, and SIGKILL 10
+# seconds later, unless CHECKOUT_KILL_GRACE_MS there sets another. Its git
+# is the program CHECKOUT_GIT_BIN there names, a command on the PATH or an
+# absolute path, git on the PATH by default. One checkout per path: a second
+# one into a folder that holds a repository fails.
 version: '3'
 
 tasks:
