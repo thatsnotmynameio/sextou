@@ -25,11 +25,12 @@ Needs Node 24 (`.node-version`), pnpm, git and [gitleaks](https://github.com/git
 ```sh
 pnpm install
 pnpm --filter @sextou/server dev # the server, at http://127.0.0.1:4310
+pnpm --filter @sextou/runner dev # the runner, against that server
 pnpm start            # the web dev server and the desktop app, with hot reload
 pnpm storybook        # the components, at http://localhost:6006
 pnpm lint             # oxlint and oxfmt
 pnpm typecheck        # tsc in each package
-pnpm build            # the packaged app (apps/desktop/out/), the web app (apps/web/dist/), the static Storybook and the server (apps/server/dist/server.mjs)
+pnpm build            # the packaged app (apps/desktop/out/), the web app (apps/web/dist/), the static Storybook, the server (apps/server/dist/server.mjs) and the runner (apps/runner/dist/runner.mjs)
 pnpm make             # the installers
 ```
 
@@ -40,3 +41,5 @@ The web app reads `SEXTOU_WEB_SERVER_URL` and `SEXTOU_WEB_REQUEST_TIMEOUT_MS` wh
 `pnpm package` and `pnpm make` read the deployed web app's URL from `SEXTOU_WEB_URL` in the environment, which must be https. Without it, the packaged app opens on its error page. In development, the desktop app loads `SEXTOU_WEB_URL` from the environment or `apps/desktop/.env`, and `http://localhost:5173` by default.
 
 The server listens on `SEXTOU_SERVER_HOST` and `SEXTOU_SERVER_PORT`, `127.0.0.1:4310` by default; port `0` lets the system pick one. Its database is `SEXTOU_SERVER_DATABASE`, or `sextou.db` in its data folder: `SEXTOU_SERVER_DATA_DIR`, by default `apps/server/storage` when it runs from source (`dev`), so each checkout has its own, and `sextou` in the user's data directory for the bundle (`$XDG_DATA_HOME` or `~/.local/share` on Linux, `~/Library/Application Support` on macOS, `%LOCALAPPDATA%` on Windows). Its tasks database is `SEXTOU_SERVER_TASKS_DB`, or `tasks.db` in the same folder. `:memory:` opens either one so it lasts until the server stops. The server creates the folder and the files when they are missing, and starts even when it can't open them: `health.check`, at `/trpc/health.check`, then reports the database down, and a tasks database that doesn't open logs why. An invalid variable stops it with 1 before it listens. The bundle runs with `node apps/server/dist/server.mjs`, with Node and Turso's installed package for its platform: Linux x64 and arm64 with glibc, macOS on Apple silicon, Windows x64.
+
+The runner calls the server at `SEXTOU_RUNNER_SERVER_URL`, `http://127.0.0.1:4310` by default. `pnpm --filter @sextou/runner dev` runs it from source; `build` bundles it into `apps/runner/dist/runner.mjs`, which `start` runs with Node, Pino and pino-pretty installed. Both read `apps/runner/.env` when it exists, and `apps/runner/.env.example` lists its settings.

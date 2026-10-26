@@ -1,5 +1,6 @@
 // The runner's entry point: `pnpm --filter @sextou/runner dev` runs it from
-// source, and loads apps/runner/.env when it exists.
+// source, `start` the bundle `build` makes, dist/runner.mjs; both load
+// apps/runner/.env when it exists.
 import { randomUUID } from 'node:crypto';
 import { constants, hostname } from 'node:os';
 import { createRunnerClient } from './client';
