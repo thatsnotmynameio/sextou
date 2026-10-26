@@ -1,0 +1,72 @@
+# OpenSSF Scorecard's analysis, published to GitHub code scanning: each check
+# below 10 is an alert there, with its reason and remediation. Adapted from
+# ossf/scorecard-action's examples/scorecard.yml.
+# On main (a push, weekly, and on a change to a branch protection rule), the
+# action reads the repository through GitHub's API and runs every check, then
+# publishes the result to api.scorecard.dev, which signs it with the job's
+# OIDC token. On a pull request it reads only the checked-out files
+# (Binary-Artifacts, Dangerous-Workflow, Dependency-Update-Tool, Fuzzing,
+# License, Packaging, Pinned-Dependencies, SAST, Security-Policy,
+# Token-Permissions, Vulnerabilities) and publishes nothing, so code scanning
+# shows what the pull request changes in them.
+# It never fails on a score. The organization's code scanning ruleset blocks
+# only on CodeQL's alerts, so Scorecard's block no merge.
+# Code scanning tells analyses apart by workflow file, job and category: a
+# renamed file or job leaves its old alerts open on main.
+# Publishing makes api.scorecard.dev check this file: no env or defaults at
+# the top or in the job, no write permission at the top, id-token: write only
+# in the job that runs the action, an Ubuntu runner, and only steps that use
+# actions on its list (checkout, upload-artifact, upload-sarif, the action
+# itself), no run step.
+# No cache-mode: none, which the example sets: the organization's actionlint
+# (1.7.12) predates the key and rejects it. The job uses no cache.
+name: Scorecard
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # Weekly as well: the Maintained check counts the last 90 days of activity.
+  schedule:
+    - cron: '43 6 * * 1'
+  # The Branch-Protection check reads main's rules: rerun when one changes.
+  branch_protection_rule:
+
+permissions: {}
+
+# A pull request's new commit cancels its previous run; each commit on main
+# gets a group of its own and is never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  analysis:
+    name: analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write # uploads the results to code scanning
+      id-token: write # signs the results published to api.scorecard.dev
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.5.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # Only main publishes: a pull request's run reads only its files.
+          publish_results: ${{ github.event_name != 'pull_request' }}
+
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scorecard-sarif
+          path: results.sarif
+          retention-days: 5
+
+      - if: ${{ always() }}
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: results.sarif
