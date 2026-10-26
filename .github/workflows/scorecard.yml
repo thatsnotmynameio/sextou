@@ -8,7 +8,11 @@
 # (Binary-Artifacts, Dangerous-Workflow, Dependency-Update-Tool, Fuzzing,
 # License, Packaging, Pinned-Dependencies, SAST, Security-Policy,
 # Token-Permissions, Vulnerabilities) and publishes nothing, so code scanning
-# shows what the pull request changes in them.
+# shows what the pull request changes in them. There, under the category
+# supply-chain/local, SAST and Security-Policy score 0: the local run sees
+# neither the merged pull requests nor the organization's .github repository,
+# where SECURITY.md lives. Their alerts sit on no line a pull request changes,
+# so its Scorecard check still reports no new alert.
 # It never fails on a score. The organization's code scanning ruleset blocks
 # only on CodeQL's alerts, so Scorecard's block no merge.
 # Code scanning tells analyses apart by workflow file, job and category: a
