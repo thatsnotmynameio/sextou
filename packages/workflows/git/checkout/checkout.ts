@@ -17,7 +17,9 @@ export const timedOut = 124;
 // Clones the repository the task's context names (CHECKOUT_CONTEXT, as JSON)
 // into the run's workspace (CHECKOUT_WORKSPACE): a shallow fetch of that one
 // ref, checked out detached. `env` is the environment git runs with, and
-// `log` gets each line the checkout writes, git's included.
+// `log` gets each line the checkout writes, git's included. git is the
+// program CHECKOUT_GIT_BIN names, a command on the PATH or a path, git on
+// the PATH when it is unset or empty.
 // Resolves with the exit code: refused, noGit, timedOut, or that of the first git
 // command that failed, else 0.
 export async function checkout(
@@ -39,6 +41,7 @@ export async function checkout(
     );
     return refused;
   }
+  const gitBin = env.CHECKOUT_GIT_BIN || 'git';
   const { path } = read.settings;
   if (await throughSymlink(workspace, path)) {
     log('checkout: path is inside the workspace');
@@ -56,6 +59,7 @@ export async function checkout(
   try {
     return await clone({
       env,
+      gitBin,
       home,
       workspace,
       timeoutMs,
@@ -69,6 +73,7 @@ export async function checkout(
 
 async function clone({
   env,
+  gitBin,
   home,
   workspace,
   timeoutMs,
@@ -78,6 +83,7 @@ async function clone({
   path,
 }: Settings & {
   env: NodeJS.ProcessEnv;
+  gitBin: string;
   home: string;
   workspace: string;
   timeoutMs: number;
@@ -110,7 +116,7 @@ async function clone({
   };
   // A git that hangs on --version doesn't run either.
   const deadline = AbortSignal.timeout(timeoutMs);
-  if ((await git(['--version'], workspace, gitEnv, deadline)) !== 0) {
+  if ((await git(gitBin, ['--version'], workspace, gitEnv, deadline)) !== 0) {
     log('checkout: git does not run');
     return noGit;
   }
@@ -127,7 +133,7 @@ async function clone({
     ['fetch', '-q', '--no-tags', '--depth=1', 'origin', ref],
     ['checkout', '-q', '--force', '--detach', 'FETCH_HEAD'],
   ]) {
-    const code = await git(args, path, gitEnv, deadline, log);
+    const code = await git(gitBin, args, path, gitEnv, deadline, log);
     if (deadline.aborted) {
       log(`checkout: git took longer than ${timeoutMs} ms`);
       return timedOut;
@@ -160,11 +166,12 @@ async function throughSymlink(workspace: string, path: string) {
   return false;
 }
 
-// Runs git in `cwd` until `signal` aborts, which kills it, and resolves with
+// Runs `bin`, git, in `cwd` until `signal` aborts, which kills it, and resolves with
 // its exit code: noGit when it doesn't start or was killed, 1 when another
 // signal ended it. `log` gets each line it writes, on stdout or stderr; with
 // none, they go nowhere.
 function git(
+  bin: string,
   args: string[],
   cwd: string,
   env: NodeJS.ProcessEnv,
@@ -172,7 +179,7 @@ function git(
   log?: (line: string) => void,
 ): Promise<number> {
   return new Promise((resolve) => {
-    const child = spawn('git', args, { cwd, env, signal });
+    const child = spawn(bin, args, { cwd, env, signal });
     for (const input of [child.stdout, child.stderr]) {
       createInterface({ input, crlfDelay: Infinity }).on('line', (line) =>
         log?.(line),

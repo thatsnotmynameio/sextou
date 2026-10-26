@@ -304,6 +304,49 @@ test('checkout resolves noGit when git does not run, writing nothing', async () 
   expect(readdirSync(workspace)).toEqual([]);
 });
 
+// The path of the git on the PATH.
+function gitPath() {
+  const found = (process.env.PATH ?? '')
+    .split(':')
+    .map((folder) => join(folder, 'git'))
+    .find((path) => existsSync(path));
+  if (found === undefined) {
+    throw new Error('no git on the PATH');
+  }
+  return found;
+}
+
+test('checkout runs the git CHECKOUT_GIT_BIN names, with no PATH to find it', async () => {
+  const { first } = repository(served);
+
+  expect(
+    await run(
+      { repo: 'org/app', ref: first },
+      { PATH: join(dir, 'empty'), CHECKOUT_GIT_BIN: gitPath() },
+    ),
+  ).toBe(0);
+  expect(git(workspace, 'rev-parse', 'HEAD')).toBe(first);
+});
+
+test('checkout resolves noGit when CHECKOUT_GIT_BIN names no program, writing nothing', async () => {
+  expect(
+    await run(
+      { repo: 'org/app', ref: 'main' },
+      { CHECKOUT_GIT_BIN: join(dir, 'missing') },
+    ),
+  ).toBe(noGit);
+  expect(logged).toEqual(['checkout: git does not run']);
+  expect(readdirSync(workspace)).toEqual([]);
+});
+
+test('checkout runs git from the PATH when CHECKOUT_GIT_BIN is empty', async () => {
+  const { first } = repository(served);
+
+  expect(
+    await run({ repo: 'org/app', ref: first }, { CHECKOUT_GIT_BIN: '' }),
+  ).toBe(0);
+});
+
 test('checkout resolves git exit code when the repository has no such ref', async () => {
   repository(served);
 
