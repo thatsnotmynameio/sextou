@@ -15,6 +15,12 @@ const prioritySchema = z.union([
   z.literal(4),
 ]);
 
+// A task's context: a JSON object the server stores and never reads. Its
+// values are unknown here, since zod's own JSON check recurses and a deep
+// value would overflow the stack: the tasks check its depth without
+// recursion before they check it is JSON, and refuse it as invalid.
+const contextSchema = z.record(z.string(), z.unknown());
+
 // A task as every procedure answers it.
 export const taskSchema = z.object({
   id: idSchema,
@@ -25,6 +31,7 @@ export const taskSchema = z.object({
   assignee: z.object({ name: nameSchema }),
   description: z.string().nullable(),
   source: z.string().nullable(),
+  context: contextSchema.nullable(),
   status: z.enum(Status),
 });
 
@@ -36,6 +43,7 @@ export const createInputSchema = z.object({
   assignee: nameSchema,
   description: z.string().optional(),
   source: z.string().optional(),
+  context: contextSchema.optional(),
   createdBy: nameSchema,
 });
 
