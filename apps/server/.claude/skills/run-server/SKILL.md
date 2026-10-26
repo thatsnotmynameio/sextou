@@ -76,7 +76,7 @@ It keeps its databases in `apps/server/storage`, the checkout's own, and listens
 ## Test
 
 ```bash
-pnpm --filter @sextou/server test:unit                     # 163 tests, 90% coverage floor per file
+pnpm --filter @sextou/server test:unit                     # 186 tests, 90% coverage floor per file
 pnpm --filter @sextou/server test:integration              # starts the server for real (main.test.ts)
 pnpm exec vitest run --project 'server/*' modules/runners  # one module, no coverage verdict
 ```
