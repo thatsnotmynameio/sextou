@@ -390,7 +390,7 @@ async function smoke() {
         (record) =>
           record.msg === 'output' &&
           record.taskId === done.id &&
-          record.line === 'sextou stub',
+          record.line === 'hello world',
       ),
     );
 

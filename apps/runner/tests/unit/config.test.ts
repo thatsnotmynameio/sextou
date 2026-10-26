@@ -14,6 +14,8 @@ test('loadConfig uses every default when no variable is set', () => {
     pollMs: 5000,
     taskBin: 'task',
     checkTimeoutMs: 10000,
+    githubUrl: 'https://github.com',
+    downloadTimeoutMs: 300000,
     runTimeoutMs: 21600000,
     killGraceMs: 10000,
     dev: false,
@@ -31,6 +33,8 @@ test('loadConfig takes every variable that is set', () => {
       SEXTOU_RUNNER_POLL_MS: '200',
       SEXTOU_RUNNER_TASK_BIN: '/opt/go-task',
       SEXTOU_RUNNER_CHECK_TIMEOUT_MS: '700',
+      SEXTOU_RUNNER_GITHUB_URL: 'https://git.example',
+      SEXTOU_RUNNER_DOWNLOAD_TIMEOUT_MS: '600',
       SEXTOU_RUNNER_RUN_TIMEOUT_MS: '900',
       SEXTOU_RUNNER_KILL_GRACE_MS: '800',
       SEXTOU_RUNNER_DEV: 'true',
@@ -44,6 +48,8 @@ test('loadConfig takes every variable that is set', () => {
     pollMs: 200,
     taskBin: '/opt/go-task',
     checkTimeoutMs: 700,
+    githubUrl: 'https://git.example',
+    downloadTimeoutMs: 600,
     runTimeoutMs: 900,
     killGraceMs: 800,
     dev: true,
@@ -78,6 +84,18 @@ test.each(['', 'not a url', 'ftp://127.0.0.1', '127.0.0.1:4310'])(
   },
 );
 
+test('loadConfig drops the trailing slashes of the GitHub URL', () => {
+  expect(
+    load({ SEXTOU_RUNNER_GITHUB_URL: 'http://127.0.0.1:8080/' }).githubUrl,
+  ).toBe('http://127.0.0.1:8080');
+});
+
+test('loadConfig rejects a SEXTOU_RUNNER_GITHUB_URL that is not http or https', () => {
+  expect(() => load({ SEXTOU_RUNNER_GITHUB_URL: 'git@github.com' })).toThrow(
+    'Invalid SEXTOU_RUNNER_GITHUB_URL: "git@github.com" (expected an http or https URL)',
+  );
+});
+
 test('loadConfig trims the name', () => {
   expect(load({ SEXTOU_RUNNER_NAME: '  r1 ' }).name).toBe('r1');
 });
@@ -108,6 +126,7 @@ test.each([
   ['SEXTOU_RUNNER_REQUEST_TIMEOUT_MS', 'requestTimeoutMs'],
   ['SEXTOU_RUNNER_POLL_MS', 'pollMs'],
   ['SEXTOU_RUNNER_CHECK_TIMEOUT_MS', 'checkTimeoutMs'],
+  ['SEXTOU_RUNNER_DOWNLOAD_TIMEOUT_MS', 'downloadTimeoutMs'],
   ['SEXTOU_RUNNER_RUN_TIMEOUT_MS', 'runTimeoutMs'],
   ['SEXTOU_RUNNER_KILL_GRACE_MS', 'killGraceMs'],
 ] as const)(
@@ -126,6 +145,7 @@ test.each([
   ['SEXTOU_RUNNER_RUN_TIMEOUT_MS', '-5'],
   ['SEXTOU_RUNNER_KILL_GRACE_MS', '1e3'],
   ['SEXTOU_RUNNER_CHECK_TIMEOUT_MS', '0'],
+  ['SEXTOU_RUNNER_DOWNLOAD_TIMEOUT_MS', '0'],
 ])('loadConfig rejects %s=%j', (name, value) => {
   expect(() => load({ [name]: value })).toThrow(
     `Invalid ${name}: ${JSON.stringify(value)} (expected a whole number of milliseconds from 1 to 2147483647)`,

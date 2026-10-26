@@ -9,6 +9,7 @@ import {
 } from '../../src/runner';
 import { sleep } from '../../src/sleep';
 import { memory } from '../logger';
+import { sha } from '../archive';
 
 const pollMs = 1000;
 const holdMs = 10000;
@@ -35,7 +36,14 @@ const leaseLost = {
 // A claim that hands the runner task tsk_1 under a lease of `leaseMs`.
 function task(leaseMs = 3000): Answer<Claimed> {
   return ok({
-    task: { id: 'tsk_1', taskfile: 'version: 3' },
+    task: {
+      id: 'tsk_1',
+      source: {
+        repo: 'thatsnotmynameio/sextou',
+        sha,
+        taskfile: 'tasks/hello-world/Taskfile.yml',
+      },
+    },
     execution: { id: 'exe_1', attempt: 1, leaseMs },
   });
 }
