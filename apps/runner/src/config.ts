@@ -122,7 +122,13 @@ function parseUrl(value: string, name: string): string {
   if (url?.protocol !== 'http:' && url?.protocol !== 'https:') {
     throw invalid(name, value, 'an http or https URL');
   }
-  return url.href.replace(/\/+$/, '');
+  // A loop rather than /\/+$/, which backtracks over every run of slashes
+  // that isn't at the end.
+  let href = url.href;
+  while (href.endsWith('/')) {
+    href = href.slice(0, -1);
+  }
+  return href;
 }
 
 // The value trimmed, refused when nothing is left: a name, trimmed as the

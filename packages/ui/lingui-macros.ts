@@ -16,7 +16,10 @@ export function linguiMacros(): Plugin {
         code: /@lingui\/[\w-]+\/macro/,
       },
       async handler(code, id) {
-        const filename = id.replace(/\?.*$/, '');
+        // The id without its query, cut at the first ? rather than with
+        // /\?.*$/, which backtracks from every ? in it.
+        const query = id.indexOf('?');
+        const filename = query === -1 ? id : id.slice(0, query);
         const result = await transform(code, filename, {
           macro: { descriptorFields: 'message' },
         });
