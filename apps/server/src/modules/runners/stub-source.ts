@@ -1,6 +1,7 @@
 // The Taskfile every claim points at until tasks carry their own: this
-// repository's tasks/hello-world, which prints hello world with Python, then
-// runs for 2 seconds.
+// repository's hello-world workflow, which prints hello world with Python,
+// then runs for 2 seconds. At this commit it lived in tasks/hello-world; it
+// is packages/workflows/hello-world now.
 export const stubSource = {
   repo: 'thatsnotmynameio/sextou',
   // The commit on main that added tasks/hello-world (#79).

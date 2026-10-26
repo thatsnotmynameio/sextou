@@ -119,11 +119,11 @@ jobs:
           } >> "$GITHUB_ENV"
       - name: pnpm install
         run: pnpm install --frozen-lockfile --ignore-scripts
-      # Only the runner's integration suite runs go-task, which it takes from
-      # the host, as task on the PATH: the release, checked against its
-      # checksum.
+      # Only the integration suites of the runner and of the workflows run
+      # go-task, which they take from the host, as task on the PATH: the
+      # release, checked against its checksum.
       - name: go-task
-        if: ${{ matrix.package == 'runner' && matrix.level == 'integration' }}
+        if: ${{ (matrix.package == 'runner' || matrix.package == 'workflows') && matrix.level == 'integration' }}
         run: |
           archive="$RUNNER_TEMP/task.tar.gz"
           curl -fsSL --proto '=https' --tlsv1.2 --max-time 120 -o "$archive" \
@@ -191,10 +191,11 @@ jobs:
           } >> "$GITHUB_ENV"
       - name: pnpm install
         run: pnpm install --frozen-lockfile --ignore-scripts
-      # The runner's mutation run includes its integration suite, which runs
-      # go-task: the release, checked against its checksum.
+      # The mutation runs of the runner and of the workflows include their
+      # integration suites, which run go-task: the release, checked against
+      # its checksum.
       - name: go-task
-        if: ${{ matrix.package == 'runner' }}
+        if: ${{ matrix.package == 'runner' || matrix.package == 'workflows' }}
         run: |
           archive="$RUNNER_TEMP/task.tar.gz"
           curl -fsSL --proto '=https' --tlsv1.2 --max-time 120 -o "$archive" \

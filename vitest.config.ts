@@ -18,6 +18,8 @@ export default {
       'packages/tasks',
       'packages/tasks/vitest.integration.config.ts',
       'packages/ui',
+      'packages/workflows',
+      'packages/workflows/vitest.integration.config.ts',
     ],
   },
 };
