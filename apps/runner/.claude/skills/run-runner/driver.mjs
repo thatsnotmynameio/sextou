@@ -3,7 +3,7 @@
 // it logs, and stops it; or runs the whole flow against a server of its own.
 // Run from apps/runner/:
 //
-//   node .claude/skills/run-runner/driver.mjs start [--server <url>]
+//   node .claude/skills/run-runner/driver.mjs start [--build] [--server <url>]
 //   node .claude/skills/run-runner/driver.mjs wait <msg> [--task <id>] [--timeout <ms>]
 //   node .claude/skills/run-runner/driver.mjs log
 //   node .claude/skills/run-runner/driver.mjs stop
@@ -57,7 +57,7 @@ const [command, ...args] = process.argv.slice(2);
 const commands = { start, wait, log, stop, smoke };
 if (!(command in commands)) {
   fail(
-    'usage: driver.mjs start [--server <url>] | wait <msg> [--task <id>] [--timeout <ms>] | log | stop | smoke',
+    'usage: driver.mjs start [--build] [--server <url>] | wait <msg> [--task <id>] [--timeout <ms>] | log | stop | smoke',
   );
   process.exit(2);
 }
@@ -131,16 +131,16 @@ async function waitFor(file, pid, msg, { taskId, timeoutMs = 15_000 } = {}) {
   return undefined;
 }
 
-// Spawns the runner's main.ts with node, detached, its stdout and stderr in
-// a new log file. Node with tsx's loader is the one process that runs
-// main.ts, so the pid is the runner's.
-function launch(env) {
+// Spawns the runner with node, detached, its stdout and stderr in a new log
+// file: main.ts from source, or the bundle. From source, node with tsx's
+// loader is the one process that runs main.ts, so the pid is the runner's.
+function launch(env, argv = ['--import', 'tsx', 'src/main.ts']) {
   const logFile = join(
     mkdtempSync(join(tmpdir(), 'sextou-runner-')),
     'out.log',
   );
   const logFd = openSync(logFile, 'a');
-  const child = spawn(process.execPath, ['--import', 'tsx', 'src/main.ts'], {
+  const child = spawn(process.execPath, argv, {
     cwd: unit,
     detached: true,
     stdio: ['ignore', logFd, logFd],
@@ -171,12 +171,21 @@ async function start(...list) {
     fail(`Already running: pid ${prior.pid}. Run: driver.mjs stop`);
     process.exit(1);
   }
+  const bundle = join(unit, 'dist', 'runner.mjs');
+  const build = list.includes('--build');
+  if (build && !existsSync(bundle)) {
+    fail('No dist/runner.mjs. Run: pnpm --filter @sextou/runner build');
+    process.exit(1);
+  }
   mkdirSync(dirname(stateFile), { recursive: true });
-  const runner = launch({
-    ...defaults,
-    ...process.env,
-    SEXTOU_RUNNER_SERVER_URL: serverUrl(list),
-  });
+  const runner = launch(
+    {
+      ...defaults,
+      ...process.env,
+      SEXTOU_RUNNER_SERVER_URL: serverUrl(list),
+    },
+    build ? [bundle] : undefined,
+  );
   const started = await waitFor(runner.log, runner.pid, 'started');
   if (!started) {
     fail(`The runner did not start. Its log, ${runner.log}:`);

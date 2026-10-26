@@ -13,7 +13,11 @@ All paths below are relative to `apps/runner/`. Run `pnpm` commands from the rep
 pnpm install          # from the repository root
 ```
 
-No build: the runner runs from source with tsx. No variable is required; `.env.example` lists each `SEXTOU_RUNNER_*` setting with its default.
+No variable is required; `.env.example` lists each `SEXTOU_RUNNER_*` setting with its default. Only needed for `start --build`, which runs the production bundle:
+
+```bash
+pnpm --filter @sextou/runner build   # -> dist/runner.mjs
+```
 
 ## Run (agent path)
 
@@ -37,7 +41,7 @@ To drive it step by step, start a server with the `run-server` skill, then the r
 ```bash
 S=../server/.claude/skills/run-server/driver.mjs
 node $S start
-node .claude/skills/run-runner/driver.mjs start          # prints { pid, log, name, assignees, serverUrl }
+node .claude/skills/run-runner/driver.mjs start          # from source (tsx); --build runs dist/runner.mjs; prints { pid, log, name, assignees, serverUrl }
 node $S call tasks.create '{"title":"Say hi","kind":"task","priority":2,"assignee":"run-runner","createdBy":"me"}'
 node .claude/skills/run-runner/driver.mjs wait claimed
 node .claude/skills/run-runner/driver.mjs wait completed
@@ -46,13 +50,13 @@ node .claude/skills/run-runner/driver.mjs stop
 node $S stop
 ```
 
-| command                                     | what it does                                                                                                                                                                                                                                                                                                                                                                                             |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `start [--server <url>]`                    | Spawns `node --import tsx src/main.ts` detached, waits for the `started` record and prints `{ pid, log, name, assignees, serverUrl }`. Its defaults: name and assignee `run-runner`, `SEXTOU_RUNNER_POLL_MS=500`, `SEXTOU_RUNNER_LOG_LEVEL=debug`. Any `SEXTOU_RUNNER_*` you export wins. It ignores `apps/runner/.env`. On an invalid variable it prints the runner's error record and exits 1.         |
-| `wait <msg> [--task <id>] [--timeout <ms>]` | Prints the first log record whose `msg` is `<msg>` (and whose `taskId` is `<id>`), or exits 1 after 15 s or once the runner exited. `--timeout` takes milliseconds only. The messages: `started`, `claim failed`, `claimed`, `output` (with `stream` and `line`), `heartbeat` (debug), `heartbeat failed`, `lease lost`, `complete failed`, `complete refused`, `completed` (with `outcome`), `stopped`. |
-| `log`                                       | Prints the runner's log, one JSON record per line.                                                                                                                                                                                                                                                                                                                                                       |
-| `stop`                                      | SIGTERM, waits up to 10 s, then SIGKILL. The log stays in its `/tmp/sextou-runner-*` folder.                                                                                                                                                                                                                                                                                                             |
-| `smoke`                                     | The flow above, against its own server.                                                                                                                                                                                                                                                                                                                                                                  |
+| command                                     | what it does                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `start [--build] [--server <url>]`          | Spawns `node --import tsx src/main.ts`, or `node dist/runner.mjs` with `--build`, detached, waits for the `started` record and prints `{ pid, log, name, assignees, serverUrl }`. Its defaults: name and assignee `run-runner`, `SEXTOU_RUNNER_POLL_MS=500`, `SEXTOU_RUNNER_LOG_LEVEL=debug`. Any `SEXTOU_RUNNER_*` you export wins. It ignores `apps/runner/.env`. On an invalid variable it prints the runner's error record and exits 1. |
+| `wait <msg> [--task <id>] [--timeout <ms>]` | Prints the first log record whose `msg` is `<msg>` (and whose `taskId` is `<id>`), or exits 1 after 15 s or once the runner exited. `--timeout` takes milliseconds only. The messages: `started`, `claim failed`, `claimed`, `output` (with `stream` and `line`), `heartbeat` (debug), `heartbeat failed`, `lease lost`, `complete failed`, `complete refused`, `completed` (with `outcome`), `stopped`.                                    |
+| `log`                                       | Prints the runner's log, one JSON record per line.                                                                                                                                                                                                                                                                                                                                                                                          |
+| `stop`                                      | SIGTERM, waits up to 10 s, then SIGKILL. The log stays in its `/tmp/sextou-runner-*` folder.                                                                                                                                                                                                                                                                                                                                                |
+| `smoke`                                     | The flow above, against its own server.                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 The running runner's state is in `/tmp/sextou-run-runner/state.json` (`$RUN_RUNNER_STATE` overrides it). One runner per state file: `start` refuses while one runs.
 
@@ -78,8 +82,11 @@ To see the runner ride out a server restart, give the server a fixed port and a 
 ## Run (human path)
 
 ```bash
-SEXTOU_RUNNER_SERVER_URL=http://127.0.0.1:4310 pnpm --filter @sextou/runner dev   # JSON lines on stdout; Ctrl-C logs stopped and exits
+SEXTOU_RUNNER_SERVER_URL=http://127.0.0.1:4310 pnpm --filter @sextou/runner dev   # from source; JSON lines on stdout; Ctrl-C logs stopped and exits
+pnpm --filter @sextou/runner build && pnpm --filter @sextou/runner start          # the bundle, dist/runner.mjs, the same way
 ```
+
+Both read `apps/runner/.env` when it exists.
 
 Its name, and so its only assignee, is the machine's hostname unless `SEXTOU_RUNNER_NAME` says otherwise, and heartbeats aren't logged at the default level. An agent should use the driver instead.
 
@@ -99,12 +106,14 @@ pnpm --filter @sextou/runner test:mutation     # Stryker, about 1.5 min, fails b
 - **The smoke can't show the context reaching a Taskfile.** The stub is `tasks/hello-world/` at a fixed commit on GitHub (now `packages/workflows/hello-world/`), which reads no `CONTEXT`. `main.test.ts` checks it end to end, serving a Taskfile that prints `{{.CONTEXT | q}}`.
 - **`heartbeat` records are debug.** The driver's `start` and `smoke` log at debug; `pnpm dev` doesn't, unless `SEXTOU_RUNNER_LOG_LEVEL=debug`.
 - **The runner heartbeats every third of the lease the server answers**, not of anything the runner sets. To see several heartbeats in the stub's 2 s run, shorten `SEXTOU_SERVER_LEASE_MS`.
-- **The driver kills the right process because it skips `pnpm` and `tsx`.** It runs `node --import tsx src/main.ts`, one process, so its pid is the runner's. Under `pnpm dev`, the pid you hold is a wrapper.
+- **The driver kills the right process because it skips `pnpm` and `tsx`.** It runs `node --import tsx src/main.ts`, or `node dist/runner.mjs`, one process, so its pid is the runner's. Under `pnpm dev` or `pnpm start`, the pid you hold is a wrapper.
+- **`start --build` runs the bundle you built last.** Run `pnpm --filter @sextou/runner build` again after a change, or it runs the old code.
 - **`pnpm dev` prints `.env not found. Continuing without it.` twice.** That's tsx's `--env-file-if-exists`, not an error.
 - **Lint scans this folder.** `lint / gates` refuses `console` outside test files, so the driver writes through `process.stdout`/`process.stderr`. Run `pnpm exec oxlint -c .oxlintrc.gates.json .` and `pnpm exec oxfmt --check .` after editing it.
 
 ## Troubleshooting
 
+- **`No dist/runner.mjs`** on `start --build`: run `pnpm --filter @sextou/runner build` first.
 - **`No server URL: pass --server <url>, …`**: no `--server`, no `SEXTOU_RUNNER_SERVER_URL`, and no server from `run-server`. Start one with `node ../server/.claude/skills/run-server/driver.mjs start`.
 - **`The runner did not start.` followed by `Invalid SEXTOU_RUNNER_…`**: an exported variable has a bad value. The record names it and what it expects.
 - **`The runner did not start.` followed by `SEXTOU_RUNNER_TASK_BIN is not go-task`**: `task` isn't on the PATH, or is another program (Taskwarrior). The record's `reason` says which. Install go-task, or export `SEXTOU_RUNNER_TASK_BIN` with its name or path.
