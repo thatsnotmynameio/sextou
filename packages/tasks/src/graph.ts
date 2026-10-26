@@ -35,6 +35,7 @@ import {
   renewExecutionSchema,
   unlinkSchema,
 } from './schemas';
+import type { Context } from './schemas';
 import { type FinalStatus, holds, Status } from './status';
 
 // Why an operation changed nothing.
@@ -72,6 +73,9 @@ export interface Task {
   // A URL or a file path where the task's longer text lives. Stored as given
   // and never read.
   sourcePath: string | null;
+  // A JSON object the caller stores with the task. Stored as given and never
+  // read.
+  context: Context | null;
   status: Status;
 }
 
@@ -85,6 +89,7 @@ export interface NewTask {
   // Blank is stored as null, as is a blank source path.
   description?: string;
   sourcePath?: string;
+  context?: Context;
   // Recorded with the creation, the first change of the task's status.
   createdBy: string;
 }
@@ -287,6 +292,7 @@ const taskColumns = {
   assignee: tasks.assignee,
   description: tasks.description,
   sourcePath: tasks.sourcePath,
+  context: tasks.context,
   status: tasks.status,
 };
 

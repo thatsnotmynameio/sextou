@@ -9,6 +9,7 @@ import {
   text,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
+import type { Context } from './schemas';
 import { Status, statusList } from './status';
 
 // The task graph's tables. A change here needs a migration, generated from
@@ -30,6 +31,11 @@ import { Status, statusList } from './status';
 // which is the order the tasks were created in. Turso searches it only for a
 // query that writes the status and the count as literals, as its condition
 // does: the ready list writes the same condition, ready.
+//
+// context is a JSON object the caller stores with the task, as text: drizzle
+// writes and reads it as JSON, and the graph never reads it. Its check reads
+// the type only once the text is JSON: Turso evaluates both sides of an AND,
+// and json_type fails on text that is not JSON.
 export const tasks = sqliteTable(
   'tasks',
   {
@@ -41,6 +47,7 @@ export const tasks = sqliteTable(
     assignee: text('assignee').notNull(),
     description: text('description'),
     sourcePath: text('source_path'),
+    context: text('context', { mode: 'json' }).$type<Context>(),
     status: text('status').$type<Status>().notNull(),
     holdingBlockers: integer('holding_blockers').notNull().default(0),
   },
@@ -48,6 +55,10 @@ export const tasks = sqliteTable(
     check('task_priority', sql`${table.priority} BETWEEN 0 AND 4`),
     check('task_status', sql`${table.status} IN (${sql.raw(statusList)})`),
     check('task_holding_blockers', sql`${table.holdingBlockers} >= 0`),
+    check(
+      'task_context',
+      sql`CASE WHEN json_valid(${table.context}) THEN json_type(${table.context}) = 'object' ELSE ${table.context} IS NULL END`,
+    ),
     index('task_ready').on(table.assignee, table.priority).where(ready),
   ],
 );

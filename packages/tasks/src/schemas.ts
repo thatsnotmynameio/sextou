@@ -21,6 +21,43 @@ const optional = z
 // A whole number, safe or not: int() would refuse one past 2^53.
 const integer = z.number().refine(Number.isInteger);
 
+// A JSON object.
+const jsonObject = z.record(z.string(), z.json());
+
+export type Context = z.infer<typeof jsonObject>;
+
+// The deepest nesting of objects and arrays Turso's json_valid accepts.
+const maxContextDepth = 500;
+
+// Whether the value nests objects and arrays deeper than the limit. It walks
+// without recursion and stops past the limit, so neither a deep value nor a
+// cycle overflows the stack, as zod's own recursive check would.
+function deeperThan(value: unknown, limit: number) {
+  const pending: [unknown, number][] = [[value, 0]];
+  for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
+    const [item, depth] = next;
+    if (typeof item === 'object' && item !== null) {
+      if (depth === limit) {
+        return true;
+      }
+      for (const child of Object.values(item)) {
+        pending.push([child, depth + 1]);
+      }
+    }
+  }
+  return false;
+}
+
+// A JSON object the caller may leave out, stored as given and never read:
+// null when it is absent. One nested deeper than Turso stores is refused
+// before zod walks it.
+const context = z
+  .unknown()
+  .refine((value) => !deeperThan(value, maxContextDepth))
+  .pipe(jsonObject)
+  .optional()
+  .transform((value) => value ?? null);
+
 export const createTaskSchema = z.object({
   title: label,
   kind: label,
@@ -30,6 +67,7 @@ export const createTaskSchema = z.object({
   assignee: label,
   description: optional,
   sourcePath: optional,
+  context,
   createdBy: label,
 });
 

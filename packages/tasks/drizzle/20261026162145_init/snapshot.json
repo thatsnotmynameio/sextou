@@ -1,8 +1,8 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "e3c28679-2b25-4bf6-8385-23cebe69ebae",
-  "prevIds": ["8b81c54e-3215-4e96-885b-4044ad10a1fd"],
+  "id": "4cf81b72-bebc-45d9-9b94-01d6e54dfb5c",
+  "prevIds": ["00000000-0000-0000-0000-000000000000"],
   "ddl": [
     {
       "name": "task_executions",
@@ -292,6 +292,16 @@
     },
     {
       "table": "tasks",
+      "name": "context",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "tasks",
       "name": "status",
       "type": "text",
       "notNull": true,
@@ -509,6 +519,12 @@
       "table": "tasks",
       "name": "task_holding_blockers",
       "value": "\"holding_blockers\" >= 0",
+      "entityType": "checks"
+    },
+    {
+      "table": "tasks",
+      "name": "task_context",
+      "value": "CASE WHEN json_valid(\"context\") THEN json_type(\"context\") = 'object' ELSE \"context\" IS NULL END",
       "entityType": "checks"
     }
   ],
