@@ -49,6 +49,7 @@ const claimed = {
       sha,
       taskfile: 'tasks/hello-world/Taskfile.yml',
     },
+    context: { repo: 'org/app' },
   },
   execution: { id: 'exe_1', attempt: 1, leaseMs: 30000 },
 };

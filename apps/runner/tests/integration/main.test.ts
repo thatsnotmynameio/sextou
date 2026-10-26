@@ -129,13 +129,14 @@ async function call(procedure: string, input: unknown): Promise<unknown> {
   return body.result.data;
 }
 
-async function createTask(assignee: string) {
+async function createTask(assignee: string, context?: Record<string, unknown>) {
   return (await call('tasks.create', {
     title: 'Say hi',
     kind: 'task',
     priority: 2,
     assignee,
     createdBy: 'me',
+    context,
   })) as { id: string };
 }
 
@@ -158,8 +159,8 @@ async function startRunner(assignee: string) {
 
 // The server's stub points every claim at tasks/hello-world in sextou's
 // repository on GitHub. The runner downloads it from a server on localhost
-// instead, whose tarball has a Taskfile at that path that writes a line and
-// runs for 2 seconds.
+// instead, whose tarball has a Taskfile at that path that writes a line, then
+// the context it got, and runs for 2 seconds.
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'sextou-runner-'));
   github = await serve(
@@ -167,6 +168,7 @@ beforeAll(async () => {
       archive({
         'tasks/hello-world/Taskfile.yml': plaintext([
           'echo "sextou stub"',
+          'echo {{.CONTEXT | q}}',
           'sleep 2',
         ]),
       }),
@@ -251,6 +253,25 @@ goTask(
         assignees: ['succeeds'],
       }),
     ).toEqual({ task: null });
+  },
+);
+
+goTask(
+  'main hands the Taskfile the context the task was created with',
+  async () => {
+    const context = { repo: 'org/app', ref: 'main' };
+    const task = await createTask('context', context);
+    await startRunner('context');
+
+    expect(
+      await logged('output', { taskId: task.id, stream: 'stdout' }),
+    ).toMatchObject({ line: 'sextou stub' });
+    expect(
+      await logged('output', {
+        taskId: task.id,
+        line: JSON.stringify(context),
+      }),
+    ).toMatchObject({ stream: 'stdout' });
   },
 );
 
