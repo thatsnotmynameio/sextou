@@ -9,3 +9,9 @@ coverage:
     patch:
       default:
         informational: true
+
+# The pull request's comment shows the whole project's coverage and each
+# flag's, beside the lines the pull request changed.
+comment:
+  layout: 'diff, flags, files'
+  hide_project_coverage: false

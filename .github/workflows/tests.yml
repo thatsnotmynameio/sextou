@@ -153,6 +153,9 @@ jobs:
           use_oidc: true
           files: ${{ matrix.dir }}/coverage/${{ matrix.level }}/coverage-final.json
           disable_search: true
+          # No plugin: they build Python, C and Swift reports, and Vitest
+          # already wrote this one.
+          plugins: noop
           flags: ${{ matrix.package }}-${{ matrix.level }}
           name: ${{ matrix.package }} / ${{ matrix.level }}
 
