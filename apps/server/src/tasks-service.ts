@@ -121,6 +121,7 @@ export function createTasksService(
         ok: true,
         task: toTask(result.task),
         // The tasks stored only a uses they split.
+        // Stryker disable next-line ConditionalExpression: splitUses answers null for null too
         uses: uses === null ? null : splitUses(uses),
         execution: { id, attempt, leaseMs },
       };
