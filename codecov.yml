@@ -1,5 +1,5 @@
 # Codecov reports coverage. It doesn't gate it: each suite's own 90% floor,
-# in tests.yml, is the gate. tests.yml uploads one report per package and
+# in checks.yml, is the gate. checks.yml uploads one report per package and
 # level, flagged "<package>-<level>".
 coverage:
   status:
@@ -9,6 +9,13 @@ coverage:
     patch:
       default:
         informational: true
+
+# A pull request runs some levels only for the packages its changes reach,
+# so a flag it uploads no report for keeps its last coverage, from the pull
+# request's commits before or from main, instead of showing none.
+flag_management:
+  default_rules:
+    carryforward: true
 
 # The pull request's comment shows the whole project's coverage and each
 # flag's, beside the lines the pull request changed.

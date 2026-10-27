@@ -1,0 +1,385 @@
+# This repository's checks, one after the other, so a check that fails stops
+# the ones after it from starting: lint, then the unit suites, then the
+# integration suites, then the component suites, then the mutation runs. The
+# pull request's title (pr-title.yml) stays out of the chain: it runs again
+# whenever the title is edited, and in the chain that would rerun every test. CodeQL (security.yml) and Scorecard (scorecard.yml)
+# stay out too: CodeQL is required, and a required check that a failed job
+# before it skips counts as passed; code scanning tells both apart by workflow
+# file and job, so moving them would leave their old alerts open on main.
+#
+# "<package> / <level>" judges every file that level answers for at 90%
+# coverage, "<package> / mutation" judges every file of its unit and
+# integration suites: Stryker fails it below 80% of mutants killed in the
+# package. The packages job lists the checks. The organization's
+# typescript.yml still runs the unit and integration suites through the root
+# vitest.config.ts; this moves there later. No check here is required yet.
+#
+# Mutation runs as in StrykerJS's own CI: in full on each push to main, and
+# incrementally on a pull request, from the newest result in the Actions
+# cache, which GitHub looks up in the pull request's scope first, then in
+# main's. A Dependabot pull request never saves, so it always starts from
+# main's result.
+#
+# On a pull request, the suites and mutation run only for the packages its
+# changes reach: those it changes, and those that depend on them. Mutation
+# runs a dependent in full, since the incremental run sees no change outside
+# its package. A change outside every package, anything in
+# .github/ included, runs every package, mutation in full, and one only to
+# files no suite reads runs none.
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+# A pull request's newer run cancels the older one; every other run, on main
+# or by hand, gets a group of its own (its run ID: a manual run can share a
+# commit with a push) and is never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# The organization's pnpm policy, as its typescript.yml sets it. pnpm reads
+# this repository's exceptions from pnpm-workspace.yaml.
+env:
+  PNPM_VERSION: 12.10.1
+  pnpm_config_minimum_release_age: 1440
+  pnpm_config_minimum_release_age_strict: true
+  pnpm_config_trust_policy: no-downgrade
+  pnpm_config_trust_lockfile: false
+  pnpm_config_dangerously_allow_all_builds: false
+  pnpm_config_strict_dep_builds: false
+  pnpm_config_block_exotic_subdeps: false
+  pnpm_config_pm_on_fail: ignore
+  pnpm_config_verify_store_integrity: true
+  pnpm_config_side_effects_cache: false
+  pnpm_config_registry: https://registry.npmjs.org/
+  # The go-task release the runner's integration suite runs, and its
+  # task_linux_amd64.tar.gz checksum from the release's task_checksums.txt.
+  GO_TASK_VERSION: 3.54.0
+  GO_TASK_SHA256: 680859dbb4d881a9c72d4d9a8f510825450849af8567deacd7302c01124416fb
+
+jobs:
+  # The lint rules most large open-source TypeScript and React projects
+  # enforce, from .oxlintrc.gates.json, each at error: it fails on any
+  # finding. The organization's typescript.yml lints with .oxlintrc.json and
+  # doesn't read that file; this moves there later.
+  gates:
+    name: lint / gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: pnpm store
+        run: |
+          {
+            echo "pnpm_config_store_dir=$RUNNER_TEMP/pnpm-store"
+            echo "pnpm_config_cache_dir=$RUNNER_TEMP/pnpm-cache"
+          } >> "$GITHUB_ENV"
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: oxlint
+        run: pnpm exec oxlint --config .oxlintrc.gates.json --format github .
+
+  # The matrices of the jobs below, read from each workspace package's
+  # package.json: a "test:<level>" script is a level, "test:mutation" a
+  # mutation run. The root, whose scripts run every package, is no workspace
+  # package. It takes seconds and starts no test, so it waits for nothing.
+  packages:
+    name: packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      unit: ${{ steps.matrix.outputs.unit }}
+      integration: ${{ steps.matrix.outputs.integration }}
+      component: ${{ steps.matrix.outputs.component }}
+      mutation: ${{ steps.matrix.outputs.mutation }}
+    steps:
+      # A pull request's run checks out the merge commit, whose first parent
+      # is the base: the diff between them is what the pull request changes.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      # pnpm, for its filter below; the step installs nothing.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      # The shell expands pnpm-workspace.yaml's globs, read with yq; the
+      # names that start with $ inside jq's program are jq's, not the
+      # shell's. shell: bash adds pipefail, and failglob fails on a glob that
+      # matches nothing, so a package.json jq can't read fails the step
+      # instead of dropping checks. A level the chain doesn't name fails it
+      # too, instead of never running.
+      #
+      # On a pull request, each level and mutation list what pnpm's filter
+      # selects from the files changed since the base (HEAD^1): the packages
+      # that hold one, and the packages that depend on them, through their
+      # workspace: dependencies (...[HEAD^1]); mutation runs those dependents
+      # in full (...^[HEAD^1]), since the incremental run compares only its
+      # own files. pnpm counts a changed file outside every package (the
+      # lockfile, the root tsconfig.json, stryker.parent.conf.json, anything
+      # in .github/) for the root, which lists every package, mutation in
+      # full. Changed files no suite reads count for nothing: Markdown,
+      # .claude/, the linters' and Codecov's settings. On main and on a
+      # manual run, every package runs, mutation in full.
+      - name: Matrix
+        id: matrix
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          shopt -s failglob
+          manifests=$(yq '.packages[] + "/package.json"' pnpm-workspace.yaml)
+          root=$(jq -r .name package.json)
+          run=null
+          full=null
+          if [ "$EVENT" = pull_request ]; then
+            select=(pnpm ls --recursive --depth -1 --json)
+            for unread in '**/*.md' '**/.claude/**' '**/.gitignore' \
+              '.compound-engineering/**' 'compound-packs/**' '.husky/**' \
+              '.oxlintrc*.json' .oxfmtrc.json codecov.yml \
+              .sonarcloud.properties LICENSE; do
+              select+=(--changed-files-ignore-pattern "$unread")
+            done
+            run=$("${select[@]}" --filter '...[HEAD^1]' | jq '[.[].name]')
+            full=$("${select[@]}" --filter '...^[HEAD^1]' | jq '[.[].name]')
+          fi
+          # shellcheck disable=SC2016,SC2086
+          jq -nr --argjson run "$run" --argjson full "$full" --arg root "$root" '
+              ["unit", "integration", "component", "mutation"] as $levels
+              | [inputs | {
+                  dir: (input_filename | rtrimstr("/package.json")),
+                  name,
+                  package: (.name | sub("^@[^/]+/"; "")),
+                  levels: [.scripts // {} | keys[]
+                    | capture("^test:(?<level>.+)$").level]
+                }] as $packages
+              | ([$packages[].levels[]] - $levels | unique) as $unknown
+              | if $unknown != [] then
+                  error("checks.yml chains no level \($unknown | join(", "))")
+                else . end
+              | if $run == null or IN($root; $run[]) then
+                  [$packages[].name] | {run: ., full: .}
+                else {$run, $full} end
+                as $reached
+              | $levels[] as $level
+              | [$packages[] | select(any(.levels[]; . == $level))
+                  | select(.name | IN($reached.run[]))
+                  | {package, level: $level, dir}
+                    + if $level == "mutation" then
+                        {full: (.name | IN($reached.full[]))}
+                      else {} end]
+              | "\($level)=\(tojson)"' \
+            $manifests \
+            | tee -a "$GITHUB_OUTPUT"
+
+  # The levels, one after the other: every package's unit suite, then every
+  # integration suite, then every component suite. A job after the first runs
+  # on !failure() && !cancelled(): a level no package has is skipped, and
+  # would otherwise skip every job after it; failure() reads every job
+  # before, not only the ones it needs. The three share their steps.
+  unit:
+    name: ${{ matrix.package }} / ${{ matrix.level }}
+    needs: [packages, gates]
+    # An empty matrix is an error, so no package skips the job.
+    if: ${{ needs.packages.outputs.unit != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # the Codecov upload's OIDC, instead of a token
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.packages.outputs.unit) }}
+    steps: &level-steps
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: pnpm store
+        run: |
+          {
+            echo "pnpm_config_store_dir=$RUNNER_TEMP/pnpm-store"
+            echo "pnpm_config_cache_dir=$RUNNER_TEMP/pnpm-cache"
+          } >> "$GITHUB_ENV"
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      # Only the integration suites of the runner and of the workflows run
+      # go-task, which they take from the host, as task on the PATH: the
+      # release, checked against its checksum.
+      - name: go-task
+        if: ${{ (matrix.package == 'runner' || matrix.package == 'workflows') && matrix.level == 'integration' }}
+        run: |
+          archive="$RUNNER_TEMP/task.tar.gz"
+          curl -fsSL --proto '=https' --tlsv1.2 --max-time 120 -o "$archive" \
+            "https://github.com/go-task/task/releases/download/v$GO_TASK_VERSION/task_linux_amd64.tar.gz"
+          echo "$GO_TASK_SHA256  $archive" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/go-task"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/go-task" task
+          echo "$RUNNER_TEMP/go-task" >> "$GITHUB_PATH"
+      # Only a component suite renders in a browser.
+      - name: Chromium
+        if: ${{ matrix.level == 'component' }}
+        env:
+          DIR: ${{ matrix.dir }}
+        run: pnpm --dir "$DIR" exec playwright install --with-deps chromium
+      - name: Tests
+        env:
+          DIR: ${{ matrix.dir }}
+          LEVEL: ${{ matrix.level }}
+        run: pnpm --dir "$DIR" run "test:$LEVEL"
+      # Codecov shows each level's coverage under the flag "<package>-<level>".
+      # The 90% floor above stays the gate: the upload runs when the tests
+      # fail too, and an upload that fails leaves the check as the tests left it.
+      - name: Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          use_oidc: true
+          files: ${{ matrix.dir }}/coverage/${{ matrix.level }}/coverage-final.json
+          disable_search: true
+          # No plugin: they build Python, C and Swift reports, and Vitest
+          # already wrote this one.
+          plugins: noop
+          flags: ${{ matrix.package }}-${{ matrix.level }}
+          name: ${{ matrix.package }} / ${{ matrix.level }}
+
+  integration:
+    name: ${{ matrix.package }} / ${{ matrix.level }}
+    needs: [packages, unit]
+    if: ${{ !failure() && !cancelled() && needs.packages.outputs.integration != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # the Codecov upload's OIDC, instead of a token
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.packages.outputs.integration) }}
+    steps: *level-steps
+
+  component:
+    name: ${{ matrix.package }} / ${{ matrix.level }}
+    needs: [packages, integration]
+    if: ${{ !failure() && !cancelled() && needs.packages.outputs.component != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # the Codecov upload's OIDC, instead of a token
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.packages.outputs.component) }}
+    steps: *level-steps
+
+  mutation:
+    name: ${{ matrix.package }} / mutation
+    # After the last level, of every package: a matrix job waits for the
+    # whole matrix.
+    needs: [packages, component]
+    if: ${{ !failure() && !cancelled() && needs.packages.outputs.mutation != '[]' }}
+    runs-on: ubuntu-latest
+    # A run with no cached result mutates every file of the package.
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.packages.outputs.mutation) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: pnpm store
+        run: |
+          {
+            echo "pnpm_config_store_dir=$RUNNER_TEMP/pnpm-store"
+            echo "pnpm_config_cache_dir=$RUNNER_TEMP/pnpm-cache"
+          } >> "$GITHUB_ENV"
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      # The mutation runs of the runner and of the workflows include their
+      # integration suites, which run go-task: the release, checked against
+      # its checksum.
+      - name: go-task
+        if: ${{ matrix.package == 'runner' || matrix.package == 'workflows' }}
+        run: |
+          archive="$RUNNER_TEMP/task.tar.gz"
+          curl -fsSL --proto '=https' --tlsv1.2 --max-time 120 -o "$archive" \
+            "https://github.com/go-task/task/releases/download/v$GO_TASK_VERSION/task_linux_amd64.tar.gz"
+          echo "$GO_TASK_SHA256  $archive" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/go-task"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/go-task" task
+          echo "$RUNNER_TEMP/go-task" >> "$GITHUB_PATH"
+      - name: Restore the last result
+        if: ${{ !matrix.full }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ matrix.dir }}/reports/stryker-incremental.json
+          key: stryker-incremental-${{ matrix.package }}/${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: stryker-incremental-${{ matrix.package }}/
+      # On main, and for a package the packages job lists in full, every
+      # mutant runs (--force) and the result is written for the pull requests
+      # after it; otherwise only what changed since the result it restored.
+      - name: Stryker
+        env:
+          DIR: ${{ matrix.dir }}
+          FULL: ${{ matrix.full }}
+        run: |
+          if [ "$FULL" = true ]; then
+            pnpm --dir "$DIR" run test:mutation --incremental --force
+          else
+            pnpm --dir "$DIR" run test:mutation --incremental
+          fi
+      - name: Save the result
+        if: ${{ !cancelled() && github.actor != 'dependabot[bot]' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ matrix.dir }}/reports/stryker-incremental.json
+          key: stryker-incremental-${{ matrix.package }}/${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Upload the report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-${{ matrix.package }}
+          path: ${{ matrix.dir }}/reports/mutation/mutation.html
+          if-no-files-found: ignore
