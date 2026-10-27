@@ -29,10 +29,11 @@ on:
 permissions: {}
 
 # A pull request's new commit cancels its previous run, whose required checks
-# the new commit no longer needs; each commit on main, and each scheduled run,
-# gets a group of its own and is never cancelled.
+# the new commit no longer needs; every other run, on main or on the schedule,
+# gets a group of its own (its run ID: two weekly runs can share a commit) and
+# is never cancelled.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('{0}-{1}', github.event_name, github.sha) }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
