@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "4cf81b72-bebc-45d9-9b94-01d6e54dfb5c",
+  "id": "5f2c556b-1dc7-4787-a5d3-4fabcff0cb85",
   "prevIds": ["00000000-0000-0000-0000-000000000000"],
   "ddl": [
     {
@@ -293,6 +293,16 @@
     {
       "table": "tasks",
       "name": "context",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "tasks",
+      "name": "uses",
       "type": "text",
       "notNull": false,
       "autoincrement": false,

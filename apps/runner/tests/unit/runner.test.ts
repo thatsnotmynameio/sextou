@@ -33,12 +33,15 @@ const leaseLost = {
   message: 'lease_lost',
 } as const;
 
-// A claim that hands the runner task tsk_1 under a lease of `leaseMs`.
+/**
+ * A claim that hands the runner task tsk_1, naming hello-world's uses.
+ * @param leaseMs the lease the server answers
+ */
 function task(leaseMs = 3000): Answer<Claimed> {
   return ok({
     task: {
       id: 'tsk_1',
-      source: {
+      uses: {
         repo: 'thatsnotmynameio/sextou',
         sha,
         taskfile: 'tasks/hello-world/Taskfile.yml',

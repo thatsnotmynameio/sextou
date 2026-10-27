@@ -289,10 +289,12 @@ function serverCommand(args, serverState, env = {}) {
   });
 }
 
-// The runner's whole flow against a server of its own, with a short lease:
-// no server, a task completed as succeeded, a task cancelled while its Taskfile runs, and
-// the stop. Touches neither skill's usual state file. Exits 1 at the first
-// step that differs.
+/**
+ * The runner's whole flow against a server of its own, with a short lease: no
+ * server, a task naming hello-world's uses completed as succeeded, a task
+ * cancelled while its Taskfile runs, and the stop. Touches neither skill's
+ * usual state file. Exits 1 at the first step that differs.
+ */
 async function smoke() {
   const steps = [];
   const pids = [];
@@ -367,6 +369,9 @@ async function smoke() {
       });
       return (await response.json()).result?.data;
     };
+    // This repository's hello-world on GitHub, at the commit that added it.
+    const uses =
+      'thatsnotmynameio/sextou/tasks/hello-world/Taskfile.yml@87dfc7f4f839d6e334ab1a1cdf6494c62499d9ff';
     const create = (title) =>
       call('tasks.create', {
         title,
@@ -374,6 +379,7 @@ async function smoke() {
         priority: 2,
         assignee,
         createdBy: 'smoke',
+        uses,
       });
 
     const runner = launch(env(url));
@@ -396,7 +402,7 @@ async function smoke() {
       succeeded,
     );
     await check(
-      'ran the stub Taskfile',
+      "ran the task's Taskfile",
       records(runner.log).some(
         (record) =>
           record.msg === 'output' &&

@@ -3,7 +3,7 @@ name: run-runner
 description: Start, run, smoke-test, watch and stop the sextou runner (@sextou/runner, apps/runner) against a server. Use when asked to run or start the runner, see it claim, heartbeat and complete a task, try a cancel or a lost lease end to end, check that a runner or runners-procedure change works against a real server, or run its tests.
 ---
 
-The runner is a Node process that calls the server's `runners` procedures (claim, heartbeat, complete), downloads the repository each claim names from GitHub and runs its Taskfile with go-task, handing it the task's context as JSON in `CONTEXT` and an empty folder for its work in `WORKSPACE` (the server answers a stub, this repository's `tasks/hello-world/` at the commit that added it (now `packages/workflows/hello-world/`), which prints `hello world` with Python, reads neither and runs for 2 s), and logs one JSON record per step and per line of output. It needs go-task as `task` on the PATH, or `SEXTOU_RUNNER_TASK_BIN`, tar as `tar` on the PATH, or `SEXTOU_RUNNER_TAR_BIN`, network to github.com, and python3 for the stub. An agent drives it with `.claude/skills/run-runner/driver.mjs`: `smoke` runs the whole flow against a server of its own, and `start`/`wait`/`stop` run the runner in the background against a server the `run-server` skill started, while `wait` blocks on a log record. The driver needs nothing but Node.
+The runner is a Node process that calls the server's `runners` procedures (claim, heartbeat, complete), downloads the repository each claim names from GitHub and runs its Taskfile with go-task, handing it the task's context as JSON in `CONTEXT` and an empty folder for its work in `WORKSPACE`, and logs one JSON record per step and per line of output. Each claim names the Taskfile in the task's `uses`, `owner/name/path/to/Taskfile.yml@<sha>`, which the server hands over split. The driver's tasks name this repository's `tasks/hello-world/` at the commit that added it (now `packages/workflows/hello-world/`), which prints `hello world` with Python, reads neither variable and runs for 2 s. A task created without a `uses` is claimed and `completed` as `failed`, `reason: the task names nothing to run: it has no uses`, with nothing downloaded. It needs go-task as `task` on the PATH, or `SEXTOU_RUNNER_TASK_BIN`, tar as `tar` on the PATH, or `SEXTOU_RUNNER_TAR_BIN`, network to github.com, and python3 for hello-world. An agent drives it with `.claude/skills/run-runner/driver.mjs`: `smoke` runs the whole flow against a server of its own, and `start`/`wait`/`stop` run the runner in the background against a server the `run-server` skill started, while `wait` blocks on a log record. The driver needs nothing but Node.
 
 All paths below are relative to `apps/runner/`. Run `pnpm` commands from the repository root.
 
@@ -31,7 +31,7 @@ It prints one `ok`/`FAIL` line per step and exits 1 at the first wrong one, in a
 
 1. The runner against a port nothing listens on logs `claim failed`, `failure: no_answer`.
 2. Server listening, runner started.
-3. A task is `claimed`, gets a `heartbeat`, and is `completed`, `outcome: succeeded`, with an `output` record `hello world` from its Taskfile.
+3. A task created with hello-world's `uses` is `claimed`, gets a `heartbeat`, and is `completed`, `outcome: succeeded`, with an `output` record `hello world` from its Taskfile.
 4. A second task is claimed, cancelled through `tasks.cancel` while its Taskfile runs (answers `running`), and `completed`, `outcome: cancelled`.
 5. `runners.claim` finds nothing left.
 6. The runner stops on SIGTERM with `stopped` as its last record.
@@ -42,7 +42,7 @@ To drive it step by step, start a server with the `run-server` skill, then the r
 S=../server/.claude/skills/run-server/driver.mjs
 node $S start
 node .claude/skills/run-runner/driver.mjs start          # from source (tsx); --build runs dist/runner.mjs; prints { pid, log, name, assignees, serverUrl }
-node $S call tasks.create '{"title":"Say hi","kind":"task","priority":2,"assignee":"run-runner","createdBy":"me"}'
+node $S call tasks.create '{"title":"Say hi","kind":"task","priority":2,"assignee":"run-runner","createdBy":"me","uses":"thatsnotmynameio/sextou/tasks/hello-world/Taskfile.yml@87dfc7f4f839d6e334ab1a1cdf6494c62499d9ff"}'
 node .claude/skills/run-runner/driver.mjs wait claimed
 node .claude/skills/run-runner/driver.mjs wait completed
 node .claude/skills/run-runner/driver.mjs log
@@ -66,7 +66,7 @@ To see a task reopen after the runner stops mid-run:
 export SEXTOU_SERVER_LEASE_MS=1500 SEXTOU_SERVER_LEASE_SWEEP_MS=200 SEXTOU_SERVER_MAX_ATTEMPTS=2
 node $S start
 node .claude/skills/run-runner/driver.mjs start
-node $S call tasks.create '{"title":"A","kind":"task","priority":2,"assignee":"run-runner","createdBy":"me"}'
+node $S call tasks.create '{"title":"A","kind":"task","priority":2,"assignee":"run-runner","createdBy":"me","uses":"thatsnotmynameio/sextou/tasks/hello-world/Taskfile.yml@87dfc7f4f839d6e334ab1a1cdf6494c62499d9ff"}'
 node .claude/skills/run-runner/driver.mjs wait claimed   # "attempt":1
 node .claude/skills/run-runner/driver.mjs stop
 sleep 3
@@ -103,9 +103,9 @@ pnpm --filter @sextou/runner test:mutation     # Stryker, about 1.5 min, fails b
 - **A task only reaches a runner that serves its assignee.** The driver's runner serves `run-runner`, so create tasks with `"assignee":"run-runner"`. With `pnpm dev`, the assignee is the hostname.
 - **The server's URL is fixed when the runner starts.** `run-server`'s `start` listens on a new free port each time, so a runner left running keeps calling the old port after a server restart, and logs `heartbeat failed` / `complete failed` with `no_answer` forever. Restart the runner too, or give the server a fixed `SEXTOU_SERVER_PORT`.
 - **Stopping the runner mid-run doesn't complete the task.** The server's sweep ends the attempt once its lease runs out: with the server's default `SEXTOU_SERVER_MAX_ATTEMPTS=1` the task fails, so set it to 2 or more to see it claimed again.
-- **The smoke can't show the context reaching a Taskfile.** The stub is `tasks/hello-world/` at a fixed commit on GitHub (now `packages/workflows/hello-world/`), which reads no `CONTEXT`. `main.test.ts` checks it end to end, serving a Taskfile that prints `{{.CONTEXT | q}}`.
+- **The smoke can't show the context reaching a Taskfile.** Its tasks run `tasks/hello-world/` at a fixed commit on GitHub (now `packages/workflows/hello-world/`), which reads no `CONTEXT`. `main.test.ts` checks it end to end, serving a Taskfile that prints `{{.CONTEXT | q}}`.
 - **`heartbeat` records are debug.** The driver's `start` and `smoke` log at debug; `pnpm dev` doesn't, unless `SEXTOU_RUNNER_LOG_LEVEL=debug`.
-- **The runner heartbeats every third of the lease the server answers**, not of anything the runner sets. To see several heartbeats in the stub's 2 s run, shorten `SEXTOU_SERVER_LEASE_MS`.
+- **The runner heartbeats every third of the lease the server answers**, not of anything the runner sets. To see several heartbeats in hello-world's 2 s run, shorten `SEXTOU_SERVER_LEASE_MS`.
 - **The driver kills the right process because it skips `pnpm` and `tsx`.** It runs `node --import tsx src/main.ts`, or `node dist/runner.mjs`, one process, so its pid is the runner's. Under `pnpm dev` or `pnpm start`, the pid you hold is a wrapper.
 - **`start --build` runs the bundle you built last.** Run `pnpm --filter @sextou/runner build` again after a change, or it runs the old code.
 - **`pnpm dev` prints `.env not found. Continuing without it.` twice.** That's tsx's `--env-file-if-exists`, not an error.
@@ -119,6 +119,6 @@ pnpm --filter @sextou/runner test:mutation     # Stryker, about 1.5 min, fails b
 - **`The runner did not start.` followed by `SEXTOU_RUNNER_TASK_BIN is not go-task`**: `task` isn't on the PATH, or is another program (Taskwarrior). The record's `reason` says which. Install go-task, or export `SEXTOU_RUNNER_TASK_BIN` with its name or path.
 - **`The runner did not start.` followed by `SEXTOU_RUNNER_TAR_BIN does not run`**: no `tar` on the PATH, or one that fails `--version`. The record's `reason` says which. Install tar, or export `SEXTOU_RUNNER_TAR_BIN` with its name or path.
 - **`completed` with `reason: download: …`**: the runner couldn't download the claim's repository: `fetch failed` without network to `SEXTOU_RUNNER_GITHUB_URL`, `HTTP 404` for a commit or repository GitHub doesn't have, `timeout` past `SEXTOU_RUNNER_DOWNLOAD_TIMEOUT_MS`. The task's Taskfile didn't run.
-- **`completed` with `reason: exit code 127`**, and an `output` record `python3: not found`: the stub's Taskfile runs `python3`, which the machine lacks.
+- **`completed` with `reason: exit code 127`**, and an `output` record `python3: not found`: hello-world's Taskfile runs `python3`, which the machine lacks.
 - **`No claimed record.`**: the task's assignee isn't one the runner serves, or the runner's server isn't the one you created the task on. Compare `start`'s `assignees` and `serverUrl` with the task.
 - **`Already running: pid …`**: a runner from an earlier `start` is still up. Run `stop`, or set `RUN_RUNNER_STATE` to another path to run a second one.

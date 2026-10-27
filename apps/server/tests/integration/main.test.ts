@@ -554,6 +554,7 @@ test('serves the tasks and the runners procedures over the tasks service', async
     kind: 'task',
     priority: 2,
     assignee: 'dev',
+    uses: 'thatsnotmynameio/sextou/packages/workflows/hello-world/Taskfile.yml@87dfc7f4f839d6e334ab1a1cdf6494c62499d9ff',
     createdBy: 'planner',
   })) as { id: string };
   const claimed = await mutate('runners.claim', {
@@ -565,7 +566,11 @@ test('serves the tasks and the runners procedures over the tasks service', async
   expect(claimed).toMatchObject({
     task: {
       id: created.id,
-      source: expect.objectContaining({ repo: 'thatsnotmynameio/sextou' }),
+      uses: {
+        repo: 'thatsnotmynameio/sextou',
+        sha: '87dfc7f4f839d6e334ab1a1cdf6494c62499d9ff',
+        taskfile: 'packages/workflows/hello-world/Taskfile.yml',
+      },
     },
     execution: { attempt: 1, leaseMs: 30000 },
   });

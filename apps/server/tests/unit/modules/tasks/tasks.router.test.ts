@@ -14,7 +14,8 @@ const task = aTask();
 
 test('tasks.create creates the task with the names it was given', async () => {
   const context = { repo: 'org/app', commit: { sha: 'abc' } };
-  const child = { ...task, parentId: 'tsk_0', context };
+  const uses = `org/app/Taskfile.yml@${'a'.repeat(40)}`;
+  const child = { ...task, parentId: 'tsk_0', context, uses };
   const create = vi.fn(async () => ({ ok: true as const, task: child }));
 
   expect(
@@ -27,6 +28,7 @@ test('tasks.create creates the task with the names it was given', async () => {
       description: 'Cover it',
       source: '/specs/tests.md',
       context,
+      uses,
       createdBy: 'planner',
     }),
   ).toEqual(child);
@@ -39,6 +41,7 @@ test('tasks.create creates the task with the names it was given', async () => {
     description: 'Cover it',
     source: '/specs/tests.md',
     context,
+    uses,
     createdBy: { name: 'planner' },
   });
 });

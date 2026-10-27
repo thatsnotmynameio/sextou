@@ -1,7 +1,6 @@
 import { TRPCError } from '@trpc/server';
 import { expect, test, vi } from 'vitest';
 import { runnersRouter } from '../../../../src/modules/runners/runners.router';
-import { stubSource } from '../../../../src/modules/runners/stub-source';
 import { Outcome, Refusal, Status, type Tasks } from '../../../../src/tasks';
 import { createCallerFactory } from '../../../../src/trpc';
 import { aTask, fakeTasks, testContext } from '../../../tasks';
@@ -16,8 +15,19 @@ const task = aTask({ status: Status.running });
 
 const execution = { id: 'exe_1', attempt: 1, leaseMs: 30000 };
 
-test('runners.claim hands the runner the task id, the stub source, a null context and the attempt it holds', async () => {
-  const claim = vi.fn(async () => ({ ok: true as const, task, execution }));
+const uses = {
+  repo: 'thatsnotmynameio/sextou',
+  sha: '87dfc7f4f839d6e334ab1a1cdf6494c62499d9ff',
+  taskfile: 'packages/workflows/sextou/development/Taskfile.yml',
+};
+
+test("runners.claim hands the runner the task id, the task's uses, a null context and the attempt it holds", async () => {
+  const claim = vi.fn(async () => ({
+    ok: true as const,
+    task,
+    uses,
+    execution,
+  }));
 
   expect(
     await caller({ claim }).claim({
@@ -26,7 +36,7 @@ test('runners.claim hands the runner the task id, the stub source, a null contex
       assignees: ['dev', ' qa '],
     }),
   ).toEqual({
-    task: { id: task.id, source: stubSource, context: null },
+    task: { id: task.id, uses, context: null },
     execution,
   });
   expect(claim).toHaveBeenCalledWith({
@@ -44,10 +54,19 @@ test("runners.claim hands the runner the task's context", async () => {
       claim: async () => ({
         ok: true,
         task: aTask({ status: Status.running, context }),
+        uses,
         execution,
       }),
     }).claim({ claimId: 'claim-1', runner: 'runner-1', assignees: ['dev'] }),
   ).toMatchObject({ task: { context } });
+});
+
+test('runners.claim answers a null uses for a task that names none, with the attempt it holds', async () => {
+  expect(
+    await caller({
+      claim: async () => ({ ok: true, task, uses: null, execution }),
+    }).claim({ claimId: 'claim-1', runner: 'runner-1', assignees: ['dev'] }),
+  ).toEqual({ task: { id: task.id, uses: null, context: null }, execution });
 });
 
 test('runners.claim answers a null task when none is ready', async () => {
@@ -83,6 +102,7 @@ test('runners.claim fails with INTERNAL_SERVER_ERROR when its answer breaks the 
     claim: async () => ({
       ok: true,
       task,
+      uses,
       execution: { ...execution, attempt: 0 },
     }),
   }).claim({ claimId: 'claim-1', runner: 'runner-1', assignees: ['dev'] });

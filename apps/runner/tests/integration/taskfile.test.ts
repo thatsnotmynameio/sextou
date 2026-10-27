@@ -20,6 +20,7 @@ import {
 } from 'vitest';
 import { createLogger } from '@sextou/logger';
 import { checkGoTask, runTaskfile, taskfileExecute } from '../../src/taskfile';
+import type { Execute } from '../../src/runner';
 import { answer, archive, plaintext, serve, sha } from '../archive';
 import { bin, goTask } from '../go-task';
 import { memory } from '@sextou/logger/testing';
@@ -336,12 +337,18 @@ goTask(
 );
 
 // Where the tasks taskfileExecute runs keep their Taskfile, in the
-// repository their source names.
+// repository their uses names.
 const path = 'tasks/test/Taskfile.yml';
 
-// Runs a task through taskfileExecute, whose repository a server for the test
-// serves with `listener`: by default, a tarball with a Taskfile at `path`
-// whose default task runs `cmds`, beside `files`, or the Taskfile `yaml`.
+/**
+ * Runs a task through taskfileExecute, whose repository a server for the test
+ * serves with `listener`: by default, a tarball with a Taskfile at `path`
+ * whose default task runs `cmds`, beside `files`, or the Taskfile `yaml`.
+ * @param cmds the commands the Taskfile's default task runs
+ * @param options.uses the task's uses: the test repository's Taskfile by
+ * default, or null for a task that names none
+ * @returns how the run ended, and the paths the server was asked for
+ */
 async function execute(
   cmds: string[],
   {
@@ -351,6 +358,7 @@ async function execute(
     yaml = plaintext(cmds),
     listener = answer(archive({ ...files, [path]: yaml })),
     context = null,
+    uses = { repo: 'thatsnotmynameio/sextou', sha, taskfile: path },
   }: {
     taskBin?: string;
     tarBin?: string;
@@ -358,6 +366,7 @@ async function execute(
     yaml?: string;
     listener?: RequestListener;
     context?: Record<string, unknown> | null;
+    uses?: Parameters<Execute>[0]['uses'];
   } = {},
 ) {
   const server = await serve(listener);
@@ -371,7 +380,7 @@ async function execute(
   })(
     {
       id: 'tsk_1',
-      source: { repo: 'thatsnotmynameio/sextou', sha, taskfile: path },
+      uses,
       context,
     },
     { signal: new AbortController().signal, logger: logger() },
@@ -390,10 +399,20 @@ function runFolder() {
   return folder;
 }
 
-test('taskfileExecute downloads the repository of the source at its commit', async () => {
+test('taskfileExecute downloads the repository its uses names at its commit', async () => {
   const { paths } = await execute(['true']);
 
   expect(paths).toEqual([`/thatsnotmynameio/sextou/archive/${sha}.tar.gz`]);
+});
+
+test('taskfileExecute fails a task whose uses is null, saying it names nothing to run, without downloading', async () => {
+  const { result, paths } = await execute(['true'], { uses: null });
+
+  expect(result).toEqual({
+    outcome: 'failed',
+    reason: 'the task names nothing to run: it has no uses',
+  });
+  expect(paths).toEqual([]);
 });
 
 goTask(

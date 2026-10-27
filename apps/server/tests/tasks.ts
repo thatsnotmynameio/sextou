@@ -31,7 +31,10 @@ export function testContext(fields: Partial<Context> = {}): Context {
   };
 }
 
-// An open task, with the fields a test overrides.
+/**
+ * An open task, with no uses or context.
+ * @param fields the fields a test overrides
+ */
 export function aTask(fields: Partial<Task> = {}): Task {
   return {
     id: 'tsk_1',
@@ -43,6 +46,7 @@ export function aTask(fields: Partial<Task> = {}): Task {
     description: null,
     source: null,
     context: null,
+    uses: null,
     status: Status.open,
     ...fields,
   };

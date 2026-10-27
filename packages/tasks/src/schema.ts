@@ -36,6 +36,10 @@ import { Status, statusList } from './status';
 // writes and reads it as JSON. Its check reads the type only once the text is
 // JSON: Turso evaluates both sides of an AND, and json_type fails on text that
 // is not JSON.
+//
+// uses names the Taskfile a runner runs for the task, as the caller gave it:
+// owner/name/path/to/Taskfile.yml@sha. No query filters by it, so it has no
+// index.
 export const tasks = sqliteTable(
   'tasks',
   {
@@ -48,6 +52,7 @@ export const tasks = sqliteTable(
     description: text('description'),
     sourcePath: text('source_path'),
     context: text('context', { mode: 'json' }).$type<Context>(),
+    uses: text('uses'),
     status: text('status').$type<Status>().notNull(),
     holdingBlockers: integer('holding_blockers').notNull().default(0),
   },

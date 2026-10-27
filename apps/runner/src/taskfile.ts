@@ -8,19 +8,24 @@ import { download } from './download';
 import type { Logger } from '@sextou/logger';
 import type { Execute, Result } from './runner';
 
-// Runs each task's Taskfile from the repository its source names: it
-// downloads the repository at the source's commit from GitHub into source/,
-// in a folder of its own under the system's temporary folder, runs the
-// Taskfile at the source's path there with runTaskfile, beside the files it
-// uses, and resolves with how the run ended. The Taskfile gets two
-// variables: CONTEXT, the task's context as JSON ({} when it has none), and
-// WORKSPACE, the path of workspace/, an empty folder beside source/ where
-// the run does its work, as a checkout of another repository. A download
-// that fails resolves failed, with download: and why, and runs nothing. The
-// folder is removed once the run ends, without waiting for it: a large
-// folder takes a while, and the run's result is already settled. A folder
-// that can't be removed, as one the run made read-only, is logged and left
-// behind.
+/**
+ * Runs each task's Taskfile from the repository its uses names: it downloads
+ * the repository at the uses' commit from GitHub into source/, in a folder of
+ * its own under the system's temporary folder, runs the Taskfile at the uses'
+ * path there with runTaskfile, beside the files it uses, and resolves with how
+ * the run ended. A task whose uses is null names nothing to run: it resolves
+ * failed, with why, and makes no folder.
+ *
+ * The Taskfile gets two variables: CONTEXT, the task's context as JSON ({}
+ * when it has none), and WORKSPACE, the path of workspace/, an empty folder
+ * beside source/ where the run does its work, as a checkout of another
+ * repository. A download that fails resolves failed, with download: and why,
+ * and runs nothing. The folder is removed once the run ends, without waiting
+ * for it: a large folder takes a while, and the run's result is already
+ * settled. A folder that can't be removed, as one the run made read-only, is
+ * logged and left behind.
+ * @returns the execute the runner's loop takes
+ */
 export function taskfileExecute({
   githubUrl,
   downloadTimeoutMs,
@@ -32,7 +37,13 @@ export function taskfileExecute({
   // tar's binary, which extracts the repository: `tar` on the PATH, or a path.
   tarBin: string;
 }): Execute {
-  return async ({ source, context }, { signal, logger }) => {
+  return async ({ uses, context }, { signal, logger }) => {
+    if (uses === null) {
+      return {
+        outcome: 'failed',
+        reason: 'the task names nothing to run: it has no uses',
+      };
+    }
     const dir = await mkdtemp(join(tmpdir(), 'sextou-execution-'));
     try {
       const repository = join(dir, 'source');
@@ -41,8 +52,8 @@ export function taskfileExecute({
       const failed = await download({
         bin: tarBin,
         githubUrl,
-        repo: source.repo,
-        sha: source.sha,
+        repo: uses.repo,
+        sha: uses.sha,
         dir: repository,
         timeoutMs: downloadTimeoutMs,
         signal,
@@ -52,7 +63,7 @@ export function taskfileExecute({
       }
       return await runTaskfile({
         ...options,
-        taskfile: join(repository, source.taskfile),
+        taskfile: join(repository, uses.taskfile),
         vars: { CONTEXT: contextVar(context), WORKSPACE: workspace },
         logger,
         signal,

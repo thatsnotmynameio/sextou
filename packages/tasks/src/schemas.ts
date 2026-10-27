@@ -57,6 +57,64 @@ const context = z
   .optional()
   .transform((value) => value ?? null);
 
+// Where the Taskfile a task runs lives: a public GitHub repository, at a
+// commit, so every attempt runs the same code, and the path to the Taskfile
+// inside it.
+const usesPartsSchema = z.object({
+  // owner/name, neither of them . or .., which the URL a runner downloads
+  // from would resolve to another path.
+  repo: z
+    .string()
+    .regex(/^[\w.-]+\/[\w.-]+$/)
+    .refine((repo) =>
+      repo.split('/').every((part) => part !== '.' && part !== '..'),
+    ),
+  sha: z.string().regex(/^[0-9a-f]{40}$/),
+  // A file inside the repository, by its relative path: segments separated
+  // by single slashes, none of them empty, . or .., so no leading or trailing
+  // slash either.
+  taskfile: z
+    .string()
+    .refine((path) =>
+      path
+        .split('/')
+        .every((part) => part !== '' && part !== '.' && part !== '..'),
+    ),
+});
+
+export type Uses = z.infer<typeof usesPartsSchema>;
+
+/**
+ * Splits a uses into its parts: at its last @, since a SHA holds none, then
+ * owner/name and the path. It splits with string search, in time linear in
+ * the text: a regex that splits at the last @ backtracks over every @ before
+ * it.
+ * @param uses owner/name/path/to/Taskfile.yml@sha
+ * @returns the repository, the commit and the Taskfile's path, or null when a
+ * part breaks its rules
+ */
+export function splitUses(uses: string): Uses | null {
+  const at = uses.lastIndexOf('@');
+  // Stryker disable next-line ConditionalExpression,BlockStatement,UnaryOperator: with no @, or one before the second /, owner/name or the path is incomplete and refused anyway
+  if (at === -1) {
+    return null;
+  }
+  const [owner, name, ...path] = uses.slice(0, at).split('/');
+  const parsed = usesPartsSchema.safeParse({
+    repo: [owner, name].join('/'),
+    sha: uses.slice(at + 1),
+    taskfile: path.join('/'),
+  });
+  return parsed.success ? parsed.data : null;
+}
+
+// A uses the caller may leave out, stored as given: null when it is absent.
+const uses = z
+  .string()
+  .refine((value) => splitUses(value) !== null)
+  .optional()
+  .transform((value) => value ?? null);
+
 export const createTaskSchema = z.object({
   title: label,
   kind: label,
@@ -67,6 +125,7 @@ export const createTaskSchema = z.object({
   description: optional,
   sourcePath: optional,
   context,
+  uses,
   createdBy: label,
 });
 
