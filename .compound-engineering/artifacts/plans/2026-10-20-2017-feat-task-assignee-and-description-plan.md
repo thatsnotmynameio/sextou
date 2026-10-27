@@ -52,7 +52,7 @@ beads, which the task graph replaced, keeps the same three things (`internal/typ
 
 - R1. Every new task has an assignee: a string naming who may take it, such as an actor, a role or any other name the caller uses.
 - R2. A new task may have a description: free text saying what the task asks for.
-- R3. A new task may have a source path: a URL or a file path where the task's longer text lives, such as a GitHub issue's URL or a local file. The library stores it as text and never reads what it points to.
+- R3. A new task may have a source path: a URL or a file path where the task's longer text lives, such as a GitHub issue's URL or a local file. The library stores it as text.
 - R4. Every task the library returns carries its assignee, its description and its source path. The description and the source path are null when the task was given none or a blank one.
 - R5. Creating a task is refused as invalid, with nothing written, when the assignee is missing, not a string, or blank.
 

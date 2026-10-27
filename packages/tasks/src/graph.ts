@@ -70,11 +70,9 @@ export interface Task {
   assignee: string;
   // What the task asks for.
   description: string | null;
-  // A URL or a file path where the task's longer text lives. Stored as given
-  // and never read.
+  // A URL or a file path where the task's longer text lives. Stored as given.
   sourcePath: string | null;
-  // A JSON object the caller stores with the task. Stored as given and never
-  // read.
+  // A JSON object the caller stores with the task. Stored as given.
   context: Context | null;
   status: Status;
 }
@@ -212,8 +210,8 @@ export interface Graph {
     status: FinalStatus;
     // Why it ended so, recorded with the change; blank is null.
     reason?: string;
-    // Where the run's result is, recorded on its attempt. Stored as given
-    // and never read; blank is null.
+    // Where the run's result is, recorded on its attempt. Stored as given;
+    // blank is null.
     resultPath?: string;
   }) => Promise<
     | { ok: true }
