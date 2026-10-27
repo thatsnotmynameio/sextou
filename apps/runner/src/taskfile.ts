@@ -119,6 +119,9 @@ async function readTasksFile(path: string, maxBytes: number): Promise<Result> {
       return tasksFileFailed('not a regular file');
     }
     const text = await buffer(
+      // end only bounds the memory a growing file takes, as the length check
+      // below refuses it either way, and the finally closes the handle.
+      // Stryker disable next-line ObjectLiteral,BooleanLiteral: memory only
       handle.createReadStream({ end: maxBytes, autoClose: false }),
     );
     if (text.length > maxBytes) {
