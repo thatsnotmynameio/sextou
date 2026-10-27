@@ -20,9 +20,9 @@
 # main's. A Dependabot pull request never saves, so it always starts from
 # main's result.
 #
-# On a pull request, the component suites and mutation run only for the
-# packages its changes reach: those it changes, and those that depend on
-# them. Mutation runs a dependent in full, since the incremental run sees no
+# On a pull request, the integration and component suites and mutation run
+# only for the packages its changes reach: those it changes, and those that
+# depend on them. Mutation runs a dependent in full, since the incremental run sees no
 # change outside its package. A change outside every package, anything in
 # .github/ included, runs every package, mutation in full, and one only to
 # files no suite reads runs none.
@@ -132,8 +132,8 @@ jobs:
       # instead of dropping checks. A level the chain doesn't name fails it
       # too, instead of never running.
       #
-      # The unit and integration levels list every package. On a pull
-      # request, the component level and mutation list what pnpm's filter
+      # The unit level lists every package. On a pull request, the
+      # integration and component levels and mutation list what pnpm's filter
       # selects from the files changed since the base (HEAD^1): the packages
       # that hold one, and the packages that depend on them, through their
       # workspace: dependencies (...[HEAD^1]); mutation runs those dependents
@@ -186,8 +186,7 @@ jobs:
                 as $reached
               | $levels[] as $level
               | [$packages[] | select(any(.levels[]; . == $level))
-                  | select(($level | IN("unit", "integration"))
-                      or (.name | IN($reached.run[])))
+                  | select($level == "unit" or (.name | IN($reached.run[])))
                   | {package, level: $level, dir}
                     + if $level == "mutation" then
                         {full: (.name | IN($reached.full[]))}

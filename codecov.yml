@@ -10,6 +10,13 @@ coverage:
       default:
         informational: true
 
+# A pull request runs some levels only for the packages its changes reach,
+# so a flag it uploads no report for keeps its last coverage, from the pull
+# request's commits before or from main, instead of showing none.
+flag_management:
+  default_rules:
+    carryforward: true
+
 # The pull request's comment shows the whole project's coverage and each
 # flag's, beside the lines the pull request changed.
 comment:
