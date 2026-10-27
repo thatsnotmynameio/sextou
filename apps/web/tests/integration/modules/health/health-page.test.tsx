@@ -2,8 +2,9 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type AddressInfo } from 'node:net';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { render, screen } from '@testing-library/react';
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router';
@@ -11,8 +12,12 @@ import { afterEach, beforeEach, expect, test } from 'vitest';
 import { createAppRouter } from '../../../../src/router';
 
 // The server runs as its own process, from its sources, with its own
-// tsx: the web app imports nothing from it but its router's type.
-const serverDir = join(import.meta.dirname, '../../../../../server');
+// tsx: the web app imports nothing from it but its router's type. Its folder
+// is found through the workspace's link, which Stryker's sandbox, a copy of
+// this package in another folder, reaches too.
+const serverDir = dirname(
+  dirname(createRequire(import.meta.url).resolve('@sextou/server/router')),
+);
 const { version } = JSON.parse(
   readFileSync(join(serverDir, 'package.json'), 'utf8'),
 );
