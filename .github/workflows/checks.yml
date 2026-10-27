@@ -1,8 +1,8 @@
 # This repository's checks, one after the other, so a check that fails stops
 # the ones after it from starting: lint, then the unit suites, then the
 # integration suites, then the component suites, then the mutation runs. The
-# pull request's title (pr-title.yml) stays out of the chain: it runs again whenever the title is edited, and in the chain that
-# would rerun every test. CodeQL (security.yml) and Scorecard (scorecard.yml)
+# pull request's title (pr-title.yml) stays out of the chain: it runs again
+# whenever the title is edited, and in the chain that would rerun every test. CodeQL (security.yml) and Scorecard (scorecard.yml)
 # stay out too: CodeQL is required, and a required check that a failed job
 # before it skips counts as passed; code scanning tells both apart by workflow
 # file and job, so moving them would leave their old alerts open on main.
@@ -18,11 +18,13 @@
 # incrementally on a pull request, from the newest result in the Actions
 # cache, which GitHub looks up in the pull request's scope first, then in
 # main's. A Dependabot pull request never saves, so it always starts from
-# main's result. A pull request runs only the packages its changes reach:
-# those it changes, and those that depend on them, in full, since the
-# incremental run sees no change outside its package. A change outside every
-# package runs every package in full, and one only to files no suite reads
-# runs none.
+# main's result.
+#
+# On a pull request, the component suites and mutation run only for the
+# packages its changes reach: those it changes, and those that depend on
+# them. Mutation runs a dependent in full, since the incremental run sees no
+# change outside its package. A change outside every package runs every
+# package, mutation in full, and one only to files no suite reads runs none.
 name: Checks
 
 on:
@@ -121,15 +123,17 @@ jobs:
       # instead of dropping checks. A level the chain doesn't name fails it
       # too, instead of never running.
       #
-      # Every level lists every package. Mutation, on a pull request, lists
-      # the packages that hold a changed file and the packages that depend on
-      # them, through the workspace: dependencies of their package.json; a
-      # dependent runs in full ("full"), since the incremental run compares
-      # only its own files. A changed file outside every package (the
-      # lockfile, the root tsconfig.json, stryker.parent.conf.json, anything
-      # in .github/) lists every package in full. Changed files no suite reads
-      # count for nothing: Markdown, .claude/, the linters' and Codecov's
-      # settings. On main and on a manual run, every package runs in full.
+      # The unit and integration levels list every package. On a pull
+      # request, the component level and mutation list the packages that
+      # hold a changed file and the packages that depend on them, through
+      # the workspace: dependencies of their package.json; mutation runs a
+      # dependent in full ("full"), since the incremental run compares only
+      # its own files. A changed file outside every package (the lockfile,
+      # the root tsconfig.json, stryker.parent.conf.json, anything in
+      # .github/) lists every package, mutation in full. Changed files no
+      # suite reads count for nothing: Markdown, .claude/, the linters' and
+      # Codecov's settings. On main and on a manual run, every package runs,
+      # mutation in full.
       - name: Matrix
         id: matrix
         shell: bash
@@ -179,13 +183,15 @@ jobs:
                 else
                   reached($owners | unique) | {run: ., full: dependents(.)}
                 end
-                as $mutation
+                as $reached
               | $levels[] as $level
               | [$packages[] | select(any(.levels[]; . == $level))
-                  | if $level != "mutation" then {package, level: $level, dir}
-                    elif .name | IN($mutation.run[]) then
-                      {package, level: $level, dir, full: (.name | IN($mutation.full[]))}
-                    else empty end]
+                  | select(($level | IN("unit", "integration"))
+                      or (.name | IN($reached.run[])))
+                  | {package, level: $level, dir}
+                    + if $level == "mutation" then
+                        {full: (.name | IN($reached.full[]))}
+                      else {} end]
               | "\($level)=\(tojson)"' \
             $manifests \
             | tee -a "$GITHUB_OUTPUT"
