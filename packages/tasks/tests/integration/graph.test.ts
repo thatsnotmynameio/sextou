@@ -1067,7 +1067,12 @@ test.each<FinalStatus>([Status.succeeded, Status.skipped])(
     await link(c, a);
     await link(c, b);
     await start(a);
-    expect(await finish(a, to)).toEqual({ ok: true });
+    expect(await finish(a, to)).toEqual({
+      ok: true,
+      status: to,
+      reason: null,
+      created: [],
+    });
     expect(await status(a)).toBe(to);
     expect(await ready()).toEqual(['B']);
     await moveTo(b, to);
@@ -1083,7 +1088,12 @@ test.each<FinalStatus>([Status.failed, Status.cancelled])(
     const b = await create('B');
     await link(b, a);
     await start(a);
-    expect(await finish(a, to)).toEqual({ ok: true });
+    expect(await finish(a, to)).toEqual({
+      ok: true,
+      status: to,
+      reason: null,
+      created: [],
+    });
     expect(await status(a)).toBe(to);
     expect(await status(b)).toBe(Status.open);
     expect(await counter(b)).toBe(1);
@@ -1191,6 +1201,9 @@ test('finishTask sent again, the same finish, succeeds and changes nothing', asy
   const recorded = await history(a);
   expect(await tasks.finishTask({ ...done, reason: ' done ' })).toEqual({
     ok: true,
+    status: Status.succeeded,
+    reason: 'done',
+    created: [],
   });
   expect(await history(a)).toEqual(recorded);
   expect(await counter(b)).toBe(0);
@@ -1256,7 +1269,7 @@ test(`finishTask refuses, as ${Reason.leaseLost}, the finish of an expired attem
   ).toEqual({ ok: false, reason: Reason.leaseLost });
 });
 
-test(`finishTask refuses the finish of an attempt the sweep ended as ${Reason.leaseLost}`, async () => {
+test(`finishTask refuses the finish of an attempt the sweep ended, even one that matches its end, as ${Reason.leaseLost}`, async () => {
   const now = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
   const a = await create('A');
   const executionId = await startedAttempt(a);
@@ -1269,7 +1282,7 @@ test(`finishTask refuses the finish of an attempt the sweep ended as ${Reason.le
       status: Status.failed,
       reason: 'lease expired',
     }),
-  ).toEqual({ ok: true });
+  ).toEqual({ ok: false, reason: Reason.leaseLost });
   expect(
     await tasks.finishTask({
       executionId,
@@ -1315,7 +1328,9 @@ test(`finishTask refuses the attempt that lost its lease after another started, 
     }),
   ).toEqual({ ok: false, reason: Reason.leaseLost });
   expect(await status(a)).toBe(Status.running);
-  expect(await finish(a, Status.succeeded)).toEqual({ ok: true });
+  expect(await finish(a, Status.succeeded)).toMatchObject({
+    status: Status.succeeded,
+  });
   expect(await status(a)).toBe(Status.succeeded);
 });
 
@@ -1373,8 +1388,688 @@ test('finishTask accepts any final state for a task someone asked to cancel', as
   const a = await create('A');
   await start(a);
   await tasks.cancelTask({ id: a, changedBy: 'planner' });
-  expect(await finish(a, Status.succeeded)).toEqual({ ok: true });
+  expect(await finish(a, Status.succeeded)).toMatchObject({
+    status: Status.succeeded,
+  });
   expect(await status(a)).toBe(Status.succeeded);
+});
+
+// A task of a run's file of tasks, titled by its key, with what every task
+// needs.
+function fileTask(key: string, fields: object = {}) {
+  return {
+    key,
+    title: key,
+    kind: 'review',
+    priority: 2,
+    assignee: 'dev',
+    ...fields,
+  };
+}
+
+// The text of a file of tasks holding these.
+function tasksFile(...file: object[]) {
+  return JSON.stringify({ tasks: file });
+}
+
+// The limits a finish with a file of tasks gets unless a test sets its own.
+const limits = { maxTasks: 50, maxDepth: 20 };
+
+// The finish a runner sends for a task's latest attempt that succeeded and
+// left this file of tasks.
+async function succeededWith(id: string, text: string) {
+  return {
+    executionId: await latest(id),
+    changedBy: 'bot-dev-1',
+    status: Status.succeeded,
+    tasks: text,
+    ...limits,
+  };
+}
+
+async function finishWith(id: string, text: string, own: object = {}) {
+  return tasks.finishTask({ ...(await succeededWith(id, text)), ...own });
+}
+
+// The ids a finish's answer gives the tasks it created, by their keys.
+function createdIds(result: Awaited<ReturnType<Tasks['finishTask']>>) {
+  if (!result.ok) {
+    throw new Error(`finish: ${result.reason}`);
+  }
+  return Object.fromEntries(result.created.map(({ key, id }) => [key, id]));
+}
+
+// The task's children, in the order they were created.
+function children(id: string) {
+  return connection().all(
+    'SELECT id, title, status FROM tasks WHERE parent_id = ? ORDER BY rowid',
+    id,
+  );
+}
+
+// The ids of the task's blockers, sorted.
+async function blockersOf(id: string) {
+  return (
+    await connection().all(
+      'SELECT blocker_id FROM task_links WHERE task_id = ? ORDER BY blocker_id',
+      id,
+    )
+  ).map((row) => String(row.blocker_id));
+}
+
+// The finish's answer for a file it refused, which fails the task.
+function refusedFile(reason: string) {
+  return { ok: true, status: Status.failed, reason, created: [] };
+}
+
+// Covers AE1.
+test('finishTask creates the tasks of its file as children of the finished task, and makes its dependent wait for the final one', async () => {
+  const review = await create('Review');
+  const merge = await create('Merge');
+  await link(merge, review);
+  await start(review);
+  const result = await finishWith(
+    review,
+    tasksFile(
+      fileTask('security'),
+      fileTask('perf'),
+      fileTask('style'),
+      fileTask('synthesize', { blockedBy: ['security', 'perf', 'style'] }),
+    ),
+  );
+  const ids = createdIds(result);
+  expect(result).toEqual({
+    ok: true,
+    status: Status.succeeded,
+    reason: null,
+    created: ['security', 'perf', 'style', 'synthesize'].map((key) => ({
+      key,
+      id: expect.stringMatching(/^tsk_[0-9a-f]{32}$/),
+    })),
+  });
+  expect(await children(review)).toEqual(
+    ['security', 'perf', 'style', 'synthesize'].map((key) => ({
+      id: ids[key],
+      title: key,
+      status: Status.open,
+    })),
+  );
+  expect(await status(review)).toBe(Status.succeeded);
+  expect(await blockersOf(merge)).toEqual([review, ids.synthesize].sort());
+  expect(await counter(merge)).toBe(1);
+  expect(await blockersOf(ids.synthesize)).toEqual(
+    [ids.security, ids.perf, ids.style].sort(),
+  );
+  expect(await counter(ids.synthesize)).toBe(3);
+  expect(await ready()).toEqual(['security', 'perf', 'style']);
+});
+
+test('finishTask records the creation of each task of its file as the one who finished', async () => {
+  vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+  const a = await create('A');
+  await start(a);
+  const ids = createdIds(
+    await finishWith(a, tasksFile(fileTask('lint'), fileTask('test'))),
+  );
+  for (const id of [ids.lint, ids.test]) {
+    expect(await history(id)).toEqual([
+      {
+        from_status: null,
+        to_status: Status.open,
+        changed_by: 'bot-dev-1',
+        reason: null,
+        time_changed: 1_700_000_000_000,
+      },
+    ]);
+  }
+});
+
+test('finishTask stores each task of its file with the fields the file gives it, trimmed as createTask trims them', async () => {
+  const a = await create('A');
+  await start(a);
+  const ids = createdIds(
+    await finishWith(
+      a,
+      tasksFile(
+        fileTask('lint', {
+          title: ' Lint ',
+          kind: ' check ',
+          priority: 0,
+          assignee: ' qa ',
+          description: ' Run the linter ',
+          source: ' docs/lint.md ',
+          context: { repo: 'org/app', depth: 1 },
+          uses,
+        }),
+        fileTask('test', { description: ' ', source: '' }),
+      ),
+    ),
+  );
+  expect(
+    await connection().all(
+      'SELECT id, title, kind, priority, parent_id, assignee, description, source_path, context, uses, status FROM tasks WHERE parent_id = ? ORDER BY rowid',
+      a,
+    ),
+  ).toEqual([
+    {
+      id: ids.lint,
+      title: 'Lint',
+      kind: 'check',
+      priority: 0,
+      parent_id: a,
+      assignee: 'qa',
+      description: 'Run the linter',
+      source_path: 'docs/lint.md',
+      context: '{"repo":"org/app","depth":1}',
+      uses,
+      status: Status.open,
+    },
+    {
+      id: ids.test,
+      title: 'test',
+      kind: 'review',
+      priority: 2,
+      parent_id: a,
+      assignee: 'dev',
+      description: null,
+      source_path: null,
+      context: null,
+      uses: null,
+      status: Status.open,
+    },
+  ]);
+});
+
+test('finishTask leaves a task of its file that waits for none ready, and holds one that waits for another', async () => {
+  const a = await create('A');
+  await start(a);
+  const ids = createdIds(
+    await finishWith(
+      a,
+      tasksFile(fileTask('build', { blockedBy: ['fetch'] }), fileTask('fetch')),
+    ),
+  );
+  expect(await counter(ids.fetch)).toBe(0);
+  expect(await counter(ids.build)).toBe(1);
+  expect(await ready()).toEqual(['fetch']);
+  await moveTo(ids.fetch, Status.succeeded);
+  expect(await ready()).toEqual(['build']);
+});
+
+test('finishTask makes each dependent wait for every task of a file whose tasks are all final, until each succeeded or was skipped', async () => {
+  const a = await create('A');
+  const b = await create('B');
+  const c = await create('C');
+  await link(b, a);
+  await link(c, a);
+  await start(a);
+  const ids = createdIds(
+    await finishWith(a, tasksFile(fileTask('one'), fileTask('two'))),
+  );
+  for (const dependent of [b, c]) {
+    expect(await blockersOf(dependent)).toEqual([a, ids.one, ids.two].sort());
+    expect(await counter(dependent)).toBe(2);
+  }
+  await moveTo(ids.one, Status.succeeded);
+  expect(await ready()).toEqual(['two']);
+  await moveTo(ids.two, Status.skipped);
+  expect(await ready()).toEqual(['B', 'C']);
+});
+
+test('finishTask keeps a dependent held by its other open blocker once the finished task hands it over', async () => {
+  const a = await create('A');
+  const other = await create('Other');
+  const b = await create('B');
+  await link(b, a);
+  await link(b, other);
+  await start(a);
+  const ids = createdIds(await finishWith(a, tasksFile(fileTask('lane'))));
+  expect(await counter(b)).toBe(2);
+  await moveTo(ids.lane, Status.succeeded);
+  expect(await counter(b)).toBe(1);
+  expect(await ready()).toEqual(['Other']);
+});
+
+test('finishTask gives a cancelled dependent no link to the tasks of its file', async () => {
+  const a = await create('A');
+  const b = await create('B');
+  await link(b, a);
+  await tasks.cancelTask({ id: b, changedBy: 'planner' });
+  await start(a);
+  await finishWith(a, tasksFile(fileTask('lane')));
+  expect(await blockersOf(b)).toEqual([a]);
+  expect(await counter(b)).toBe(0);
+});
+
+// Covers AE7.
+test('finishTask leaves the tasks of a file held by a lane that failed until someone unlinks them', async () => {
+  const review = await create('Review');
+  const merge = await create('Merge');
+  await link(merge, review);
+  await start(review);
+  const ids = createdIds(
+    await finishWith(
+      review,
+      tasksFile(
+        fileTask('security'),
+        fileTask('perf'),
+        fileTask('synthesize', { blockedBy: ['security', 'perf'] }),
+      ),
+    ),
+  );
+  await moveTo(ids.security, Status.failed);
+  await moveTo(ids.perf, Status.succeeded);
+  expect(await counter(ids.synthesize)).toBe(1);
+  expect(await ready()).toEqual([]);
+  await unlink(ids.synthesize, ids.security);
+  expect(await ready()).toEqual(['synthesize']);
+  await unlink(merge, ids.synthesize);
+  expect(await ready()).toEqual(['Merge', 'synthesize']);
+});
+
+// Covers AE7.
+test('finishTask leaves the dependent of a cancelled task of its file held by it', async () => {
+  const review = await create('Review');
+  const merge = await create('Merge');
+  await link(merge, review);
+  await start(review);
+  const ids = createdIds(
+    await finishWith(review, tasksFile(fileTask('synthesize'))),
+  );
+  await tasks.cancelTask({ id: ids.synthesize, changedBy: 'planner' });
+  expect(await counter(merge)).toBe(1);
+  expect(await ready()).toEqual([]);
+});
+
+// Covers AE2.
+test.each(['', ' \n ', '{"tasks": []}'])(
+  'finishTask with the file %j finishes as succeeded and creates nothing, freeing the tasks it blocks',
+  async (text) => {
+    const a = await create('A');
+    const b = await create('B');
+    await link(b, a);
+    await start(a);
+    expect(await finishWith(a, text, { reason: 'done' })).toEqual({
+      ok: true,
+      status: Status.succeeded,
+      reason: 'done',
+      created: [],
+    });
+    expect(await rows()).toBe(2);
+    expect(await ready()).toEqual(['B']);
+  },
+);
+
+test.each<FinalStatus>([Status.failed, Status.cancelled, Status.skipped])(
+  'finishTask as %s with a file of tasks records that state and creates nothing',
+  async (to) => {
+    const a = await create('A');
+    await start(a);
+    expect(
+      await finishWith(a, tasksFile(fileTask('lane')), {
+        status: to,
+        reason: 'stopped',
+      }),
+    ).toEqual({ ok: true, status: to, reason: 'stopped', created: [] });
+    expect(await status(a)).toBe(to);
+    expect(await rows()).toBe(1);
+  },
+);
+
+// Covers AE5.
+test('finishTask fails the task over a task of its file whose uses has no full commit SHA, creating nothing and keeping its dependents held', async () => {
+  const review = await create('Review');
+  const merge = await create('Merge');
+  await link(merge, review);
+  await start(review);
+  expect(
+    await finishWith(
+      review,
+      tasksFile(
+        fileTask('security'),
+        fileTask('perf'),
+        fileTask('style', { uses: 'org/app/Taskfile.yml@main' }),
+      ),
+      { reason: 'done' },
+    ),
+  ).toEqual(refusedFile('tasks file: task "style" has no valid uses'));
+  expect(await status(review)).toBe(Status.failed);
+  expect((await history(review)).at(-1)).toMatchObject({
+    to_status: Status.failed,
+    changed_by: 'bot-dev-1',
+    reason: 'tasks file: task "style" has no valid uses',
+  });
+  expect(await rows()).toBe(2);
+  expect(await counter(merge)).toBe(1);
+});
+
+test('finishTask fails the task over a file that is not JSON, with a reason that quotes none of it', async () => {
+  const a = await create('A');
+  await start(a);
+  expect(await finishWith(a, '{"tasks": [secret')).toEqual(
+    refusedFile('tasks file: not JSON'),
+  );
+  expect(await rows()).toBe(1);
+});
+
+// Covers AE11.
+test('finishTask fails the task over a field its file does not define, naming the field', async () => {
+  const a = await create('A');
+  await start(a);
+  expect(
+    await finishWith(
+      a,
+      tasksFile(fileTask('lint'), fileTask('test', { blocked_by: ['lint'] })),
+    ),
+  ).toEqual(
+    refusedFile('tasks file: task "test" has the unknown field "blocked_by"'),
+  );
+  expect(await rows()).toBe(1);
+});
+
+test.each([
+  [
+    'a key two tasks have',
+    tasksFile(fileTask('lint'), fileTask('test'), fileTask('lint')),
+    'task "lint" repeats the key of an earlier task',
+  ],
+  [
+    'a blocker no task in it has',
+    tasksFile(fileTask('test', { blockedBy: ['lint'] })),
+    'task "test" waits for a key no task in the file has',
+  ],
+  [
+    'a blocker named twice by one task',
+    tasksFile(
+      fileTask('lint'),
+      fileTask('test', { blockedBy: ['lint', 'lint'] }),
+    ),
+    'task "test" waits for the same key twice',
+  ],
+  [
+    'two tasks that wait for each other',
+    tasksFile(
+      fileTask('lint', { blockedBy: ['test'] }),
+      fileTask('test', { blockedBy: ['lint'] }),
+    ),
+    'task "lint" waits for itself through its links',
+  ],
+  [
+    'a task that waits for itself',
+    tasksFile(fileTask('lint'), fileTask('test', { blockedBy: ['test'] })),
+    'task "test" waits for itself through its links',
+  ],
+  [
+    'a cycle behind a task that waits for it',
+    tasksFile(
+      fileTask('merge', { blockedBy: ['test'] }),
+      fileTask('lint'),
+      fileTask('test', { blockedBy: ['build', 'lint'] }),
+      fileTask('build', { blockedBy: ['test'] }),
+    ),
+    'task "test" waits for itself through its links',
+  ],
+  ['a list for a file', '[]', 'not an object with a list of tasks'],
+  ['no list of tasks', '{}', 'not an object with a list of tasks'],
+  [
+    'a field the file does not define',
+    JSON.stringify({ tasks: [], version: 1 }),
+    'has the unknown field "version"',
+  ],
+  [
+    'a long unknown field',
+    JSON.stringify({ tasks: [fileTask('lint', { ['x'.repeat(65)]: 1 })] }),
+    'task "lint" has an unknown field',
+  ],
+  [
+    'an unknown field as long as a reason quotes',
+    JSON.stringify({ tasks: [fileTask('lint', { ['x'.repeat(64)]: 1 })] }),
+    `task "lint" has the unknown field "${'x'.repeat(64)}"`,
+  ],
+  [
+    'a task that is null',
+    JSON.stringify({ tasks: [fileTask('lint'), null] }),
+    'task 2 is not an object',
+  ],
+  [
+    'a task that is not an object',
+    JSON.stringify({ tasks: [fileTask('lint'), 'test'] }),
+    'task 2 is not an object',
+  ],
+  [
+    'a task without a title',
+    JSON.stringify({ tasks: [{ ...fileTask('lint'), title: undefined }] }),
+    'task "lint" has no valid title',
+  ],
+  [
+    'a task with a blank key',
+    tasksFile(fileTask('lint'), fileTask(' ')),
+    'task 2 has no valid key',
+  ],
+  [
+    'a task whose key is too long to quote',
+    tasksFile(fileTask('k'.repeat(65), { priority: 9 })),
+    'task 1 has no valid priority',
+  ],
+  [
+    'a task whose key is as long as a reason quotes',
+    tasksFile(fileTask('k'.repeat(64), { priority: 9 })),
+    `task "${'k'.repeat(64)}" has no valid priority`,
+  ],
+])(
+  'finishTask fails the task over a file with %s, creating nothing',
+  async (_name, text, why) => {
+    const a = await create('A');
+    await start(a);
+    expect(await finishWith(a, text)).toEqual(
+      refusedFile(`tasks file: ${why}`),
+    );
+    expect(await rows()).toBe(1);
+  },
+);
+
+// Covers AE6.
+test('finishTask fails the task over a file with more tasks than maxTasks, creating nothing', async () => {
+  const a = await create('A');
+  await start(a);
+  expect(
+    await finishWith(
+      a,
+      tasksFile(fileTask('one'), fileTask('two'), fileTask('three')),
+      { maxTasks: 2 },
+    ),
+  ).toEqual(refusedFile('tasks file: 3 tasks, more than the limit of 2'));
+  expect(await rows()).toBe(1);
+});
+
+test('finishTask creates a file of exactly maxTasks tasks', async () => {
+  const a = await create('A');
+  await start(a);
+  const result = await finishWith(
+    a,
+    tasksFile(fileTask('one'), fileTask('two')),
+    { maxTasks: 2 },
+  );
+  expect(result).toMatchObject({ status: Status.succeeded });
+  expect(await rows()).toBe(3);
+});
+
+// Covers AE6.
+test.each([
+  { parents: 0, maxDepth: 1, created: true },
+  { parents: 2, maxDepth: 3, created: true },
+  { parents: 2, maxDepth: 2, created: false },
+  { parents: 3, maxDepth: 2, created: false },
+])(
+  'finishTask with a file, for a task under $parents parents and a maxDepth of $maxDepth, creates its tasks: $created',
+  async ({ parents, maxDepth, created }) => {
+    let parent: string | undefined;
+    for (let level = 0; level < parents; level++) {
+      parent = await create(`P${level}`, 2, parent);
+    }
+    const a = await create('A', 2, parent);
+    await start(a);
+    const result = await finishWith(a, tasksFile(fileTask('lane')), {
+      maxDepth,
+    });
+    expect(result).toEqual(
+      created
+        ? expect.objectContaining({ status: Status.succeeded })
+        : refusedFile(
+            `tasks file: its tasks would sit deeper than the limit of ${maxDepth}`,
+          ),
+    );
+    expect(await children(a)).toHaveLength(created ? 1 : 0);
+  },
+);
+
+// Covers AE4.
+test('finishTask sent again with the same file answers the tasks it created, creating none', async () => {
+  const review = await create('Review');
+  const merge = await create('Merge');
+  await link(merge, review);
+  await start(review);
+  const done = await succeededWith(
+    review,
+    tasksFile(
+      fileTask('style'),
+      fileTask('security'),
+      fileTask('synthesize', { blockedBy: ['style', 'security'] }),
+    ),
+  );
+  const first = await tasks.finishTask(done);
+  expect(await tasks.finishTask(done)).toEqual(first);
+  expect(await rows()).toBe(5);
+  expect(await counter(merge)).toBe(1);
+  expect(await history(review)).toHaveLength(3);
+});
+
+// Covers AE8.
+test('finishTask sent again with a file it refused answers the same failure', async () => {
+  const a = await create('A');
+  await start(a);
+  const done = await succeededWith(
+    a,
+    tasksFile(fileTask('lint'), fileTask('lint')),
+  );
+  await tasks.finishTask(done);
+  expect(await tasks.finishTask(done)).toEqual(
+    refusedFile('tasks file: task "lint" repeats the key of an earlier task'),
+  );
+  expect(await status(a)).toBe(Status.failed);
+  expect(await history(a)).toHaveLength(3);
+});
+
+test.each([
+  { tasks: tasksFile(fileTask('other')) },
+  { tasks: '' },
+  { tasks: undefined },
+  { status: Status.failed },
+  { reason: 'other' },
+  { changedBy: 'bot-dev-2' },
+  { resultPath: 'out/2' },
+])(
+  `finishTask refuses a finish that differs from the one with a file that ended the attempt, %j, as ${Reason.leaseLost}`,
+  async (change) => {
+    const a = await create('A');
+    await start(a);
+    const done = await succeededWith(a, tasksFile(fileTask('lane')));
+    await tasks.finishTask(done);
+    expect(await tasks.finishTask({ ...done, ...change })).toEqual({
+      ok: false,
+      reason: Reason.leaseLost,
+    });
+    expect(await rows()).toBe(2);
+  },
+);
+
+// Covers AE9.
+test('finishTask with a file for a task someone asked to cancel cancels it as theirs and creates nothing', async () => {
+  const a = await create('A');
+  const b = await create('B');
+  await link(b, a);
+  await start(a);
+  await tasks.cancelTask({ id: a, changedBy: 'planner', reason: 'dropped' });
+  const done = await succeededWith(a, tasksFile(fileTask('lane')));
+  const answer = {
+    ok: true,
+    status: Status.cancelled,
+    reason: 'dropped',
+    created: [],
+  };
+  expect(await tasks.finishTask(done)).toEqual(answer);
+  expect(await status(a)).toBe(Status.cancelled);
+  expect((await history(a)).at(-1)).toMatchObject({
+    from_status: Status.running,
+    to_status: Status.cancelled,
+    changed_by: 'planner',
+    reason: 'dropped',
+  });
+  expect(await rows()).toBe(2);
+  expect(await counter(b)).toBe(1);
+  expect(await tasks.finishTask(done)).toEqual(answer);
+});
+
+test('finishTask with a file that is not JSON, for a task someone asked to cancel, cancels it', async () => {
+  const a = await create('A');
+  await start(a);
+  await tasks.cancelTask({ id: a, changedBy: 'planner' });
+  expect(await finishWith(a, 'not json')).toEqual({
+    ok: true,
+    status: Status.cancelled,
+    reason: null,
+    created: [],
+  });
+});
+
+test.each([undefined, '', '{"tasks": []}'])(
+  'finishTask with the file %j, for a task someone asked to cancel, finishes as sent',
+  async (text) => {
+    const a = await create('A');
+    await start(a);
+    await tasks.cancelTask({ id: a, changedBy: 'planner' });
+    expect(await finishWith(a, text as never, { reason: 'done' })).toEqual({
+      ok: true,
+      status: Status.succeeded,
+      reason: 'done',
+      created: [],
+    });
+    expect(await status(a)).toBe(Status.succeeded);
+  },
+);
+
+test('finishTask past the timeout rolls back every task and link of its file', async () => {
+  await tasks.close();
+  exec.mockClear();
+  // Each read of the clock is 1 ms after the last: a finish that records
+  // four creations and its end reads it past the timeout.
+  let clock = 0;
+  tasks = await openTasks(':memory:', {
+    logger: pino({ level: 'silent' }),
+    now: () => (clock += 1),
+    timeoutMs: 5,
+  });
+  const a = await create('A');
+  const b = await create('B');
+  await link(b, a);
+  await start(a);
+  expect(
+    await finishWith(
+      a,
+      tasksFile(
+        fileTask('one'),
+        fileTask('two'),
+        fileTask('three'),
+        fileTask('four', { blockedBy: ['one'] }),
+      ),
+    ),
+  ).toEqual({ ok: false, reason: Reason.timeout });
+  expect(await rows()).toBe(2);
+  expect(await links()).toEqual([{ task_id: b, blocker_id: a }]);
+  expect(await status(a)).toBe(Status.running);
+  expect(
+    await connection().get('SELECT count(*) AS n FROM task_execution_tasks'),
+  ).toEqual({ n: 0 });
 });
 
 test('cancelTask cancels an open task at once, out of the ready list, recording who and why', async () => {
