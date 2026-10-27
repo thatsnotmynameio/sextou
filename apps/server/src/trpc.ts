@@ -41,7 +41,11 @@ export interface Context {
 const refusalCodes = {
   invalid: 'BAD_REQUEST',
   not_found: 'NOT_FOUND',
+  // Wrong whatever the tasks hold, as an invalid input is.
+  same_task: 'BAD_REQUEST',
   not_open: 'CONFLICT',
+  // Depends on the links already there, as not_open on the task's state.
+  cycle: 'CONFLICT',
   lease_lost: 'CONFLICT',
   already_finished: 'CONFLICT',
   timeout: 'TIMEOUT',

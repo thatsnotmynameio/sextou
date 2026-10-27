@@ -178,6 +178,12 @@ test('after a failed start, each call rejects with the error start rejected with
   await expect(
     tasks.assign({ taskId: unknownId, assignee: alice, actor: dev }),
   ).rejects.toBe(error);
+  await expect(
+    tasks.link({ taskId: unknownId, blockerId: unknownId }),
+  ).rejects.toBe(error);
+  await expect(
+    tasks.unlink({ taskId: unknownId, blockerId: unknownId }),
+  ).rejects.toBe(error);
   await expect(tasks.expire(server)).rejects.toBe(error);
 });
 
@@ -698,6 +704,151 @@ test('assign refuses a running task as not_open and an unknown one as not_found'
     await tasks.assign({ taskId: unknownId, assignee: alice, actor: planner }),
   ).toEqual({ ok: false, refusal: Refusal.notFound });
 });
+
+// A blocker and the more urgent task it may block, both open for dev.
+async function blockerAndTask(tasks: TasksService) {
+  const blocker = await createOpen(tasks, { title: 'Blocker', priority: 2 });
+  const task = await createOpen(tasks, { title: 'Blocked', priority: 0 });
+  return { taskId: task.id, blockerId: blocker.id };
+}
+
+test('link holds a task until its blocker succeeds', async () => {
+  const tasks = await startedService();
+  const link = await blockerAndTask(tasks);
+
+  expect(await tasks.link(link)).toEqual({ ok: true });
+  const first = await tasks.claim({
+    claimId: newClaim(),
+    runner,
+    assignees: [dev],
+  });
+  expect(first).toMatchObject({ task: { id: link.blockerId } });
+  if (!first.ok || first.task === null) {
+    throw new Error('no task claimed');
+  }
+  await tasks.finish({
+    executionId: first.execution.id,
+    runner,
+    outcome: Outcome.succeeded,
+  });
+  expect(
+    await tasks.claim({ claimId: newClaim(), runner, assignees: [dev] }),
+  ).toMatchObject({ task: { id: link.taskId } });
+});
+
+test('unlink frees a task held by a failed blocker', async () => {
+  const tasks = await startedService();
+  const link = await blockerAndTask(tasks);
+  await tasks.link(link);
+  await tasks.finish({
+    executionId: await claimed(tasks),
+    runner,
+    outcome: Outcome.failed,
+  });
+  expect(
+    await tasks.claim({ claimId: newClaim(), runner, assignees: [dev] }),
+  ).toEqual({ ok: true, task: null });
+
+  expect(await tasks.unlink(link)).toEqual({ ok: true });
+  expect(
+    await tasks.claim({ claimId: newClaim(), runner, assignees: [dev] }),
+  ).toMatchObject({ task: { id: link.taskId } });
+});
+
+test('link sent again for a pair already linked succeeds and adds no second link', async () => {
+  const tasks = await startedService();
+  const link = await blockerAndTask(tasks);
+  await tasks.link(link);
+
+  expect(await tasks.link(link)).toEqual({ ok: true });
+  await tasks.unlink(link);
+  expect(
+    await tasks.claim({ claimId: newClaim(), runner, assignees: [dev] }),
+  ).toMatchObject({ task: { id: link.taskId } });
+});
+
+test('unlink of a pair not linked succeeds', async () => {
+  const tasks = await startedService();
+
+  expect(await tasks.unlink(await blockerAndTask(tasks))).toEqual({
+    ok: true,
+  });
+});
+
+test('link refuses a link that would close a cycle as cycle', async () => {
+  const tasks = await startedService();
+  const { taskId, blockerId } = await blockerAndTask(tasks);
+  await tasks.link({ taskId, blockerId });
+
+  expect(await tasks.link({ taskId: blockerId, blockerId: taskId })).toEqual({
+    ok: false,
+    refusal: Refusal.cycle,
+  });
+});
+
+test('link refuses a task as its own blocker as same_task', async () => {
+  const tasks = await startedService();
+  const task = await createOpen(tasks);
+
+  expect(await tasks.link({ taskId: task.id, blockerId: task.id })).toEqual({
+    ok: false,
+    refusal: Refusal.sameTask,
+  });
+});
+
+test.each(['link', 'unlink'] as const)(
+  '%s refuses a running task as not_open',
+  async (call) => {
+    const tasks = await startedService();
+    const task = await createOpen(tasks);
+    await claimed(tasks);
+    const blocker = await createOpen(tasks);
+
+    expect(
+      await tasks[call]({ taskId: task.id, blockerId: blocker.id }),
+    ).toEqual({ ok: false, refusal: Refusal.notOpen });
+  },
+);
+
+test.each(['link', 'unlink'] as const)(
+  '%s refuses an unknown task or blocker as not_found',
+  async (call) => {
+    const tasks = await startedService();
+    const task = await createOpen(tasks);
+
+    expect(
+      await tasks[call]({ taskId: unknownId, blockerId: task.id }),
+    ).toEqual({ ok: false, refusal: Refusal.notFound });
+    expect(
+      await tasks[call]({ taskId: task.id, blockerId: unknownId }),
+    ).toEqual({ ok: false, refusal: Refusal.notFound });
+  },
+);
+
+test.each(['link', 'unlink'] as const)(
+  '%s refuses an empty id as not_found',
+  async (call) => {
+    const tasks = await startedService();
+    const task = await createOpen(tasks);
+
+    expect(await tasks[call]({ taskId: task.id, blockerId: '' })).toEqual({
+      ok: false,
+      refusal: Refusal.notFound,
+    });
+  },
+);
+
+test.each(['link', 'unlink'] as const)(
+  '%s refuses an id that is not a string as invalid',
+  async (call) => {
+    const tasks = await startedService();
+    const task = await createOpen(tasks);
+
+    expect(
+      await tasks[call]({ taskId: task.id, blockerId: 7 as never }),
+    ).toEqual({ ok: false, refusal: Refusal.invalid });
+  },
+);
 
 test('expire fails a task whose lease ran out, with one attempt, as the actor given', async () => {
   const path = join(dir, 'tasks.db');

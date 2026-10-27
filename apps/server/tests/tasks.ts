@@ -14,6 +14,8 @@ export function fakeTasks(stubs: Partial<Tasks> = {}): Tasks {
     finish: unexpected('finish'),
     cancel: unexpected('cancel'),
     assign: unexpected('assign'),
+    link: unexpected('link'),
+    unlink: unexpected('unlink'),
     ...stubs,
   };
 }

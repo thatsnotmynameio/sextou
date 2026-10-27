@@ -166,6 +166,14 @@ export function createTasksService(
       });
       return result.ok ? { ok: true } : refused(result.reason);
     },
+    link: async ({ taskId, blockerId }) => {
+      const result = await (await opened()).link({ taskId, blockerId });
+      return result.ok ? { ok: true } : refused(result.reason);
+    },
+    unlink: async ({ taskId, blockerId }) => {
+      const result = await (await opened()).unlink({ taskId, blockerId });
+      return result.ok ? { ok: true } : refused(result.reason);
+    },
     expire: async (actor) => {
       const result = await (
         await opened()
