@@ -84,7 +84,8 @@ function messages() {
 beforeEach(() => {
   vi.useFakeTimers();
   output = memory();
-  // With nothing scripted, the server has no task and accepts every call.
+  // With nothing scripted, the server has no task and accepts every call,
+  // recording each completion as it was sent.
   client = {
     claim: vi.fn<RunnerClient['claim']>(() =>
       Promise.resolve(ok({ task: null })),
@@ -92,8 +93,8 @@ beforeEach(() => {
     heartbeat: vi.fn<RunnerClient['heartbeat']>(() =>
       Promise.resolve(ok({ cancel: false, leaseMs: 3000 })),
     ),
-    complete: vi.fn<RunnerClient['complete']>(() =>
-      Promise.resolve(ok({ outcome: 'succeeded', reason: null, created: [] })),
+    complete: vi.fn<RunnerClient['complete']>(({ outcome, reason }) =>
+      Promise.resolve(ok({ outcome, reason: reason ?? null, created: [] })),
     ),
   };
 });
@@ -843,7 +844,9 @@ test('startRunner sends the tasks text a succeeded run left with its completion'
   expect(output.lines.join('')).not.toContain('context-only');
 });
 
-test('startRunner sends a completion with tasks that got no answer again, as it was, and logs no tasks text', async () => {
+// A run that leaves tasks, whose first completion gets no answer, and the
+// pollMs after which the runner sends it again.
+async function resendTasks() {
   const { run, execute } = controlled();
   client.claim.mockResolvedValueOnce(task(60000));
   client.complete.mockResolvedValueOnce(noAnswer);
@@ -852,6 +855,10 @@ test('startRunner sends a completion with tasks that got no answer again, as it 
 
   run.end({ outcome: 'succeeded', tasks });
   await vi.advanceTimersByTimeAsync(pollMs);
+}
+
+test('startRunner sends a completion with tasks that got no answer again, as it was', async () => {
+  await resendTasks();
 
   expect(client.complete.mock.calls).toEqual([
     [{ runner: 'r1', executionId: 'exe_1', outcome: 'succeeded', tasks }],
@@ -863,6 +870,11 @@ test('startRunner sends a completion with tasks that got no answer again, as it 
     outcome: 'succeeded',
     failure: 'no_answer',
   });
+});
+
+test('startRunner logs no tasks text for a completion with tasks it sent again', async () => {
+  await resendTasks();
+
   expect(output.lines.join('')).not.toContain('context-only');
 });
 
@@ -933,7 +945,7 @@ test('startRunner logs each task the completion created, with its key and id', a
   ]);
 });
 
-test('startRunner logs why the server failed a succeeded run over its tasks file', async () => {
+test('startRunner logs the failure, with its reason, the server recorded for a succeeded run over its tasks file', async () => {
   const { run, execute } = controlled();
   client.claim.mockResolvedValueOnce(task(60000));
   client.complete.mockResolvedValueOnce(
@@ -949,31 +961,39 @@ test('startRunner logs why the server failed a succeeded run over its tasks file
   run.end({ outcome: 'succeeded', tasks });
   await vi.advanceTimersByTimeAsync(0);
 
-  expect(messages()).toEqual(['claimed', 'completed', 'tasks file refused']);
+  expect(messages()).toEqual(['claimed', 'completed']);
   expect(output.records().at(-1)).toEqual(
     expect.objectContaining({
-      level: 40,
+      level: 30,
       taskId: 'tsk_1',
       executionId: 'exe_1',
       attempt: 1,
+      outcome: 'failed',
       reason: 'tasks file: task lane: unknown field blocked_by',
     }),
   );
 });
 
-test('startRunner logs no refused tasks file for a failed run the server failed', async () => {
+test('startRunner logs the cancelled outcome the server recorded for a succeeded run', async () => {
   const { run, execute } = controlled();
   client.claim.mockResolvedValueOnce(task(60000));
   client.complete.mockResolvedValueOnce(
-    ok({ outcome: 'failed', reason: 'exit code 3', created: [] }),
+    ok({ outcome: 'cancelled', reason: null, created: [] }),
   );
   start(execute);
   await vi.advanceTimersByTimeAsync(0);
 
-  run.end({ outcome: 'failed', reason: 'exit code 3' });
+  run.end({ outcome: 'succeeded', tasks });
   await vi.advanceTimersByTimeAsync(0);
 
-  expect(messages()).toEqual(['claimed', 'completed']);
+  expect(output.records().at(-1)).toEqual(
+    expect.objectContaining({
+      msg: 'completed',
+      taskId: 'tsk_1',
+      outcome: 'cancelled',
+      reason: null,
+    }),
+  );
 });
 
 test('startRunner completes a cancelled run that left tasks as cancelled, without them', async () => {

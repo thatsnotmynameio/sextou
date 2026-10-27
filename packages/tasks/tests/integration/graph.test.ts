@@ -1462,8 +1462,9 @@ function refusedFile(reason: string) {
   return { ok: true, status: Status.failed, reason, created: [] };
 }
 
-// Covers AE1.
-test('finishTask creates the tasks of its file as children of the finished task, and makes its dependent wait for the final one', async () => {
+// Review, with Merge waiting for it, finished with a file of three lanes
+// and synthesize, which waits for the lanes.
+async function finishReview() {
   const review = await create('Review');
   const merge = await create('Merge');
   await link(merge, review);
@@ -1477,7 +1478,12 @@ test('finishTask creates the tasks of its file as children of the finished task,
       fileTask('synthesize', { blockedBy: ['security', 'perf', 'style'] }),
     ),
   );
-  const ids = createdIds(result);
+  return { review, merge, result, ids: createdIds(result) };
+}
+
+// Covers AE1.
+test('finishTask creates the tasks of its file as children of the finished task', async () => {
+  const { review, result, ids } = await finishReview();
   expect(result).toEqual({
     ok: true,
     status: Status.succeeded,
@@ -1495,13 +1501,42 @@ test('finishTask creates the tasks of its file as children of the finished task,
     })),
   );
   expect(await status(review)).toBe(Status.succeeded);
-  expect(await blockersOf(merge)).toEqual([review, ids.synthesize].sort());
-  expect(await counter(merge)).toBe(1);
   expect(await blockersOf(ids.synthesize)).toEqual(
     [ids.security, ids.perf, ids.style].sort(),
   );
   expect(await counter(ids.synthesize)).toBe(3);
   expect(await ready()).toEqual(['security', 'perf', 'style']);
+});
+
+// Covers AE1.
+test("finishTask makes the finished task's dependent wait for the final task of its file", async () => {
+  const { review, merge, ids } = await finishReview();
+  expect(await blockersOf(merge)).toEqual([review, ids.synthesize].sort());
+  expect(await counter(merge)).toBe(1);
+});
+
+test("finishTask keeps a dependent held through a second round the file's final task creates, until that round's last task succeeded", async () => {
+  const { merge, ids } = await finishReview();
+  for (const lane of [ids.security, ids.perf, ids.style]) {
+    await moveTo(lane, Status.succeeded);
+  }
+  await startedAttempt(ids.synthesize);
+  const second = createdIds(
+    await finishWith(
+      ids.synthesize,
+      tasksFile(
+        fileTask('recheck'),
+        fileTask('synthesize-2', { blockedBy: ['recheck'] }),
+      ),
+    ),
+  );
+  expect(await status(ids.synthesize)).toBe(Status.succeeded);
+  expect(await counter(merge)).toBe(1);
+  expect(await ready()).toEqual(['recheck']);
+  await moveTo(second.recheck, Status.succeeded);
+  expect(await ready()).toEqual(['synthesize-2']);
+  await moveTo(second['synthesize-2'], Status.succeeded);
+  expect(await ready()).toEqual(['Merge']);
 });
 
 test('finishTask records the creation of each task of its file as the one who finished', async () => {
@@ -1580,18 +1615,27 @@ test('finishTask stores each task of its file with the fields the file gives it,
   ]);
 });
 
-test('finishTask leaves a task of its file that waits for none ready, and holds one that waits for another', async () => {
+// A finished with a file whose build waits for fetch.
+async function finishFetchBuild() {
   const a = await create('A');
   await start(a);
-  const ids = createdIds(
+  return createdIds(
     await finishWith(
       a,
       tasksFile(fileTask('build', { blockedBy: ['fetch'] }), fileTask('fetch')),
     ),
   );
+}
+
+test('finishTask leaves a task of its file that waits for none ready', async () => {
+  const ids = await finishFetchBuild();
   expect(await counter(ids.fetch)).toBe(0);
-  expect(await counter(ids.build)).toBe(1);
   expect(await ready()).toEqual(['fetch']);
+});
+
+test('finishTask holds a task of its file that waits for another until that one succeeded', async () => {
+  const ids = await finishFetchBuild();
+  expect(await counter(ids.build)).toBe(1);
   await moveTo(ids.fetch, Status.succeeded);
   expect(await ready()).toEqual(['build']);
 });
@@ -1681,58 +1725,106 @@ test('finishTask leaves the dependent of a cancelled task of its file held by it
   expect(await ready()).toEqual([]);
 });
 
+// The files that hold no task.
+const emptyFiles = ['', ' \n ', '{"tasks": []}'];
+
+// A, with B waiting for it, finished with this file.
+async function finishEmpty(text: string) {
+  const a = await create('A');
+  const b = await create('B');
+  await link(b, a);
+  await start(a);
+  return finishWith(a, text, { reason: 'done' });
+}
+
 // Covers AE2.
-test.each(['', ' \n ', '{"tasks": []}'])(
-  'finishTask with the file %j finishes as succeeded and creates nothing, freeing the tasks it blocks',
+test.each(emptyFiles)(
+  'finishTask with the file %j finishes as succeeded, creating nothing',
   async (text) => {
-    const a = await create('A');
-    const b = await create('B');
-    await link(b, a);
-    await start(a);
-    expect(await finishWith(a, text, { reason: 'done' })).toEqual({
+    expect(await finishEmpty(text)).toEqual({
       ok: true,
       status: Status.succeeded,
       reason: 'done',
       created: [],
     });
     expect(await rows()).toBe(2);
+  },
+);
+
+// Covers AE2.
+test.each(emptyFiles)(
+  'finishTask with the file %j frees the tasks it blocks',
+  async (text) => {
+    await finishEmpty(text);
     expect(await ready()).toEqual(['B']);
   },
 );
 
-test.each<FinalStatus>([Status.failed, Status.cancelled, Status.skipped])(
-  'finishTask as %s with a file of tasks records that state and creates nothing',
+// The final states other than succeeded, which take no file of tasks.
+const unsucceeded: FinalStatus[] = [
+  Status.failed,
+  Status.cancelled,
+  Status.skipped,
+];
+
+// A, finished in this state with a file of one task, and the answer.
+async function finishUnsucceeded(to: FinalStatus) {
+  const a = await create('A');
+  await start(a);
+  const result = await finishWith(a, tasksFile(fileTask('lane')), {
+    status: to,
+    reason: 'stopped',
+  });
+  return { a, result };
+}
+
+test.each(unsucceeded)(
+  'finishTask as %s with a file of tasks records that state',
   async (to) => {
-    const a = await create('A');
-    await start(a);
-    expect(
-      await finishWith(a, tasksFile(fileTask('lane')), {
-        status: to,
-        reason: 'stopped',
-      }),
-    ).toEqual({ ok: true, status: to, reason: 'stopped', created: [] });
+    const { a, result } = await finishUnsucceeded(to);
+    expect(result).toEqual({
+      ok: true,
+      status: to,
+      reason: 'stopped',
+      created: [],
+    });
     expect(await status(a)).toBe(to);
+  },
+);
+
+test.each(unsucceeded)(
+  'finishTask as %s with a file of tasks creates nothing',
+  async (to) => {
+    await finishUnsucceeded(to);
     expect(await rows()).toBe(1);
   },
 );
 
-// Covers AE5.
-test('finishTask fails the task over a task of its file whose uses has no full commit SHA, creating nothing and keeping its dependents held', async () => {
+// Review, with Merge waiting for it, finished with a file whose style task
+// names a uses at a branch, and the answer.
+async function finishBadUses() {
   const review = await create('Review');
   const merge = await create('Merge');
   await link(merge, review);
   await start(review);
-  expect(
-    await finishWith(
-      review,
-      tasksFile(
-        fileTask('security'),
-        fileTask('perf'),
-        fileTask('style', { uses: 'org/app/Taskfile.yml@main' }),
-      ),
-      { reason: 'done' },
+  const result = await finishWith(
+    review,
+    tasksFile(
+      fileTask('security'),
+      fileTask('perf'),
+      fileTask('style', { uses: 'org/app/Taskfile.yml@main' }),
     ),
-  ).toEqual(refusedFile('tasks file: task "style" has no valid uses'));
+    { reason: 'done' },
+  );
+  return { review, merge, result };
+}
+
+// Covers AE5.
+test('finishTask fails the task over a task of its file whose uses has no full commit SHA, creating nothing', async () => {
+  const { review, result } = await finishBadUses();
+  expect(result).toEqual(
+    refusedFile('tasks file: task "style" has no valid uses'),
+  );
   expect(await status(review)).toBe(Status.failed);
   expect((await history(review)).at(-1)).toMatchObject({
     to_status: Status.failed,
@@ -1740,6 +1832,11 @@ test('finishTask fails the task over a task of its file whose uses has no full c
     reason: 'tasks file: task "style" has no valid uses',
   });
   expect(await rows()).toBe(2);
+});
+
+// Covers AE5.
+test('finishTask keeps the dependents of a task it failed over a uses with no full commit SHA held', async () => {
+  const { merge } = await finishBadUses();
   expect(await counter(merge)).toBe(1);
 });
 
@@ -1983,14 +2080,27 @@ test.each([
   },
 );
 
-// Covers AE9.
-test('finishTask with a file for a task someone asked to cancel cancels it as theirs and creates nothing', async () => {
+// A, with B waiting for it, which someone asked to cancel while it ran, and
+// the finish with a file of one task its runner sends.
+async function cancelledWithFile() {
   const a = await create('A');
   const b = await create('B');
   await link(b, a);
   await start(a);
   await tasks.cancelTask({ id: a, changedBy: 'planner', reason: 'dropped' });
-  const done = await succeededWith(a, tasksFile(fileTask('lane')));
+  return { a, b, done: await succeededWith(a, tasksFile(fileTask('lane'))) };
+}
+
+// Covers AE9.
+test('finishTask with a file for a task someone asked to cancel creates nothing', async () => {
+  const { done } = await cancelledWithFile();
+  await tasks.finishTask(done);
+  expect(await rows()).toBe(2);
+});
+
+// Covers AE9.
+test('finishTask with a file for a task someone asked to cancel cancels it as theirs', async () => {
+  const { a, b, done } = await cancelledWithFile();
   const answer = {
     ok: true,
     status: Status.cancelled,
@@ -2005,7 +2115,6 @@ test('finishTask with a file for a task someone asked to cancel cancels it as th
     changed_by: 'planner',
     reason: 'dropped',
   });
-  expect(await rows()).toBe(2);
   expect(await counter(b)).toBe(1);
   expect(await tasks.finishTask(done)).toEqual(answer);
 });

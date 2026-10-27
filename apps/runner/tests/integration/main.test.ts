@@ -301,31 +301,60 @@ goTask(
   },
 );
 
-goTask(
-  'main sends the tasks file its Taskfile wrote, and logs each task the server created from it',
-  async () => {
-    // Tasks for an assignee no runner serves, so the test claims them.
-    const assignee = assigned('created-by-run');
-    const tasks = [
-      { key: 'first', title: 'First', kind: 'task', priority: 2, assignee },
-      {
-        key: 'second',
-        title: 'Second',
-        kind: 'task',
-        priority: 1,
-        assignee,
-        blockedBy: ['first'],
-      },
-    ];
-    const task = await createTask('creates', {
-      folder: 'tasks/create-tasks',
-      context: { tasks },
-    });
-    await startRunner('creates');
+/**
+ * Runs main on a task whose Taskfile writes a tasks file of two tasks, second
+ * waiting for first, for an assignee no runner serves, so the test claims them.
+ * @param name the runner's assignee, and the created tasks' with a suffix
+ * @returns the task that ran and the created tasks' assignee
+ */
+async function runCreatingTasks(name: string) {
+  const assignee = assigned(`${name}-created`);
+  const tasks = [
+    { key: 'first', title: 'First', kind: 'task', priority: 2, assignee },
+    {
+      key: 'second',
+      title: 'Second',
+      kind: 'task',
+      priority: 1,
+      assignee,
+      blockedBy: ['first'],
+    },
+  ];
+  const task = await createTask(name, {
+    folder: 'tasks/create-tasks',
+    context: { tasks },
+  });
+  await startRunner(name);
+  return { task, assignee };
+}
 
-    expect(await logged('completed', { taskId: task.id })).toMatchObject({
-      outcome: 'succeeded',
-    });
+goTask('main sends the tasks file its Taskfile wrote', async () => {
+  const { task, assignee } = await runCreatingTasks('sends-tasks');
+
+  // The server recorded the run as it was sent: it took the file.
+  expect(await logged('completed', { taskId: task.id })).toMatchObject({
+    outcome: 'succeeded',
+    reason: null,
+  });
+  const first = await logged('task created', {
+    taskId: task.id,
+    key: 'first',
+  });
+  // second waits for first, so a claim gets first, whatever its priority.
+  expect(
+    await call('runners.claim', {
+      claimId: randomUUID(),
+      runner: 'other',
+      assignees: [assignee],
+    }),
+  ).toMatchObject({ task: { id: first.id } });
+});
+
+goTask(
+  'main logs each task the server created from the tasks file its Taskfile wrote',
+  async () => {
+    const { task } = await runCreatingTasks('logs-created');
+
     const first = await logged('task created', {
       taskId: task.id,
       key: 'first',
@@ -335,15 +364,6 @@ goTask(
       key: 'second',
     });
     expect(second.id).not.toBe(first.id);
-    expect(messages()).not.toContain('tasks file refused');
-    // second waits for first, so a claim gets first, whatever its priority.
-    expect(
-      await call('runners.claim', {
-        claimId: randomUUID(),
-        runner: 'other',
-        assignees: [assignee],
-      }),
-    ).toMatchObject({ task: { id: first.id } });
   },
 );
 

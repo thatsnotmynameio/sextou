@@ -615,8 +615,9 @@ const tasksFile = JSON.stringify({
   ],
 });
 
-test("finish with a tasks file creates its tasks as the task's children and answers their ids by key", async () => {
-  const path = join(dir, 'tasks.db');
+// Finishes a claimed task with the tasks file, on a tasks database at
+// `path`, and stops the service.
+async function finishWithFile(path: string) {
   const tasks = await startedService(path);
   const task = await createOpen(tasks);
   const executionId = await claimed(tasks);
@@ -628,6 +629,11 @@ test("finish with a tasks file creates its tasks as the task's children and answ
     tasks: tasksFile,
   });
   await tasks.stop();
+  return { task, result };
+}
+
+test('finish with a tasks file answers the ids of its tasks by key', async () => {
+  const { result } = await finishWithFile(join(dir, 'tasks.db'));
 
   expect(result).toEqual({
     ok: true,
@@ -638,6 +644,12 @@ test("finish with a tasks file creates its tasks as the task's children and answ
       { key: 'merge', id: expect.stringMatching(/^tsk_/) },
     ],
   });
+});
+
+test("finish with a tasks file creates its tasks as the task's children", async () => {
+  const path = join(dir, 'tasks.db');
+  const { task, result } = await finishWithFile(path);
+
   const [review, merge] = result.ok ? result.created : [];
   expect(
     await readRow(
@@ -655,8 +667,9 @@ test("finish with a tasks file creates its tasks as the task's children and answ
   ).toEqual({ title: 'Merge the change', parent_id: task.id });
 });
 
-test('finish with a tasks file sent again answers the same ids and creates nothing more', async () => {
-  const path = join(dir, 'tasks.db');
+// Finishes a claimed task with the tasks file twice, on a tasks database at
+// `path`, and stops the service.
+async function finishWithFileTwice(path: string) {
   const tasks = await startedService(path);
   await createOpen(tasks);
   const executionId = await claimed(tasks);
@@ -670,8 +683,19 @@ test('finish with a tasks file sent again answers the same ids and creates nothi
 
   const again = await tasks.finish(finish);
   await tasks.stop();
+  return { first, again };
+}
+
+test('finish with a tasks file sent again answers the same ids', async () => {
+  const { first, again } = await finishWithFileTwice(join(dir, 'tasks.db'));
 
   expect(again).toEqual(first);
+});
+
+test('finish with a tasks file sent again creates nothing more', async () => {
+  const path = join(dir, 'tasks.db');
+  await finishWithFileTwice(path);
+
   expect(await readRow(path, 'SELECT count(*) AS count FROM tasks')).toEqual({
     count: 3,
   });

@@ -186,28 +186,39 @@ const created = [
   { key: 'merge', id: 'tsk_3' },
 ];
 
-test("runners.complete passes the run's tasks file to the tasks and answers what they answered", async () => {
+// Completes an attempt that succeeded with a tasks file, against tasks that
+// created two tasks from it.
+async function completeWithTasks() {
   const finish = vi.fn(async () => ({
     ok: true as const,
     outcome: Outcome.succeeded,
     reason: null,
     created,
   }));
+  const answer = await caller({ finish }).complete({
+    runner: 'runner-1',
+    executionId: 'exe_1',
+    outcome: Outcome.succeeded,
+    tasks: '{"tasks":[]}',
+  });
+  return { finish, answer };
+}
 
-  expect(
-    await caller({ finish }).complete({
-      runner: 'runner-1',
-      executionId: 'exe_1',
-      outcome: Outcome.succeeded,
-      tasks: '{"tasks":[]}',
-    }),
-  ).toEqual({ outcome: Outcome.succeeded, reason: null, created });
+test("runners.complete passes the run's tasks file to the tasks", async () => {
+  const { finish } = await completeWithTasks();
+
   expect(finish).toHaveBeenCalledWith({
     executionId: 'exe_1',
     runner: { name: 'runner-1' },
     outcome: Outcome.succeeded,
     tasks: '{"tasks":[]}',
   });
+});
+
+test('runners.complete answers the tasks it created from the tasks file', async () => {
+  const { answer } = await completeWithTasks();
+
+  expect(answer).toEqual({ outcome: Outcome.succeeded, reason: null, created });
 });
 
 test('runners.complete answers the outcome the tasks recorded, failed with its reason, for a file they refused', async () => {
@@ -230,7 +241,8 @@ test('runners.complete answers the outcome the tasks recorded, failed with its r
   ).toEqual({ outcome: Outcome.failed, reason, created: [] });
 });
 
-test('runners.complete logs one record per created task, with its key, its id and the attempt that created it', async () => {
+// The records a completion that created two tasks logs.
+async function createdRecords() {
   const output = memory();
   const logger = createLogger(
     { level: 'info', pretty: false },
@@ -255,18 +267,24 @@ test('runners.complete logs one record per created task, with its key, its id an
     outcome: Outcome.succeeded,
     tasks: '{"tasks":[]}',
   });
+  return output.records();
+}
 
-  expect(output.records()).toEqual([
+test('runners.complete logs one record per created task', async () => {
+  expect(await createdRecords()).toEqual([
+    expect.objectContaining({ level: 30, msg: 'task created' }),
+    expect.objectContaining({ level: 30, msg: 'task created' }),
+  ]);
+});
+
+test('runners.complete logs each created task with its key, its id, the attempt that created it', async () => {
+  expect(await createdRecords()).toEqual([
     expect.objectContaining({
-      level: 30,
-      msg: 'task created',
       key: 'review',
       taskId: 'tsk_2',
       executionId: 'exe_1',
     }),
     expect.objectContaining({
-      level: 30,
-      msg: 'task created',
       key: 'merge',
       taskId: 'tsk_3',
       executionId: 'exe_1',
