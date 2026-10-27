@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -154,12 +154,13 @@ async function startRunner(assignee: string) {
 }
 
 // Each task names a Taskfile in sextou's repository on GitHub. The runner
-// downloads it from a server on localhost instead, whose tarball has, in
-// tasks/hello-world, a Taskfile that writes a line, then the context it got,
-// and runs for half a second, long enough for a heartbeat, and in
-// tasks/long-run one that runs for 2 seconds, for a cancel to stop. Stryker
-// runs each test again for every mutant it covers, so each second a run lasts
-// costs minutes.
+// downloads it from a server on localhost instead, whose tarball has three:
+// tasks/hello-world writes a line, then the context it got; tasks/released
+// writes the line, then runs until the file its context's `release` names
+// exists, for at most 5 seconds, so a test holds the run until it saw what
+// happens while it runs; and tasks/long-run runs for 2 seconds, for a cancel
+// to stop. Stryker runs each test again for every mutant it covers, so each
+// second a run lasts costs minutes.
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'sextou-runner-'));
   github = await serve(
@@ -168,7 +169,10 @@ beforeAll(async () => {
         'tasks/hello-world/Taskfile.yml': plaintext([
           'echo "sextou task"',
           'echo {{.CONTEXT | q}}',
-          'sleep 0.5',
+        ]),
+        'tasks/released/Taskfile.yml': plaintext([
+          'echo "sextou task"',
+          'for i in $(seq 100); do [ -e {{(fromJson .CONTEXT).release | q}} ] && exit 0; sleep 0.05; done; exit 1',
         ]),
         'tasks/long-run/Taskfile.yml': plaintext(['sleep 2']),
       }),
@@ -220,7 +224,11 @@ goTask(
 goTask(
   'main completes a claimed task as succeeded once its Taskfile ran',
   async () => {
-    const task = await createTask('succeeds');
+    const release = join(dir, assigned('release'));
+    const task = await createTask('succeeds', {
+      context: { release },
+      folder: 'tasks/released',
+    });
     await startRunner('succeeds');
 
     expect(await logged('claimed')).toMatchObject({
@@ -235,11 +243,12 @@ goTask(
     expect(github.paths.at(-1)).toMatch(
       /^\/thatsnotmynameio\/sextou\/archive\/[0-9a-f]{40}\.tar\.gz$/,
     );
+    expect(await logged('heartbeat')).toMatchObject({ taskId: task.id });
+    writeFileSync(release, '');
     expect(await logged('completed')).toMatchObject({
       taskId: task.id,
       outcome: 'succeeded',
     });
-    expect(messages()).toContain('heartbeat');
     expect(
       await call('runners.claim', {
         claimId: assigned('after'),

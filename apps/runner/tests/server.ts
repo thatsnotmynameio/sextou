@@ -21,12 +21,17 @@ const serverDir = dirname(
   dirname(createRequire(import.meta.url).resolve('@sextou/server/router')),
 );
 
+// How long the server has to log that it listens, as the beforeAll that
+// started it had: Vitest gives a global setup no timeout of its own.
+const startTimeoutMs = 30_000;
+
 /**
  * The integration suite's global setup: starts the server on a port the
  * system picks, with a short lease, once per Vitest instance, and hands its
  * URL to the tests as `serverUrl`. Stryker keeps one instance per worker and
  * runs a test file again for each mutant, so the server starts once per
- * worker instead of once per mutant.
+ * worker instead of once per mutant. A server that exits or doesn't listen
+ * within startTimeoutMs is stopped, its folder removed, and the setup fails.
  * @param project the project the tests inject the URL from
  * @returns the teardown, which stops the server and removes its data folder
  */
@@ -44,12 +49,7 @@ export default async function setup(project: TestProject) {
     },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
-  const url = await listening(server.stdout);
-  // Closing readline paused stdout: reading on keeps a server that outlives
-  // many runs from blocking on a full pipe.
-  server.stdout.resume();
-  project.provide('serverUrl', url);
-  return async () => {
+  const stop = async () => {
     if (server.exitCode === null && server.signalCode === null) {
       const exited = once(server, 'exit');
       server.kill('SIGTERM');
@@ -57,6 +57,34 @@ export default async function setup(project: TestProject) {
     }
     rmSync(dir, { recursive: true, force: true });
   };
+  let url: string;
+  try {
+    url = await withDeadline(listening(server.stdout), startTimeoutMs);
+  } catch (error) {
+    await stop();
+    throw error;
+  }
+  // Closing readline paused stdout: reading on keeps a server that outlives
+  // many runs from blocking on a full pipe.
+  server.stdout.resume();
+  project.provide('serverUrl', url);
+  return stop;
+}
+
+// Resolves as `promise` does, or rejects once `ms` pass first.
+async function withDeadline<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`The server didn't listen within ${ms} ms`)),
+      ms,
+    );
+  });
+  try {
+    return await Promise.race([promise, deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // Resolves with the URL of the record the server logs once listening.
