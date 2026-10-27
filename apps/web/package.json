@@ -28,8 +28,8 @@
   },
   "devDependencies": {
     "@sextou/server": "workspace:*",
-    "@stryker-mutator/core": "10.0.0",
-    "@stryker-mutator/vitest-runner": "10.0.0",
+    "@stryker-mutator/core": "10.1.1",
+    "@stryker-mutator/vitest-runner": "10.1.1",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/router-plugin": "^1.168.47",
     "@testing-library/jest-dom": "^7.0.1",
