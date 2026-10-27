@@ -99,7 +99,11 @@ export interface ExpiredAttempt {
 export const Refusal = {
   invalid: 'invalid',
   notFound: 'not_found',
+  // A task named as its own blocker.
+  sameTask: 'same_task',
   notOpen: 'not_open',
+  // A link that would make a task wait, through its blockers, for itself.
+  cycle: 'cycle',
   leaseLost: 'lease_lost',
   alreadyFinished: 'already_finished',
   // The tasks database took longer than the server's timeout, and wrote
@@ -183,6 +187,37 @@ export interface Tasks {
         | typeof Refusal.invalid
         | typeof Refusal.notFound
         | typeof Refusal.alreadyFinished
+        | typeof Refusal.timeout
+      >
+  >;
+  // Makes an open task wait for its blocker: the task is ready only once each
+  // of its blockers succeeded or was skipped. A pair already linked succeeds
+  // and changes nothing, whatever the task's state.
+  link: (link: {
+    taskId: string;
+    blockerId: string;
+  }) => Promise<
+    | { ok: true }
+    | Refused<
+        | typeof Refusal.invalid
+        | typeof Refusal.notFound
+        | typeof Refusal.sameTask
+        | typeof Refusal.notOpen
+        | typeof Refusal.cycle
+        | typeof Refusal.timeout
+      >
+  >;
+  // Stops an open task waiting for its blocker. A pair not linked succeeds
+  // and changes nothing.
+  unlink: (link: {
+    taskId: string;
+    blockerId: string;
+  }) => Promise<
+    | { ok: true }
+    | Refused<
+        | typeof Refusal.invalid
+        | typeof Refusal.notFound
+        | typeof Refusal.notOpen
         | typeof Refusal.timeout
       >
   >;

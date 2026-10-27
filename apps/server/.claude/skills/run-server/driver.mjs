@@ -297,6 +297,87 @@ async function smoke() {
     { executionId },
     (s, b) => s === 409 && b.error.message === 'lease_lost',
   );
+  // A task that waits for a blocker: created where no runner looks, linked,
+  // then handed to the assignee a runner serves.
+  const linked = `${assignee}-links`;
+  const held = `${assignee}-held`;
+  const blocker = await step(
+    'create a blocker',
+    'tasks.create',
+    { ...newTask, title: 'Blocker', assignee: linked },
+    (s) => s === 200,
+  );
+  const waiting = await step(
+    'create a task where no runner looks',
+    'tasks.create',
+    { ...newTask, title: 'Waits', priority: 0, assignee: held },
+    (s) => s === 200,
+  );
+  const link = { taskId: waiting.id, blockerId: blocker.id };
+  await step(
+    'link',
+    'tasks.link',
+    link,
+    (s, b) => s === 200 && b.result.data === null,
+  );
+  await step('link resent', 'tasks.link', link, (s) => s === 200);
+  await step(
+    'link that closes a cycle',
+    'tasks.link',
+    { taskId: blocker.id, blockerId: waiting.id },
+    (s, b) => s === 409 && b.error.message === 'cycle',
+  );
+  await step(
+    'assign the waiting task',
+    'tasks.assign',
+    { taskId: waiting.id, assignee: linked, actor: 'smoke' },
+    (s) => s === 200,
+  );
+  const linkedClaim = {
+    claimId: `l1-${run}`,
+    runner: 'smoke-runner',
+    assignees: [linked],
+  };
+  const first = await step(
+    'claim skips the waiting task',
+    'runners.claim',
+    linkedClaim,
+    (s, b) => s === 200 && b.result.data.task?.id === blocker.id,
+  );
+  await step(
+    'blocker fails',
+    'runners.complete',
+    {
+      runner: 'smoke-runner',
+      executionId: first.execution.id,
+      outcome: 'failed',
+      reason: 'smoke',
+    },
+    (s) => s === 200,
+  );
+  await step(
+    'claim, held by the failed blocker',
+    'runners.claim',
+    { ...linkedClaim, claimId: `l2-${run}` },
+    (s, b) => s === 200 && b.result.data.task === null,
+  );
+  await step('unlink', 'tasks.unlink', link, (s) => s === 200);
+  const freed = await step(
+    'claim the freed task',
+    'runners.claim',
+    { ...linkedClaim, claimId: `l3-${run}` },
+    (s, b) => s === 200 && b.result.data.task?.id === waiting.id,
+  );
+  await step(
+    'complete the freed task',
+    'runners.complete',
+    {
+      runner: 'smoke-runner',
+      executionId: freed.execution.id,
+      outcome: 'succeeded',
+    },
+    (s) => s === 200,
+  );
   out(steps.join('\n'));
 }
 
