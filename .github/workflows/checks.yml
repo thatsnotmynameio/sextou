@@ -1,7 +1,7 @@
 # This repository's checks, one after the other, so a check that fails stops
 # the ones after it from starting: lint, then the unit suites, then the
-# integration suites, then the component suites, then the mutation runs. The pull request's title (pr-title.yml) stays out of the
-# chain: it runs again whenever the title is edited, and in the chain that
+# integration suites, then the component suites, then the mutation runs. The
+# pull request's title (pr-title.yml) stays out of the chain: it runs again whenever the title is edited, and in the chain that
 # would rerun every test. CodeQL (security.yml) and Scorecard (scorecard.yml)
 # stay out too: CodeQL is required, and a required check that a failed job
 # before it skips counts as passed; code scanning tells both apart by workflow
@@ -18,7 +18,11 @@
 # incrementally on a pull request, from the newest result in the Actions
 # cache, which GitHub looks up in the pull request's scope first, then in
 # main's. A Dependabot pull request never saves, so it always starts from
-# main's result.
+# main's result. A pull request runs only the packages its changes reach:
+# those it changes, and those that depend on them, in full, since the
+# incremental run sees no change outside its package. A change outside every
+# package runs every package in full, and one only to files no suite reads
+# runs none.
 name: Checks
 
 on:
@@ -104,35 +108,85 @@ jobs:
       component: ${{ steps.matrix.outputs.component }}
       mutation: ${{ steps.matrix.outputs.mutation }}
     steps:
+      # A pull request's run checks out the merge commit, whose first parent
+      # is the base: the diff between them is what the pull request changes.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The shell expands pnpm-workspace.yaml's globs, read with yq; $dir,
-      # $package, $levels and $runs are jq's variables, not the shell's.
-      # shell: bash adds pipefail, and failglob fails on a glob that matches
-      # nothing, so a package.json jq can't read fails the step instead of
-      # dropping checks. A level the chain doesn't name fails it too, instead
-      # of never running.
+          fetch-depth: 2
+      # The shell expands pnpm-workspace.yaml's globs, read with yq; the
+      # names that start with $ inside jq's program are jq's, not the
+      # shell's. shell: bash adds pipefail, and failglob fails on a glob that
+      # matches nothing, so a package.json jq can't read fails the step
+      # instead of dropping checks. A level the chain doesn't name fails it
+      # too, instead of never running.
+      #
+      # Every level lists every package. Mutation, on a pull request, lists
+      # the packages that hold a changed file and the packages that depend on
+      # them, through the workspace: dependencies of their package.json; a
+      # dependent runs in full ("full"), since the incremental run compares
+      # only its own files. A changed file outside every package (the
+      # lockfile, the root tsconfig.json, stryker.parent.conf.json, anything
+      # in .github/) lists every package in full. Changed files no suite reads
+      # count for nothing: Markdown, .claude/, the linters' and Codecov's
+      # settings. On main and on a manual run, every package runs in full.
       - name: Matrix
         id: matrix
         shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
         run: |
           shopt -s failglob
           manifests=$(yq '.packages[] + "/package.json"' pnpm-workspace.yaml)
+          changed=null
+          if [ "$EVENT" = pull_request ]; then
+            changed=$(git diff --no-renames --name-only HEAD^1 HEAD | jq -Rn '[inputs]')
+          fi
           # shellcheck disable=SC2016,SC2086
-          jq -nr '
+          jq -nr --argjson changed "$changed" '
               ["unit", "integration", "component", "mutation"] as $levels
-              | [inputs | (input_filename | rtrimstr("/package.json")) as $dir
-                | (.name | sub("^@[^/]+/"; "")) as $package
-                | .scripts // {} | keys[] | capture("^test:(?<level>.+)$").level
-                | {package: $package, level: ., dir: $dir}]
-              | (map(.level) - $levels | unique) as $unknown
+              | [ "\\.md$", "(^|/)\\.claude/", "(^|/)\\.gitignore$",
+                  "^\\.compound-engineering/", "^compound-packs/", "^\\.husky/",
+                  "^\\.oxlintrc[^/]*\\.json$", "^\\.oxfmtrc\\.json$",
+                  "^codecov\\.yml$", "^\\.sonarcloud\\.properties$", "^LICENSE$" ]
+                | join("|") as $unread
+              | [inputs | {
+                  dir: (input_filename | rtrimstr("/package.json")),
+                  name,
+                  package: (.name | sub("^@[^/]+/"; "")),
+                  deps: [(.dependencies, .devDependencies) // {} | to_entries[]
+                    | select(.value | startswith("workspace:")) | .key],
+                  levels: [.scripts // {} | keys[]
+                    | capture("^test:(?<level>.+)$").level]
+                }] as $packages
+              | ([$packages[].levels[]] - $levels | unique) as $unknown
               | if $unknown != [] then
                   error("checks.yml chains no level \($unknown | join(", "))")
                 else . end
-              | . as $runs
-              | $levels[]
-              | "\(.)=\(. as $level | $runs | map(select(.level == $level)) | tojson)"' \
+              | def dependents($names):
+                  [$packages[] | select(any(.deps[]; IN($names[]))) | .name];
+                def reached($names):
+                  ($names + dependents($names) | unique) as $more
+                  | if $more == $names then $names else reached($more) end;
+                # The package of each changed file a suite reads, null for a
+                # file outside every package.
+                [$changed // [] | .[] | select(test($unread) | not) as $file
+                  | [$packages[] | select(.dir + "/" as $dir | $file | startswith($dir))
+                    | .name][0]]
+                as $owners
+              | if $changed == null or any($owners[]; . == null) then
+                  [$packages[].name] | {run: ., full: .}
+                else
+                  reached($owners | unique) | {run: ., full: dependents(.)}
+                end
+                as $mutation
+              | $levels[] as $level
+              | [$packages[] | select(any(.levels[]; . == $level))
+                  | if $level != "mutation" then {package, level: $level, dir}
+                    elif .name | IN($mutation.run[]) then
+                      {package, level: $level, dir, full: (.name | IN($mutation.full[]))}
+                    else empty end]
+              | "\($level)=\(tojson)"' \
             $manifests \
             | tee -a "$GITHUB_OUTPUT"
 
@@ -292,19 +346,19 @@ jobs:
           tar -xzf "$archive" -C "$RUNNER_TEMP/go-task" task
           echo "$RUNNER_TEMP/go-task" >> "$GITHUB_PATH"
       - name: Restore the last result
-        if: ${{ github.event_name == 'pull_request' }}
+        if: ${{ !matrix.full }}
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ matrix.dir }}/reports/stryker-incremental.json
           key: stryker-incremental-${{ matrix.package }}/${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: stryker-incremental-${{ matrix.package }}/
-      # On main every mutant runs (--force) and the result is written for the
-      # pull requests after it; a pull request runs only what changed since
-      # the result it restored.
+      # On main, and for a package the packages job lists in full, every
+      # mutant runs (--force) and the result is written for the pull requests
+      # after it; otherwise only what changed since the result it restored.
       - name: Stryker
         env:
           DIR: ${{ matrix.dir }}
-          FULL: ${{ github.event_name != 'pull_request' }}
+          FULL: ${{ matrix.full }}
         run: |
           if [ "$FULL" = true ]; then
             pnpm --dir "$DIR" run test:mutation --incremental --force
