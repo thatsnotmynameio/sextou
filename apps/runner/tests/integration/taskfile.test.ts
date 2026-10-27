@@ -340,9 +340,15 @@ goTask(
 // repository their uses names.
 const path = 'tasks/test/Taskfile.yml';
 
-// Runs a task through taskfileExecute, whose repository a server for the test
-// serves with `listener`: by default, a tarball with a Taskfile at `path`
-// whose default task runs `cmds`, beside `files`, or the Taskfile `yaml`.
+/**
+ * Runs a task through taskfileExecute, whose repository a server for the test
+ * serves with `listener`: by default, a tarball with a Taskfile at `path`
+ * whose default task runs `cmds`, beside `files`, or the Taskfile `yaml`.
+ * @param cmds the commands the Taskfile's default task runs
+ * @param options.uses the task's uses: the test repository's Taskfile by
+ * default, or null for a task that names none
+ * @returns how the run ended, and the paths the server was asked for
+ */
 async function execute(
   cmds: string[],
   {

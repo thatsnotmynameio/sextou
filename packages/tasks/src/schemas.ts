@@ -84,10 +84,15 @@ const usesPartsSchema = z.object({
 
 export type Uses = z.infer<typeof usesPartsSchema>;
 
-// Splits a uses, owner/name/path/to/Taskfile.yml@sha, into its parts: at its
-// last @, since a SHA holds none, then owner/name and the path. null when a
-// part breaks its rules. It splits with string search, in time linear in the
-// text: a regex that splits at the last @ backtracks over every @ before it.
+/**
+ * Splits a uses into its parts: at its last @, since a SHA holds none, then
+ * owner/name and the path. It splits with string search, in time linear in
+ * the text: a regex that splits at the last @ backtracks over every @ before
+ * it.
+ * @param uses owner/name/path/to/Taskfile.yml@sha
+ * @returns the repository, the commit and the Taskfile's path, or null when a
+ * part breaks its rules
+ */
 export function splitUses(uses: string): Uses | null {
   const at = uses.lastIndexOf('@');
   // Stryker disable next-line ConditionalExpression,BlockStatement,UnaryOperator: with no @, or one before the second /, owner/name or the path is incomplete and refused anyway

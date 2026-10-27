@@ -87,12 +87,14 @@ async function query(sql) {
   }
 }
 
-// A task's whole life on an in-memory graph with a fake clock: a context and
-// a uses stored and handed out with the claim, a context and a uses refused,
-// a task with no uses claimed with a null one, links, ready list,
-// claim and its resend, renew, the lease expiring into a second
-// attempt, a stale finish refused, cancel requested and seen, finish and its
-// resend, and the blocked task freed. Exits 1 at the first step that differs.
+/**
+ * A task's whole life on an in-memory graph with a fake clock: a context and
+ * a uses stored and handed out with the claim, a context and a uses refused,
+ * a task with no uses claimed with a null one, links, ready list, claim and
+ * its resend, renew, the lease expiring into a second attempt, a stale finish
+ * refused, cancel requested and seen, finish and its resend, and the blocked
+ * task freed. Exits 1 at the first step that differs.
+ */
 async function smoke() {
   let now = 1_700_000_000_000;
   const tasks = await openTasks(':memory:', { logger, now: () => now });

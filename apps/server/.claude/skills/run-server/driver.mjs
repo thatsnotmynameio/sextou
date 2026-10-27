@@ -176,10 +176,11 @@ async function request(procedure, input) {
   return { status: response.status, body: await response.json() };
 }
 
-// One runner's whole flow: create with a context and a uses, claim it back
-// with the context and the uses split, heartbeat, cancel, complete, and the
-// conflict a lost lease gets.
-// Exits 1 at the first step that differs.
+/**
+ * One runner's whole flow: create with a context and a uses, claim it back
+ * with the context and the uses split, heartbeat, cancel, complete, and the
+ * conflict a lost lease gets. Exits 1 at the first step that differs.
+ */
 async function smoke() {
   const run = Date.now().toString(36);
   const steps = [];

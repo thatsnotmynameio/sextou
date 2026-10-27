@@ -65,7 +65,11 @@ test('usesSchema names why it refuses a repository named ..', () => {
   ]);
 });
 
-// A claim's answer for a task, with the context and the uses a test sets.
+/**
+ * A claim's answer that hands the runner task tsk_1 and its first attempt.
+ * @param context the task's context
+ * @param taskUses the task's uses: split, null, or a value the schema refuses
+ */
 function held(context: unknown, taskUses: unknown) {
   return {
     task: { id: 'tsk_1', uses: taskUses, context },

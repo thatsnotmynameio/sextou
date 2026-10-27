@@ -8,20 +8,24 @@ import { download } from './download';
 import type { Logger } from '@sextou/logger';
 import type { Execute, Result } from './runner';
 
-// Runs each task's Taskfile from the repository its uses names: it
-// downloads the repository at the uses' commit from GitHub into source/, in
-// a folder of its own under the system's temporary folder, runs the Taskfile
-// at the uses' path there with runTaskfile, beside the files it uses, and
-// resolves with how the run ended. A task whose uses is null names nothing
-// to run: it resolves failed, with why, and makes no folder. The Taskfile
-// gets two variables: CONTEXT, the task's context as JSON ({} when it has none), and
-// WORKSPACE, the path of workspace/, an empty folder beside source/ where
-// the run does its work, as a checkout of another repository. A download
-// that fails resolves failed, with download: and why, and runs nothing. The
-// folder is removed once the run ends, without waiting for it: a large
-// folder takes a while, and the run's result is already settled. A folder
-// that can't be removed, as one the run made read-only, is logged and left
-// behind.
+/**
+ * Runs each task's Taskfile from the repository its uses names: it downloads
+ * the repository at the uses' commit from GitHub into source/, in a folder of
+ * its own under the system's temporary folder, runs the Taskfile at the uses'
+ * path there with runTaskfile, beside the files it uses, and resolves with how
+ * the run ended. A task whose uses is null names nothing to run: it resolves
+ * failed, with why, and makes no folder.
+ *
+ * The Taskfile gets two variables: CONTEXT, the task's context as JSON ({}
+ * when it has none), and WORKSPACE, the path of workspace/, an empty folder
+ * beside source/ where the run does its work, as a checkout of another
+ * repository. A download that fails resolves failed, with download: and why,
+ * and runs nothing. The folder is removed once the run ends, without waiting
+ * for it: a large folder takes a while, and the run's result is already
+ * settled. A folder that can't be removed, as one the run made read-only, is
+ * logged and left behind.
+ * @returns the execute the runner's loop takes
+ */
 export function taskfileExecute({
   githubUrl,
   downloadTimeoutMs,

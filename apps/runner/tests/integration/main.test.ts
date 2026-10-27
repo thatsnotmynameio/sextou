@@ -140,6 +140,13 @@ async function call(procedure: string, input: unknown): Promise<unknown> {
 // tarball on localhost holds.
 const uses = `thatsnotmynameio/sextou/tasks/hello-world/Taskfile.yml@${sha}`;
 
+/**
+ * Creates a task on the server for the runner to claim.
+ * @param assignee who may take it: the runner a test starts serves it
+ * @param options.context the task's context
+ * @param options.withUses whether the task names the tarball's Taskfile
+ * @returns the created task's id
+ */
 async function createTask(
   assignee: string,
   {

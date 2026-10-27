@@ -289,10 +289,12 @@ function serverCommand(args, serverState, env = {}) {
   });
 }
 
-// The runner's whole flow against a server of its own, with a short lease:
-// no server, a task completed as succeeded, a task cancelled while its Taskfile runs, and
-// the stop. Touches neither skill's usual state file. Exits 1 at the first
-// step that differs.
+/**
+ * The runner's whole flow against a server of its own, with a short lease: no
+ * server, a task naming hello-world's uses completed as succeeded, a task
+ * cancelled while its Taskfile runs, and the stop. Touches neither skill's
+ * usual state file. Exits 1 at the first step that differs.
+ */
 async function smoke() {
   const steps = [];
   const pids = [];

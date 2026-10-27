@@ -253,6 +253,10 @@ test('listReadySchema accepts a limit past the safe integers', () => {
   });
 });
 
+/**
+ * Parses a new task whose only optional field is its uses.
+ * @param uses the uses, of any type
+ */
 function parseUses(uses: unknown) {
   return createTaskSchema.safeParse({
     title: 'A',

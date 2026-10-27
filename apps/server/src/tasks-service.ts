@@ -52,8 +52,11 @@ export interface TasksServiceOptions {
   timeoutMs: number;
 }
 
-// The service over the tasks database at an absolute path, or in memory for
-// ':memory:'. Nothing opens until start.
+/**
+ * The service over the tasks database. Nothing opens until start.
+ * @param path the tasks database's absolute path, or ':memory:'
+ * @returns the Tasks port, with start, stop and expire
+ */
 export function createTasksService(
   path: string,
   {
@@ -178,6 +181,12 @@ function refused<R extends Refusal>(refusal: R): Refused<R> {
   return { ok: false, refusal };
 }
 
+/**
+ * A task as the server answers it.
+ * @param task the task as @sextou/tasks stores it
+ * @returns the task with the server's names: the assignee as an actor and the
+ * source path as source
+ */
 function toTask(task: StoredTask): Task {
   return {
     id: task.id,

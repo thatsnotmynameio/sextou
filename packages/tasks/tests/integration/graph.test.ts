@@ -360,6 +360,11 @@ test('claimTask hands out the task with its context', async () => {
 const uses =
   'thatsnotmynameio/sextou/packages/workflows/hello-world/Taskfile.yml@87dfc7f4f839d6e334ab1a1cdf6494c62499d9ff';
 
+/**
+ * Creates a task that names a uses.
+ * @param title the task's title
+ * @param value the uses, of any type: hello-world's by default
+ */
 function createWithUses(title: string, value: unknown = uses) {
   return tasks.createTask({
     title,
