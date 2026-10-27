@@ -33,9 +33,9 @@ import { Status, statusList } from './status';
 // does: the ready list writes the same condition, ready.
 //
 // context is a JSON object the caller stores with the task, as text: drizzle
-// writes and reads it as JSON, and the graph never reads it. Its check reads
-// the type only once the text is JSON: Turso evaluates both sides of an AND,
-// and json_type fails on text that is not JSON.
+// writes and reads it as JSON. Its check reads the type only once the text is
+// JSON: Turso evaluates both sides of an AND, and json_type fails on text that
+// is not JSON.
 export const tasks = sqliteTable(
   'tasks',
   {

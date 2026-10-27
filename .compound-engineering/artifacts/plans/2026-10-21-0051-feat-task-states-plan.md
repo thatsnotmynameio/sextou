@@ -75,7 +75,7 @@ Today a task is `open` or `closed`, and closed is final. The graph cannot tell a
 
 - R14. Starting a task records its execution: who runs it and, optionally, the path of its log. Finishing may add, optionally, the path of its result. A task has at most one execution.
 - R15. The execution's start and end are the times of its moves into and out of `running`. They are not stored a second time.
-- R16. Every name (who runs a task, who makes a change) is a free string that the library trims and never checks. The one who finishes a task need not be the one who started it. Paths are stored as given and never read.
+- R16. Every name (who runs a task, who makes a change) is a free string that the library trims and never checks. The one who finishes a task need not be the one who started it. Paths are stored as given.
 
 **Scope of the library**
 

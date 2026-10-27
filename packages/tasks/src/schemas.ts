@@ -48,9 +48,8 @@ function deeperThan(value: unknown, limit: number) {
   return false;
 }
 
-// A JSON object the caller may leave out, stored as given and never read:
-// null when it is absent. One nested deeper than Turso stores is refused
-// before zod walks it.
+// A JSON object the caller may leave out, stored as given: null when it is
+// absent. One nested deeper than Turso stores is refused before zod walks it.
 const context = z
   .unknown()
   .refine((value) => !deeperThan(value, maxContextDepth))
