@@ -50,7 +50,7 @@ export default defineConfig({
 });
 ```
 
-The path is relative to the config's root, the package's folder, so this is `packages/tasks/node_modules/.vitest-cache`; `node_modules/` is ignored at any depth. See `packages/tasks/vitest.config.ts:35` and the other configs beside it. The root `vitest.config.ts` needs nothing: it is one process, and its projects carry their own paths.
+The path is relative to the config's root, the package's folder, so this is `packages/tasks/node_modules/.vitest-cache`; `node_modules/` is ignored at any depth. See `packages/tasks/vitest.config.ts:43` and the other configs beside it. The root `vitest.config.ts` needs nothing: it is one process, and its projects carry their own paths.
 
 To reproduce, or to check a new config, stale every cache's lockfile hash and run the whole level at once, a few times:
 
