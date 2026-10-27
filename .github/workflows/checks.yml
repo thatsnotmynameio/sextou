@@ -1,6 +1,6 @@
 # This repository's checks, one after the other, so a check that fails stops
-# the ones after it from starting: lint, then each package's test levels, then
-# its mutation run. The pull request's title (pr-title.yml) stays out of the
+# the ones after it from starting: lint, then the unit suites, then the
+# integration suites, then the component suites, then the mutation runs. The pull request's title (pr-title.yml) stays out of the
 # chain: it runs again whenever the title is edited, and in the chain that
 # would rerun every test. CodeQL (security.yml) and Scorecard (scorecard.yml)
 # stay out too: CodeQL is required, and a required check that a failed job
@@ -99,16 +99,20 @@ jobs:
     permissions:
       contents: read
     outputs:
-      levels: ${{ steps.matrix.outputs.levels }}
+      unit: ${{ steps.matrix.outputs.unit }}
+      integration: ${{ steps.matrix.outputs.integration }}
+      component: ${{ steps.matrix.outputs.component }}
       mutation: ${{ steps.matrix.outputs.mutation }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The shell expands pnpm-workspace.yaml's globs, read with yq; $dir and
-      # $package are jq's variables, not the shell's. shell: bash adds
-      # pipefail, and failglob fails on a glob that matches nothing, so a
-      # package.json jq can't read fails the step instead of dropping checks.
+      # The shell expands pnpm-workspace.yaml's globs, read with yq; $dir,
+      # $package, $levels and $runs are jq's variables, not the shell's.
+      # shell: bash adds pipefail, and failglob fails on a glob that matches
+      # nothing, so a package.json jq can't read fails the step instead of
+      # dropping checks. A level the chain doesn't name fails it too, instead
+      # of never running.
       - name: Matrix
         id: matrix
         shell: bash
@@ -117,20 +121,31 @@ jobs:
           manifests=$(yq '.packages[] + "/package.json"' pnpm-workspace.yaml)
           # shellcheck disable=SC2016,SC2086
           jq -nr '
-              [inputs | (input_filename | rtrimstr("/package.json")) as $dir
+              ["unit", "integration", "component", "mutation"] as $levels
+              | [inputs | (input_filename | rtrimstr("/package.json")) as $dir
                 | (.name | sub("^@[^/]+/"; "")) as $package
                 | .scripts // {} | keys[] | capture("^test:(?<level>.+)$").level
                 | {package: $package, level: ., dir: $dir}]
-              | "levels=\(map(select(.level != "mutation")) | tojson)",
-                "mutation=\(map(select(.level == "mutation") | del(.level)) | tojson)"' \
+              | (map(.level) - $levels | unique) as $unknown
+              | if $unknown != [] then
+                  error("checks.yml chains no level \($unknown | join(", "))")
+                else . end
+              | . as $runs
+              | $levels[]
+              | "\(.)=\(. as $level | $runs | map(select(.level == $level)) | tojson)"' \
             $manifests \
             | tee -a "$GITHUB_OUTPUT"
 
-  level:
+  # The levels, one after the other: every package's unit suite, then every
+  # integration suite, then every component suite. A job after the first runs
+  # on !failure() && !cancelled(): a level no package has is skipped, and
+  # would otherwise skip every job after it; failure() reads every job
+  # before, not only the ones it needs. The three share their steps.
+  unit:
     name: ${{ matrix.package }} / ${{ matrix.level }}
     needs: [packages, gates]
-    # An empty matrix is an error, so no level skips the job.
-    if: ${{ needs.packages.outputs.levels != '[]' }}
+    # An empty matrix is an error, so no package skips the job.
+    if: ${{ needs.packages.outputs.unit != '[]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -139,8 +154,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.packages.outputs.levels) }}
-    steps:
+        include: ${{ fromJSON(needs.packages.outputs.unit) }}
+    steps: &level-steps
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -199,11 +214,42 @@ jobs:
           flags: ${{ matrix.package }}-${{ matrix.level }}
           name: ${{ matrix.package }} / ${{ matrix.level }}
 
+  integration:
+    name: ${{ matrix.package }} / ${{ matrix.level }}
+    needs: [packages, unit]
+    if: ${{ !failure() && !cancelled() && needs.packages.outputs.integration != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # the Codecov upload's OIDC, instead of a token
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.packages.outputs.integration) }}
+    steps: *level-steps
+
+  component:
+    name: ${{ matrix.package }} / ${{ matrix.level }}
+    needs: [packages, integration]
+    if: ${{ !failure() && !cancelled() && needs.packages.outputs.component != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # the Codecov upload's OIDC, instead of a token
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.packages.outputs.component) }}
+    steps: *level-steps
+
   mutation:
     name: ${{ matrix.package }} / mutation
-    # Every level, of every package: a matrix job waits for the whole matrix.
-    needs: [packages, level]
-    if: ${{ needs.packages.outputs.mutation != '[]' }}
+    # After the last level, of every package: a matrix job waits for the
+    # whole matrix.
+    needs: [packages, component]
+    if: ${{ !failure() && !cancelled() && needs.packages.outputs.mutation != '[]' }}
     runs-on: ubuntu-latest
     # A run with no cached result mutates every file of the package.
     timeout-minutes: 60
