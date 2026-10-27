@@ -95,8 +95,9 @@ apps/runner/
   tests/
     go-task.ts                 bin and goTask, which skips a test when the host has no go-task
     archive.ts                 a repository's tarball as GitHub serves it, and an HTTP server on localhost that serves it
+    server.ts                  the integration suite's global setup: the server as a child process, once per Vitest instance
     unit/                      config, client over a stubbed fetch, runner over a fake client and execute
-    integration/               main.test.ts, against the server started as a child process; taskfile.test.ts, with go-task; download.test.ts, with tar
+    integration/               main.test.ts, against the server tests/server.ts starts; taskfile.test.ts, with go-task; download.test.ts, with tar
 apps/web/
   .env.example                 every variable the web app reads, with its default
   vite.config.ts               loads the variables, the router plugin, the CSP
