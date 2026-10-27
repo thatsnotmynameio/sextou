@@ -5,6 +5,7 @@ import {
   cancelInputSchema,
   cancelOutputSchema,
   createInputSchema,
+  linkInputSchema,
   taskSchema,
 } from './tasks.schema';
 
@@ -51,6 +52,30 @@ export const tasksRouter = router({
           actor: { name: input.actor },
         }),
       );
+      return null;
+    }),
+
+  // Makes an open task wait for its blocker: no runner claims it until the
+  // blocker succeeded or was skipped. A task is ready once created, so to
+  // create one that waits, create it under an assignee no runner serves,
+  // link it, then assign it to its real assignee. The same link sent again
+  // succeeds.
+  link: procedure
+    .input(linkInputSchema)
+    .output(z.null())
+    .mutation(async ({ ctx, input }) => {
+      accepted(await ctx.tasks.link(input));
+      return null;
+    }),
+
+  // Stops an open task waiting for its blocker, as for one that failed or was
+  // cancelled, which holds the task until the link is removed. A pair not
+  // linked succeeds.
+  unlink: procedure
+    .input(linkInputSchema)
+    .output(z.null())
+    .mutation(async ({ ctx, input }) => {
+      accepted(await ctx.tasks.unlink(input));
       return null;
     }),
 });

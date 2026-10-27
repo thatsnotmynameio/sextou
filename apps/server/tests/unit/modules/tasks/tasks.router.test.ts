@@ -196,3 +196,65 @@ test.each([
     code: 'BAD_REQUEST',
   });
 });
+
+test.each(['link', 'unlink'] as const)(
+  'tasks.%s passes the task and the blocker given and answers null',
+  async (procedure) => {
+    const call = vi.fn(async () => ({ ok: true as const }));
+
+    expect(
+      await caller({ [procedure]: call })[procedure]({
+        taskId: 'tsk_1',
+        blockerId: 'tsk_2',
+      }),
+    ).toBeNull();
+    expect(call).toHaveBeenCalledWith({ taskId: 'tsk_1', blockerId: 'tsk_2' });
+  },
+);
+
+test.each([
+  [Refusal.invalid, 'BAD_REQUEST'],
+  [Refusal.notFound, 'NOT_FOUND'],
+  [Refusal.sameTask, 'BAD_REQUEST'],
+  [Refusal.notOpen, 'CONFLICT'],
+  [Refusal.cycle, 'CONFLICT'],
+  [Refusal.timeout, 'TIMEOUT'],
+] as const)(
+  'tasks.link turns the refusal %s into %s',
+  async (refusal, code) => {
+    await expect(
+      caller({ link: async () => ({ ok: false, refusal }) }).link({
+        taskId: 'tsk_1',
+        blockerId: 'tsk_2',
+      }),
+    ).rejects.toMatchObject({ code, message: refusal });
+  },
+);
+
+test.each([
+  [Refusal.invalid, 'BAD_REQUEST'],
+  [Refusal.notFound, 'NOT_FOUND'],
+  [Refusal.notOpen, 'CONFLICT'],
+  [Refusal.timeout, 'TIMEOUT'],
+] as const)(
+  'tasks.unlink turns the refusal %s into %s',
+  async (refusal, code) => {
+    await expect(
+      caller({ unlink: async () => ({ ok: false, refusal }) }).unlink({
+        taskId: 'tsk_1',
+        blockerId: 'tsk_2',
+      }),
+    ).rejects.toMatchObject({ code, message: refusal });
+  },
+);
+
+test.each([
+  ['link', { taskId: '', blockerId: 'tsk_2' }],
+  ['link', { taskId: 'tsk_1', blockerId: '' }],
+  ['unlink', { taskId: '', blockerId: 'tsk_2' }],
+  ['unlink', { taskId: 'tsk_1', blockerId: '' }],
+] as const)('tasks.%s refuses %j as BAD_REQUEST', async (procedure, input) => {
+  await expect(caller({})[procedure](input)).rejects.toMatchObject({
+    code: 'BAD_REQUEST',
+  });
+});

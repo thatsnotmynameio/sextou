@@ -63,6 +63,12 @@ export const cancelOutputSchema = z.object({
   status: z.enum([Status.cancelled, Status.running]),
 });
 
+// The task that waits, and the blocker it waits for.
+export const linkInputSchema = z.object({
+  taskId: idSchema,
+  blockerId: idSchema,
+});
+
 export const assignInputSchema = z.object({
   taskId: idSchema,
   assignee: nameSchema,
