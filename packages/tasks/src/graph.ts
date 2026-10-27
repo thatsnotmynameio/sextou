@@ -583,6 +583,38 @@ export interface Logger {
   trace: LogMethod;
 }
 
+// Makes each open task the finishing task blocks wait for the file's final
+// tasks too, those no other task of the file waits for. A cancelled one
+// keeps its links and gets none.
+async function handOver(
+  tx: Transaction,
+  taskId: string,
+  file: FileTask[],
+  created: CreatedTask[],
+) {
+  // Stryker disable next-line ArrayDeclaration: a key no task has waits for nothing either
+  const waitedFor = new Set(file.flatMap((task) => task.blockedBy ?? []));
+  const finals = created.filter(({ key }) => !waitedFor.has(key));
+  const dependents = await tx
+    .select({ id: tasks.id })
+    .from(taskLinks)
+    .innerJoin(tasks, eq(tasks.id, taskLinks.taskId))
+    .where(and(eq(taskLinks.blockerId, taskId), eq(tasks.status, Status.open)));
+  for (const dependent of dependents) {
+    for (const final of finals) {
+      await tx
+        .insert(taskLinks)
+        .values({ taskId: dependent.id, blockerId: final.id });
+    }
+    await tx
+      .update(tasks)
+      .set({
+        holdingBlockers: sql`${tasks.holdingBlockers} + ${finals.length}`,
+      })
+      .where(eq(tasks.id, dependent.id));
+  }
+}
+
 // The graph's operations over a migrated database. Readiness is kept in each
 // task's holding_blockers, which every write moves in the same transaction:
 // it always counts the task's blockers that hold it. The logger is there for
@@ -822,40 +854,6 @@ export function createGraph(
       }
     }
     return created;
-  }
-
-  // Makes each open task the finishing task blocks wait for the file's final
-  // tasks too, those no other task of the file waits for. A cancelled one
-  // keeps its links and gets none.
-  async function handOver(
-    tx: Transaction,
-    taskId: string,
-    file: FileTask[],
-    created: CreatedTask[],
-  ) {
-    // Stryker disable next-line ArrayDeclaration: a key no task has waits for nothing either
-    const waitedFor = new Set(file.flatMap((task) => task.blockedBy ?? []));
-    const finals = created.filter(({ key }) => !waitedFor.has(key));
-    const dependents = await tx
-      .select({ id: tasks.id })
-      .from(taskLinks)
-      .innerJoin(tasks, eq(tasks.id, taskLinks.taskId))
-      .where(
-        and(eq(taskLinks.blockerId, taskId), eq(tasks.status, Status.open)),
-      );
-    for (const dependent of dependents) {
-      for (const final of finals) {
-        await tx
-          .insert(taskLinks)
-          .values({ taskId: dependent.id, blockerId: final.id });
-      }
-      await tx
-        .update(tasks)
-        .set({
-          holdingBlockers: sql`${tasks.holdingBlockers} + ${finals.length}`,
-        })
-        .where(eq(tasks.id, dependent.id));
-    }
   }
 
   // The answer of the finish that ended the attempt: the change that ended
