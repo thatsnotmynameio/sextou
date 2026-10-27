@@ -10,6 +10,7 @@ import {
   listReadySchema,
   renewExecutionSchema,
   splitUses,
+  tasksFileSchema,
   unlinkSchema,
 } from '../../src/schemas';
 import { Status } from '../../src/status';
@@ -341,4 +342,166 @@ test('createTaskSchema refuses a uses of 100,000 @ and a line terminator in line
 
 test('splitUses returns null for a uses it refuses', () => {
   expect(splitUses('org/app/Taskfile.yml@main')).toBeNull();
+});
+
+// A task of a file with only the fields it requires.
+const fileTask = {
+  key: 'lint',
+  title: 'Lint',
+  kind: 'review',
+  priority: 2,
+  assignee: 'dev',
+};
+
+test('tasksFileSchema outputs a task with every field, its texts trimmed', () => {
+  expect(
+    tasksFileSchema.parse({
+      tasks: [
+        {
+          key: ' synthesize ',
+          title: ' Synthesize ',
+          kind: ' review ',
+          priority: 1,
+          assignee: ' dev ',
+          description: ' Merge the verdicts. ',
+          source: ' ./notes/review.md ',
+          context: { pr: 117 },
+          uses: `org/app/Taskfile.yml@${sha}`,
+          blockedBy: [' lint ', 'test'],
+        },
+      ],
+    }),
+  ).toEqual({
+    tasks: [
+      {
+        key: 'synthesize',
+        title: 'Synthesize',
+        kind: 'review',
+        priority: 1,
+        assignee: 'dev',
+        description: 'Merge the verdicts.',
+        source: './notes/review.md',
+        context: { pr: 117 },
+        uses: `org/app/Taskfile.yml@${sha}`,
+        blockedBy: ['lint', 'test'],
+      },
+    ],
+  });
+});
+
+test('tasksFileSchema outputs null for a description, source, context and uses left out, and no blockers', () => {
+  expect(tasksFileSchema.parse({ tasks: [fileTask] })).toEqual({
+    tasks: [
+      {
+        ...fileTask,
+        description: null,
+        source: null,
+        context: null,
+        uses: null,
+      },
+    ],
+  });
+});
+
+test('tasksFileSchema accepts a file with no tasks', () => {
+  expect(tasksFileSchema.parse({ tasks: [] })).toEqual({ tasks: [] });
+});
+
+test.each([
+  ['a field its format does not define', { blocked_by: ['test'] }],
+  ['a parent', { parentId: 'tsk_1' }],
+  ['a creator', { createdBy: 'planner' }],
+  ['a source path, which it names source', { sourcePath: './notes.md' }],
+])('tasksFileSchema refuses a task with %s', (_name, field) => {
+  expect(
+    tasksFileSchema.safeParse({ tasks: [{ ...fileTask, ...field }] }).success,
+  ).toBe(false);
+});
+
+test('tasksFileSchema refuses a file with a field its format does not define', () => {
+  expect(
+    tasksFileSchema.safeParse({ tasks: [fileTask], version: 1 }).success,
+  ).toBe(false);
+});
+
+test.each([
+  ['no key', { key: undefined }],
+  ['a blank key', { key: ' ' }],
+  ['a blank blocker key', { blockedBy: [' '] }],
+  ['a uses whose ref is not a full commit SHA', { uses: 'org/app/T.yml@main' }],
+  ['a context that is not an object', { context: ['a'] }],
+  ['a priority past 4', { priority: 5 }],
+])('tasksFileSchema refuses a task with %s', (_name, field) => {
+  expect(
+    tasksFileSchema.safeParse({ tasks: [{ ...fileTask, ...field }] }).success,
+  ).toBe(false);
+});
+
+test('tasksFileSchema refuses a file without its tasks', () => {
+  expect(tasksFileSchema.safeParse({}).success).toBe(false);
+});
+
+// A finish of a run that succeeded.
+const finish = {
+  executionId: 'exe_1',
+  changedBy: 'bot-dev-1',
+  status: Status.succeeded,
+};
+
+test('finishTaskSchema outputs a finish with its tasks text and both limits', () => {
+  expect(
+    finishTaskSchema.parse({
+      ...finish,
+      tasks: ' {"tasks":[]} ',
+      maxTasks: 50,
+      maxDepth: 20,
+    }),
+  ).toEqual({
+    ...finish,
+    reason: null,
+    resultPath: null,
+    tasks: ' {"tasks":[]} ',
+    maxTasks: 50,
+    maxDepth: 20,
+  });
+});
+
+test('finishTaskSchema accepts limits without a tasks text', () => {
+  expect(
+    finishTaskSchema.parse({ ...finish, maxTasks: 1, maxDepth: 1 }),
+  ).toMatchObject({ maxTasks: 1, maxDepth: 1 });
+});
+
+test.each([
+  ['no limits', {}],
+  ['no maxTasks', { maxDepth: 20 }],
+  ['no maxDepth', { maxTasks: 50 }],
+])('finishTaskSchema refuses a tasks text with %s', (_name, limits) => {
+  expect(
+    finishTaskSchema.safeParse({ ...finish, tasks: '', ...limits }).success,
+  ).toBe(false);
+});
+
+test.each([
+  ['maxTasks of 0', { maxTasks: 0, maxDepth: 20 }],
+  ['maxDepth of 0', { maxTasks: 50, maxDepth: 0 }],
+  ['maxTasks of 1.5', { maxTasks: 1.5, maxDepth: 20 }],
+])('finishTaskSchema refuses %s', (_name, limits) => {
+  expect(
+    finishTaskSchema.safeParse({ ...finish, tasks: '', ...limits }).success,
+  ).toBe(false);
+  expect(finishTaskSchema.safeParse({ ...finish, ...limits }).success).toBe(
+    false,
+  );
+});
+
+test('finishTaskSchema refuses a tasks text that is not text', () => {
+  expect(
+    finishTaskSchema.safeParse({
+      ...finish,
+      tasks: { tasks: [] },
+      maxTasks: 50,
+      maxDepth: 20,
+    }).success,
+  ).toBe(false);
 });

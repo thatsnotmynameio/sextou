@@ -20,9 +20,8 @@ import { Status, statusList } from './status';
 // Every check and index condition is literal SQL. drizzle-kit writes a value
 // interpolated into one as a bound parameter, which DDL can't take.
 //
-// tasks, task_links and task_executions keep their rowid: Turso has WITHOUT
-// ROWID only as an experiment, with no DELETE, UPDATE, foreign key or second
-// index.
+// Every table keeps its rowid: Turso has WITHOUT ROWID only as an experiment,
+// with no DELETE, UPDATE, foreign key or second index.
 
 // holding_blockers counts the task's blockers that still hold it: those open,
 // running, failed or cancelled. A ready task is then one row of task_ready,
@@ -129,6 +128,9 @@ export const taskStatusChanges = sqliteTable(
 // attempt has one, and task_execution_lease finds the expired ones. A
 // cancellation asked for while it runs is recorded here until it ends.
 // A task's attempts are numbered from 1, once each.
+//
+// finish_digest is set only once the attempt ends: a digest of the finish
+// that ended it, so the same finish sent again is told apart from another.
 export const taskExecutions = sqliteTable(
   'task_executions',
   {
@@ -144,6 +146,7 @@ export const taskExecutions = sqliteTable(
     expiresAt: integer('expires_at'),
     cancelRequestedBy: text('cancel_requested_by'),
     cancelReason: text('cancel_reason'),
+    finishDigest: text('finish_digest'),
   },
   (table) => [
     check('task_execution_attempt', sql`${table.attempt} >= 1`),
@@ -152,5 +155,25 @@ export const taskExecutions = sqliteTable(
     index('task_execution_lease')
       .on(table.expiresAt)
       .where(sql`${table.expiresAt} IS NOT NULL`),
+  ],
+);
+
+// The tasks an attempt's finish created, each under the key the attempt's
+// file of tasks gave it, so the same finish sent again answers with them.
+// A task is created by one finish, under one key.
+export const taskExecutionTasks = sqliteTable(
+  'task_execution_tasks',
+  {
+    executionId: text('execution_id')
+      .notNull()
+      .references(() => taskExecutions.id),
+    key: text('key').notNull(),
+    taskId: text('task_id')
+      .notNull()
+      .references(() => tasks.id),
+  },
+  (table) => [
+    primaryKey({ columns: [table.executionId, table.key] }),
+    uniqueIndex('task_execution_task_created').on(table.taskId),
   ],
 );
