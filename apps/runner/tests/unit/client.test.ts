@@ -44,7 +44,7 @@ function stubFetch(respond: () => Response | Promise<Response>) {
 const claimed = {
   task: {
     id: 'tsk_1',
-    source: {
+    uses: {
       repo: 'thatsnotmynameio/sextou',
       sha,
       taskfile: 'tasks/hello-world/Taskfile.yml',

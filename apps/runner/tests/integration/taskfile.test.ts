@@ -336,7 +336,7 @@ goTask(
 );
 
 // Where the tasks taskfileExecute runs keep their Taskfile, in the
-// repository their source names.
+// repository their uses names.
 const path = 'tasks/test/Taskfile.yml';
 
 // Runs a task through taskfileExecute, whose repository a server for the test
@@ -351,6 +351,7 @@ async function execute(
     yaml = plaintext(cmds),
     listener = answer(archive({ ...files, [path]: yaml })),
     context = null,
+    uses = { repo: 'thatsnotmynameio/sextou', sha, taskfile: path },
   }: {
     taskBin?: string;
     tarBin?: string;
@@ -358,6 +359,7 @@ async function execute(
     yaml?: string;
     listener?: RequestListener;
     context?: Record<string, unknown> | null;
+    uses?: { repo: string; sha: string; taskfile: string } | null;
   } = {},
 ) {
   const server = await serve(listener);
@@ -371,7 +373,7 @@ async function execute(
   })(
     {
       id: 'tsk_1',
-      source: { repo: 'thatsnotmynameio/sextou', sha, taskfile: path },
+      uses,
       context,
     },
     { signal: new AbortController().signal, logger: logger() },
@@ -390,10 +392,20 @@ function runFolder() {
   return folder;
 }
 
-test('taskfileExecute downloads the repository of the source at its commit', async () => {
+test('taskfileExecute downloads the repository its uses names at its commit', async () => {
   const { paths } = await execute(['true']);
 
   expect(paths).toEqual([`/thatsnotmynameio/sextou/archive/${sha}.tar.gz`]);
+});
+
+test('taskfileExecute fails a task whose uses is null, saying it names nothing to run, without downloading', async () => {
+  const { result, paths } = await execute(['true'], { uses: null });
+
+  expect(result).toEqual({
+    outcome: 'failed',
+    reason: 'the task names nothing to run: it has no uses',
+  });
+  expect(paths).toEqual([]);
 });
 
 goTask(

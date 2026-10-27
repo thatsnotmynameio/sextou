@@ -38,7 +38,7 @@ function task(leaseMs = 3000): Answer<Claimed> {
   return ok({
     task: {
       id: 'tsk_1',
-      source: {
+      uses: {
         repo: 'thatsnotmynameio/sextou',
         sha,
         taskfile: 'tasks/hello-world/Taskfile.yml',

@@ -15,7 +15,14 @@ import {
   vi,
   type MockInstance,
 } from 'vitest';
-import { answer, archive, plaintext, serve, type Served } from '../archive';
+import {
+  answer,
+  archive,
+  plaintext,
+  serve,
+  sha,
+  type Served,
+} from '../archive';
 import { goTask } from '../go-task';
 
 // The server runs as its own process, from its sources, with its own tsx:
@@ -129,7 +136,17 @@ async function call(procedure: string, input: unknown): Promise<unknown> {
   return body.result.data;
 }
 
-async function createTask(assignee: string, context?: Record<string, unknown>) {
+// The Taskfile each task names, in sextou's repository, at the commit the
+// tarball on localhost holds.
+const uses = `thatsnotmynameio/sextou/tasks/hello-world/Taskfile.yml@${sha}`;
+
+async function createTask(
+  assignee: string,
+  {
+    context,
+    withUses = true,
+  }: { context?: Record<string, unknown>; withUses?: boolean } = {},
+) {
   return (await call('tasks.create', {
     title: 'Say hi',
     kind: 'task',
@@ -137,6 +154,7 @@ async function createTask(assignee: string, context?: Record<string, unknown>) {
     assignee,
     createdBy: 'me',
     context,
+    uses: withUses ? uses : undefined,
   })) as { id: string };
 }
 
@@ -157,17 +175,17 @@ async function startRunner(assignee: string) {
   await import('../../src/main');
 }
 
-// The server's stub points every claim at tasks/hello-world in sextou's
-// repository on GitHub. The runner downloads it from a server on localhost
-// instead, whose tarball has a Taskfile at that path that writes a line, then
-// the context it got, and runs for 2 seconds.
+// Each task names tasks/hello-world in sextou's repository on GitHub. The
+// runner downloads it from a server on localhost instead, whose tarball has a
+// Taskfile at that path that writes a line, then the context it got, and runs
+// for 2 seconds.
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'sextou-runner-'));
   github = await serve(
     answer(
       archive({
         'tasks/hello-world/Taskfile.yml': plaintext([
-          'echo "sextou stub"',
+          'echo "sextou task"',
           'echo {{.CONTEXT | q}}',
           'sleep 2',
         ]),
@@ -236,7 +254,7 @@ goTask(
     // go-task writes each command to stderr before it runs it.
     expect(await logged('output', { stream: 'stdout' })).toMatchObject({
       taskId: task.id,
-      line: 'sextou stub',
+      line: 'sextou task',
     });
     expect(github.paths.at(-1)).toMatch(
       /^\/thatsnotmynameio\/sextou\/archive\/[0-9a-f]{40}\.tar\.gz$/,
@@ -257,15 +275,34 @@ goTask(
 );
 
 goTask(
+  'main completes a task that names no uses as failed, with the reason, then runs the next one',
+  async () => {
+    const failing = await createTask('no-uses', { withUses: false });
+    const next = await createTask('no-uses');
+    const downloads = github.paths.length;
+    await startRunner('no-uses');
+
+    expect(await logged('completed', { taskId: failing.id })).toMatchObject({
+      outcome: 'failed',
+      reason: 'the task names nothing to run: it has no uses',
+    });
+    expect(await logged('completed', { taskId: next.id })).toMatchObject({
+      outcome: 'succeeded',
+    });
+    expect(github.paths).toHaveLength(downloads + 1);
+  },
+);
+
+goTask(
   'main hands the Taskfile the context the task was created with',
   async () => {
     const context = { repo: 'org/app', ref: 'main' };
-    const task = await createTask('context', context);
+    const task = await createTask('context', { context });
     await startRunner('context');
 
     expect(
       await logged('output', { taskId: task.id, stream: 'stdout' }),
-    ).toMatchObject({ line: 'sextou stub' });
+    ).toMatchObject({ line: 'sextou task' });
     expect(
       await logged('output', {
         taskId: task.id,
