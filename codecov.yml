@@ -1,5 +1,5 @@
 # Codecov reports coverage. It doesn't gate it: each suite's own 90% floor,
-# in tests.yml, is the gate. tests.yml uploads one report per package and
+# in checks.yml, is the gate. checks.yml uploads one report per package and
 # level, flagged "<package>-<level>".
 coverage:
   status:

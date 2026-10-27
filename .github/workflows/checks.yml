@@ -1,8 +1,16 @@
-# Each package's test levels and its mutation run, each as a check of its own
-# named after the package: "<package> / <level>" judges every file that level
-# answers for at 90% coverage, "<package> / mutation" judges every file of its
-# unit and integration suites: Stryker fails it below 80% of mutants
-# killed in the package. The packages job lists the checks. The organization's
+# This repository's checks, one after the other, so a check that fails stops
+# the ones after it from starting: lint, then each package's test levels, then
+# its mutation run. The pull request's title (pr-title.yml) stays out of the
+# chain: it runs again whenever the title is edited, and in the chain that
+# would rerun every test. CodeQL (security.yml) and Scorecard (scorecard.yml)
+# stay out too: CodeQL is required, and a required check that a failed job
+# before it skips counts as passed; code scanning tells both apart by workflow
+# file and job, so moving them would leave their old alerts open on main.
+#
+# "<package> / <level>" judges every file that level answers for at 90%
+# coverage, "<package> / mutation" judges every file of its unit and
+# integration suites: Stryker fails it below 80% of mutants killed in the
+# package. The packages job lists the checks. The organization's
 # typescript.yml still runs the unit and integration suites through the root
 # vitest.config.ts; this moves there later. No check here is required yet.
 #
@@ -11,7 +19,7 @@
 # cache, which GitHub looks up in the pull request's scope first, then in
 # main's. A Dependabot pull request never saves, so it always starts from
 # main's result.
-name: Tests
+name: Checks
 
 on:
   pull_request:
@@ -48,10 +56,42 @@ env:
   GO_TASK_SHA256: 680859dbb4d881a9c72d4d9a8f510825450849af8567deacd7302c01124416fb
 
 jobs:
+  # The lint rules most large open-source TypeScript and React projects
+  # enforce, from .oxlintrc.gates.json, each at error: it fails on any
+  # finding. The organization's typescript.yml lints with .oxlintrc.json and
+  # doesn't read that file; this moves there later.
+  gates:
+    name: lint / gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: pnpm store
+        run: |
+          {
+            echo "pnpm_config_store_dir=$RUNNER_TEMP/pnpm-store"
+            echo "pnpm_config_cache_dir=$RUNNER_TEMP/pnpm-cache"
+          } >> "$GITHUB_ENV"
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: oxlint
+        run: pnpm exec oxlint --config .oxlintrc.gates.json --format github .
+
   # The matrices of the jobs below, read from each workspace package's
   # package.json: a "test:<level>" script is a level, "test:mutation" a
   # mutation run. The root, whose scripts run every package, is no workspace
-  # package.
+  # package. It takes seconds and starts no test, so it waits for nothing.
   packages:
     name: packages
     runs-on: ubuntu-latest
@@ -88,7 +128,7 @@ jobs:
 
   level:
     name: ${{ matrix.package }} / ${{ matrix.level }}
-    needs: packages
+    needs: [packages, gates]
     # An empty matrix is an error, so no level skips the job.
     if: ${{ needs.packages.outputs.levels != '[]' }}
     runs-on: ubuntu-latest
@@ -161,7 +201,8 @@ jobs:
 
   mutation:
     name: ${{ matrix.package }} / mutation
-    needs: packages
+    # Every level, of every package: a matrix job waits for the whole matrix.
+    needs: [packages, level]
     if: ${{ needs.packages.outputs.mutation != '[]' }}
     runs-on: ubuntu-latest
     # A run with no cached result mutates every file of the package.
