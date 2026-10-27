@@ -23,8 +23,9 @@
 # On a pull request, the component suites and mutation run only for the
 # packages its changes reach: those it changes, and those that depend on
 # them. Mutation runs a dependent in full, since the incremental run sees no
-# change outside its package. A change outside every package runs every
-# package, mutation in full, and one only to files no suite reads runs none.
+# change outside its package. A change outside every package, anything in
+# .github/ included, runs every package, mutation in full, and one only to
+# files no suite reads runs none.
 name: Checks
 
 on:
