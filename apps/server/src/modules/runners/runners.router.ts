@@ -1,9 +1,9 @@
-import { z } from 'zod';
 import { accepted, procedure, router } from '../../trpc';
 import {
   claimInputSchema,
   claimOutputSchema,
   completeInputSchema,
+  completeOutputSchema,
   heartbeatInputSchema,
   heartbeatOutputSchema,
 } from './runners.schema';
@@ -13,8 +13,8 @@ import {
 // CONFLICT and the message lease_lost: another attempt may hold the task
 // now, so the runner drops what it has. A call whose answer didn't arrive
 // can be sent again as it was: a claim with its claimId, a completion as it
-// was, which succeeds once more. A call the tasks database didn't serve in
-// time fails with TIMEOUT, having written nothing.
+// was, which gets the answer the first one got. A call the tasks database
+// didn't serve in time fails with TIMEOUT, having written nothing.
 export const runnersRouter = router({
   // The task's uses, split, and its context: a task that names no uses is
   // claimed like any other, with a null uses, and its runner fails it.
@@ -51,18 +51,27 @@ export const runnersRouter = router({
       return { cancel, leaseMs };
     }),
 
+  // Logs each task the run's tasks file created, so its id outlives an
+  // answer that doesn't arrive.
   complete: procedure
     .input(completeInputSchema)
-    .output(z.null())
+    .output(completeOutputSchema)
     .mutation(async ({ ctx, input }) => {
-      accepted(
+      const { outcome, reason, created } = accepted(
         await ctx.tasks.finish({
           executionId: input.executionId,
           runner: { name: input.runner },
           outcome: input.outcome,
           reason: input.reason,
+          tasks: input.tasks,
         }),
       );
-      return null;
+      for (const { key, id } of created) {
+        ctx.logger.info(
+          { key, taskId: id, executionId: input.executionId },
+          'task created',
+        );
+      }
+      return { outcome, reason, created };
     }),
 });

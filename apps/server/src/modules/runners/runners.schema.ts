@@ -81,4 +81,18 @@ export const completeInputSchema = z.object({
   executionId: idSchema,
   outcome: z.enum(Outcome),
   reason: z.string().optional(),
+  // The text of the tasks file the run left, as it read it. The tasks judge
+  // it, whatever its size: a file they can't take fails the task with a
+  // reason, where a refused call would leave it running until its lease
+  // expired, to run again.
+  tasks: z.string().optional(),
+});
+
+// How the task ended, which may differ from the outcome sent: a tasks file
+// the tasks couldn't take failed it, with the reason why. created names each
+// task the file created by its key in the file.
+export const completeOutputSchema = z.object({
+  outcome: z.enum(Outcome),
+  reason: z.string().nullable(),
+  created: z.array(z.object({ key: z.string(), id: idSchema })),
 });

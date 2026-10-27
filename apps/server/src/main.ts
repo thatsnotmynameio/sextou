@@ -65,6 +65,8 @@ async function serve(config: Config) {
     migrationsFolder: tasksMigrations(),
     leaseMs: config.leaseMs,
     maxAttempts: config.maxAttempts,
+    maxCreatedTasks: config.maxCreatedTasks,
+    maxTaskDepth: config.maxTaskDepth,
     timeoutMs: config.tasksTimeoutMs,
   });
   const tasksOpened = await tasks.start().then(

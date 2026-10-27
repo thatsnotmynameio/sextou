@@ -320,6 +320,8 @@ test('starts the tasks service at SEXTOU_SERVER_TASKS_DB before listening', asyn
     logger: expect.objectContaining({ error: expect.any(Function) }),
     leaseMs: 30000,
     maxAttempts: 1,
+    maxCreatedTasks: 50,
+    maxTaskDepth: 20,
     timeoutMs: 20000,
   });
   expect(startedAtListen).toBe('fulfilled');

@@ -47,6 +47,10 @@ export interface TasksServiceOptions {
   leaseMs: number;
   // How many attempts a task gets before an expired lease fails it.
   maxAttempts: number;
+  // How many tasks one finish's tasks file may create.
+  maxCreatedTasks: number;
+  // How deep, in parents above it, a task a tasks file creates may sit.
+  maxTaskDepth: number;
   // How long a call to the tasks database may take, in milliseconds: one
   // past it writes nothing and is refused as timeout.
   timeoutMs: number;
@@ -64,6 +68,8 @@ export function createTasksService(
     migrationsFolder,
     leaseMs,
     maxAttempts,
+    maxCreatedTasks,
+    maxTaskDepth,
     timeoutMs,
   }: TasksServiceOptions,
 ): TasksService {
@@ -137,7 +143,7 @@ export function createTasksService(
         ? { ok: true, cancel: result.cancelRequested, leaseMs }
         : refused(result.reason);
     },
-    finish: async ({ executionId, runner, outcome, reason }) => {
+    finish: async ({ executionId, runner, outcome, reason, tasks }) => {
       const result = await (
         await opened()
       ).finishTask({
@@ -145,8 +151,18 @@ export function createTasksService(
         changedBy: runner.name,
         status: outcome,
         reason,
+        tasks,
+        maxTasks: maxCreatedTasks,
+        maxDepth: maxTaskDepth,
       });
-      return result.ok ? { ok: true } : refused(result.reason);
+      return result.ok
+        ? {
+            ok: true,
+            outcome: result.status,
+            reason: result.reason,
+            created: result.created,
+          }
+        : refused(result.reason);
     },
     cancel: async ({ taskId, actor, reason }) => {
       const result = await (

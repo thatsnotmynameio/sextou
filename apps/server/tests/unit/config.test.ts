@@ -22,6 +22,8 @@ test('loadConfig uses every default when no variable is set', () => {
     tasksTimeoutMs: 20000,
     leaseMs: 30000,
     maxAttempts: 1,
+    maxCreatedTasks: 50,
+    maxTaskDepth: 20,
     leaseSweepMs: 5000,
     dev: false,
     logLevel: 'info',
@@ -40,6 +42,8 @@ test('loadConfig takes every variable that is set', () => {
       SEXTOU_SERVER_TASKS_TIMEOUT_MS: '700',
       SEXTOU_SERVER_LEASE_MS: '60000',
       SEXTOU_SERVER_MAX_ATTEMPTS: '3',
+      SEXTOU_SERVER_MAX_CREATED_TASKS: '10',
+      SEXTOU_SERVER_MAX_TASK_DEPTH: '4',
       SEXTOU_SERVER_LEASE_SWEEP_MS: '1000',
       SEXTOU_SERVER_DEV: 'true',
       SEXTOU_SERVER_LOG_LEVEL: 'debug',
@@ -54,6 +58,8 @@ test('loadConfig takes every variable that is set', () => {
     tasksTimeoutMs: 700,
     leaseMs: 60000,
     maxAttempts: 3,
+    maxCreatedTasks: 10,
+    maxTaskDepth: 4,
     leaseSweepMs: 1000,
     dev: true,
     logLevel: 'debug',
@@ -101,6 +107,34 @@ test.each(['', '0', '-1', '1.5', 'abc', '9007199254740992'])(
     );
   },
 );
+
+test.each([
+  ['SEXTOU_SERVER_MAX_CREATED_TASKS', 'maxCreatedTasks'],
+  ['SEXTOU_SERVER_MAX_TASK_DEPTH', 'maxTaskDepth'],
+] as const)(
+  'loadConfig takes %s up to the largest safe integer',
+  (name, key) => {
+    expect(load({ [name]: '1' })[key]).toBe(1);
+    expect(load({ [name]: '9007199254740991' })[key]).toBe(9007199254740991);
+  },
+);
+
+test.each(
+  (
+    [
+      ['SEXTOU_SERVER_MAX_CREATED_TASKS', 'tasks'],
+      ['SEXTOU_SERVER_MAX_TASK_DEPTH', 'levels'],
+    ] as const
+  ).flatMap(([name, unit]) =>
+    ['', '0', '-1', '1.5', 'abc', '9007199254740992'].map(
+      (value) => [name, value, unit] as const,
+    ),
+  ),
+)('loadConfig rejects %s=%j', (name, value, unit) => {
+  expect(() => load({ [name]: value })).toThrow(
+    `Invalid ${name}: ${JSON.stringify(value)} (expected a whole number of ${unit} from 1)`,
+  );
+});
 
 test('loadConfig accepts port 0, for a port the system picks', () => {
   expect(load({ SEXTOU_SERVER_PORT: '0' }).port).toBe(0);

@@ -31,6 +31,13 @@ export interface Config {
   // How many attempts a task gets before an expired lease fails it: 1 fails
   // it at the first.
   maxAttempts: number;
+  // How many tasks one run's tasks file may create: a file with more fails
+  // its task and creates none.
+  maxCreatedTasks: number;
+  // How deep a task a run's tasks file creates may sit, its depth being the
+  // number of parents above it: a file whose tasks would sit deeper fails its
+  // task and creates none.
+  maxTaskDepth: number;
   // How often the server ends the attempts whose lease expired.
   leaseSweepMs: number;
   // Whether error responses carry the stack.
@@ -103,6 +110,13 @@ export function loadConfig(
     ),
     leaseMs: read('SEXTOU_SERVER_LEASE_MS', parseTimeout, () => 30000),
     maxAttempts: read('SEXTOU_SERVER_MAX_ATTEMPTS', parseAttempts, () => 1),
+    maxCreatedTasks: read(
+      'SEXTOU_SERVER_MAX_CREATED_TASKS',
+      parseCreatedTasks,
+      () => 50,
+    ),
+    // Room for a template that chains runs, each creating the next batch.
+    maxTaskDepth: read('SEXTOU_SERVER_MAX_TASK_DEPTH', parseDepth, () => 20),
     leaseSweepMs: read(
       'SEXTOU_SERVER_LEASE_SWEEP_MS',
       parseTimeout,
@@ -171,5 +185,23 @@ function parseAttempts(value: string, name: string): number {
     name,
     Number.MAX_SAFE_INTEGER,
     'a whole number of attempts from 1',
+  );
+}
+
+function parseCreatedTasks(value: string, name: string): number {
+  return parseCount(
+    value,
+    name,
+    Number.MAX_SAFE_INTEGER,
+    'a whole number of tasks from 1',
+  );
+}
+
+function parseDepth(value: string, name: string): number {
+  return parseCount(
+    value,
+    name,
+    Number.MAX_SAFE_INTEGER,
+    'a whole number of levels from 1',
   );
 }

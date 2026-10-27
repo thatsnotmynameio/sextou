@@ -1,6 +1,8 @@
 import { expect, test } from 'vitest';
 import {
   claimOutputSchema,
+  completeInputSchema,
+  completeOutputSchema,
   usesSchema,
 } from '../../../../src/modules/runners/runners.schema';
 
@@ -106,4 +108,63 @@ test.each([
   ['a uses with a short commit', { ...uses, sha: '0123456' }],
 ])('claimOutputSchema refuses %s', (_name, taskUses) => {
   expect(claimOutputSchema.safeParse(held(null, taskUses)).success).toBe(false);
+});
+
+const completion = {
+  runner: 'runner-1',
+  executionId: 'exe_1',
+  outcome: 'succeeded',
+};
+
+test('completeInputSchema takes a completion without a tasks file', () => {
+  expect(completeInputSchema.parse(completion)).toEqual(completion);
+});
+
+test('completeInputSchema takes a tasks file of any size, as text', () => {
+  const tasks = 'x'.repeat(5_000_000);
+
+  expect(completeInputSchema.parse({ ...completion, tasks })).toEqual({
+    ...completion,
+    tasks,
+  });
+});
+
+test('completeInputSchema refuses a tasks file that is not text', () => {
+  expect(
+    completeInputSchema.safeParse({ ...completion, tasks: { tasks: [] } })
+      .success,
+  ).toBe(false);
+});
+
+test('completeOutputSchema takes the outcome, its reason and the created tasks', () => {
+  const answer = {
+    outcome: 'failed',
+    reason: 'the tasks file is not JSON',
+    created: [{ key: 'review', id: 'tsk_2' }],
+  };
+
+  expect(completeOutputSchema.parse(answer)).toEqual(answer);
+});
+
+test('completeOutputSchema takes a null reason', () => {
+  const answer = { outcome: 'succeeded', reason: null, created: [] };
+
+  expect(completeOutputSchema.parse(answer)).toEqual(answer);
+});
+
+test.each([
+  ['a state that is not an outcome', { outcome: 'running' }],
+  ['a reason left out', { reason: undefined }],
+  ['created left out', { created: undefined }],
+  ['a created task with an empty id', { created: [{ key: 'a', id: '' }] }],
+  ['a created task with no key', { created: [{ id: 'tsk_2' }] }],
+])('completeOutputSchema refuses %s', (_name, fields) => {
+  expect(
+    completeOutputSchema.safeParse({
+      outcome: 'succeeded',
+      reason: null,
+      created: [],
+      ...fields,
+    }).success,
+  ).toBe(false);
 });

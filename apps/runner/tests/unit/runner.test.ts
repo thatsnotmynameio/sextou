@@ -92,7 +92,9 @@ beforeEach(() => {
     heartbeat: vi.fn<RunnerClient['heartbeat']>(() =>
       Promise.resolve(ok({ cancel: false, leaseMs: 3000 })),
     ),
-    complete: vi.fn<RunnerClient['complete']>(() => Promise.resolve(ok(null))),
+    complete: vi.fn<RunnerClient['complete']>(() =>
+      Promise.resolve(ok({ outcome: 'succeeded', reason: null, created: [] })),
+    ),
   };
 });
 
