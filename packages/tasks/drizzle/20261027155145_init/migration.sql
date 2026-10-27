@@ -44,6 +44,7 @@ CREATE TABLE `tasks` (
 	`description` text,
 	`source_path` text,
 	`context` text,
+	`uses` text,
 	`status` text NOT NULL,
 	`holding_blockers` integer DEFAULT 0 NOT NULL,
 	CONSTRAINT `fk_tasks_parent_id_tasks_id_fk` FOREIGN KEY (`parent_id`) REFERENCES `tasks`(`id`),

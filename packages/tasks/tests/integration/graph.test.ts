@@ -237,6 +237,7 @@ test('createTask creates an open task that is ready, recording who created it an
       description: null,
       sourcePath: null,
       context: null,
+      uses: null,
       status: Status.open,
     },
   });
@@ -354,6 +355,61 @@ test('listReady returns the context of each ready task', async () => {
 test('claimTask hands out the task with its context', async () => {
   await createWithContext('A');
   expect(await claim()).toMatchObject({ ok: true, task: { context } });
+});
+
+const uses =
+  'thatsnotmynameio/sextou/packages/workflows/hello-world/Taskfile.yml@87dfc7f4f839d6e334ab1a1cdf6494c62499d9ff';
+
+function createWithUses(title: string, value: unknown = uses) {
+  return tasks.createTask({
+    title,
+    kind: 'task',
+    priority: 2,
+    assignee: 'dev',
+    createdBy: 'planner',
+    uses: value as never,
+  });
+}
+
+test('createTask keeps the uses as given', async () => {
+  expect(await createWithUses('A')).toMatchObject({
+    ok: true,
+    task: { uses },
+  });
+  expect(await connection().get('SELECT uses FROM tasks')).toEqual({ uses });
+});
+
+test('createTask stores a uses left out as null', async () => {
+  await create('A');
+  expect(await connection().get('SELECT uses FROM tasks')).toEqual({
+    uses: null,
+  });
+});
+
+test(`createTask refuses a uses whose ref is not a full commit SHA as ${Reason.invalid}, writing nothing`, async () => {
+  expect(
+    await createWithUses(
+      'A',
+      'thatsnotmynameio/sextou/packages/workflows/hello-world/Taskfile.yml@main',
+    ),
+  ).toEqual({ ok: false, reason: Reason.invalid });
+  expect(await rows()).toBe(0);
+});
+
+test('claimTask hands out the task with its uses', async () => {
+  await createWithUses('A');
+  expect(await claim()).toMatchObject({ ok: true, task: { uses } });
+});
+
+test('claimTask hands out a task without a uses like any other, with a null uses', async () => {
+  await create('A');
+  expect(
+    await tasks.listReady({ assignees: ['dev'], limit: 10 }),
+  ).toMatchObject({ ok: true, tasks: [{ title: 'A', uses: null }] });
+  expect(await claim()).toMatchObject({
+    ok: true,
+    task: { title: 'A', uses: null, status: Status.running },
+  });
 });
 
 test('createTask stores a file path as the source path, as given', async () => {

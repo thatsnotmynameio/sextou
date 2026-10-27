@@ -20,6 +20,8 @@ export {
   linkSchema,
   listReadySchema,
   renewExecutionSchema,
+  splitUses,
   unlinkSchema,
+  type Uses,
 } from './schemas';
 export { type FinalStatus, Status } from './status';

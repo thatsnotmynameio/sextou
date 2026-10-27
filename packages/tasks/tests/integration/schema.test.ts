@@ -44,16 +44,17 @@ test('schema.ts has no change without a migration', async () => {
   expect(result).toMatchObject({ status: 'no_changes' });
 });
 
-test('the schema requires an assignee on a task and leaves its description, source path and context optional', async () => {
+test('the schema requires an assignee on a task and leaves its description, source path, context and uses optional', async () => {
   expect(
     await connection().all(
-      "SELECT name, \"notnull\" FROM pragma_table_info('tasks') WHERE name IN ('assignee', 'context', 'description', 'source_path') ORDER BY name",
+      "SELECT name, \"notnull\" FROM pragma_table_info('tasks') WHERE name IN ('assignee', 'context', 'description', 'source_path', 'uses') ORDER BY name",
     ),
   ).toEqual([
     { name: 'assignee', notnull: 1 },
     { name: 'context', notnull: 0 },
     { name: 'description', notnull: 0 },
     { name: 'source_path', notnull: 0 },
+    { name: 'uses', notnull: 0 },
   ]);
 });
 

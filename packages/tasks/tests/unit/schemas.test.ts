@@ -9,9 +9,13 @@ import {
   linkSchema,
   listReadySchema,
   renewExecutionSchema,
+  splitUses,
   unlinkSchema,
 } from '../../src/schemas';
 import { Status } from '../../src/status';
+
+// A full commit SHA.
+const sha = '87dfc7f4f839d6e334ab1a1cdf6494c62499d9ff';
 
 test('createTaskSchema outputs a new task with its texts trimmed', () => {
   expect(
@@ -24,6 +28,7 @@ test('createTaskSchema outputs a new task with its texts trimmed', () => {
       description: ' Parse the input. ',
       sourcePath: ' ./notes/task.md ',
       context: { repo: ' org/app ', depth: 1, tags: ['a'], ref: null },
+      uses: `org/app/Taskfile.yml@${sha}`,
       createdBy: ' planner ',
     }),
   ).toEqual({
@@ -35,11 +40,12 @@ test('createTaskSchema outputs a new task with its texts trimmed', () => {
     description: 'Parse the input.',
     sourcePath: './notes/task.md',
     context: { repo: ' org/app ', depth: 1, tags: ['a'], ref: null },
+    uses: `org/app/Taskfile.yml@${sha}`,
     createdBy: 'planner',
   });
 });
 
-test('createTaskSchema outputs null for a description, source path and context left out', () => {
+test('createTaskSchema outputs null for a description, source path, context and uses left out', () => {
   expect(
     createTaskSchema.parse({
       title: 'A',
@@ -56,6 +62,7 @@ test('createTaskSchema outputs null for a description, source path and context l
     description: null,
     sourcePath: null,
     context: null,
+    uses: null,
     createdBy: 'planner',
   });
 });
@@ -244,4 +251,84 @@ test('listReadySchema accepts a limit past the safe integers', () => {
     assignees: ['dev'],
     limit: 1e20,
   });
+});
+
+function parseUses(uses: unknown) {
+  return createTaskSchema.safeParse({
+    title: 'A',
+    kind: 'task',
+    priority: 0,
+    assignee: 'dev',
+    uses,
+    createdBy: 'planner',
+  });
+}
+
+test('createTaskSchema accepts a uses naming a Taskfile at a full commit SHA, as given', () => {
+  const uses = `thatsnotmynameio/sextou/packages/workflows/hello-world/Taskfile.yml@${sha}`;
+  expect(parseUses(uses)).toMatchObject({ success: true, data: { uses } });
+});
+
+test.each([
+  [
+    'a repository whose name only starts with a dot',
+    'org/.github/Taskfile.yml',
+  ],
+  ['a path whose segment only starts with ..', 'org/app/..hidden/Taskfile.yml'],
+])('createTaskSchema accepts a uses with %s', (_name, path) => {
+  expect(parseUses(`${path}@${sha}`).success).toBe(true);
+});
+
+test.each([
+  ['a branch as its ref', 'org/app/Taskfile.yml@main'],
+  ['a short SHA', 'org/app/Taskfile.yml@87dfc7f'],
+  ['a SHA one digit short', `org/app/Taskfile.yml@${sha.slice(1)}`],
+  ['a SHA one digit long', `org/app/Taskfile.yml@${sha}0`],
+  ['uppercase hex', `org/app/Taskfile.yml@${sha.toUpperCase()}`],
+  ['no @', `org/app/Taskfile.yml${sha}`],
+  ['no ref after the @', 'org/app/Taskfile.yml@'],
+  ['an owner of .', `./app/Taskfile.yml@${sha}`],
+  ['an owner of ..', `../app/Taskfile.yml@${sha}`],
+  ['a name of .', `org/./Taskfile.yml@${sha}`],
+  ['a name of ..', `org/../Taskfile.yml@${sha}`],
+  ['an empty owner', `/app/Taskfile.yml@${sha}`],
+  ['an empty name', `org//Taskfile.yml@${sha}`],
+  ['an owner a URL would not take', `o rg/app/Taskfile.yml@${sha}`],
+  ['an empty segment in the path', `org/app/ci//Taskfile.yml@${sha}`],
+  ['a . segment in the path', `org/app/./Taskfile.yml@${sha}`],
+  ['a .. segment in the path', `org/app/ci/../Taskfile.yml@${sha}`],
+  ['a trailing slash', `org/app/ci/@${sha}`],
+  ['no path after owner/name', `org/app@${sha}`],
+  ['an empty path after owner/name', `org/app/@${sha}`],
+  ['only owner/name', `org@${sha}`],
+  ['a leading slash', `/org/app/Taskfile.yml@${sha}`],
+  ['an empty string', ''],
+  ['a number', 7],
+  ['null', null],
+])('createTaskSchema refuses a uses with %s', (_name, uses) => {
+  expect(parseUses(uses).success).toBe(false);
+});
+
+test('splitUses splits a uses into its repository, its commit and its Taskfile', () => {
+  expect(
+    splitUses(
+      `thatsnotmynameio/sextou/packages/workflows/hello-world/Taskfile.yml@${sha}`,
+    ),
+  ).toEqual({
+    repo: 'thatsnotmynameio/sextou',
+    sha,
+    taskfile: 'packages/workflows/hello-world/Taskfile.yml',
+  });
+});
+
+test('splitUses splits a uses whose path holds an @ at its last @', () => {
+  expect(splitUses(`org/app/ci@v1/Taskfile.yml@${sha}`)).toEqual({
+    repo: 'org/app',
+    sha,
+    taskfile: 'ci@v1/Taskfile.yml',
+  });
+});
+
+test('splitUses returns null for a uses it refuses', () => {
+  expect(splitUses('org/app/Taskfile.yml@main')).toBeNull();
 });

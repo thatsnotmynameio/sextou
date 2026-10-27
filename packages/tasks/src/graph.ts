@@ -74,6 +74,9 @@ export interface Task {
   sourcePath: string | null;
   // A JSON object the caller stores with the task. Stored as given.
   context: Context | null;
+  // The Taskfile a runner runs for the task, owner/name/path/to/Taskfile.yml@sha,
+  // or null when the task names none. splitUses splits it. Stored as given.
+  uses: string | null;
   status: Status;
 }
 
@@ -88,6 +91,8 @@ export interface NewTask {
   description?: string;
   sourcePath?: string;
   context?: Context;
+  // The ref is a full commit SHA, 40 lowercase hex digits.
+  uses?: string;
   // Recorded with the creation, the first change of the task's status.
   createdBy: string;
 }
@@ -291,6 +296,7 @@ const taskColumns = {
   description: tasks.description,
   sourcePath: tasks.sourcePath,
   context: tasks.context,
+  uses: tasks.uses,
   status: tasks.status,
 };
 
