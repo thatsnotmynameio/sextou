@@ -11,9 +11,11 @@ type Held = Exclude<Claimed, { task: null }>;
 export type Task = Held['task'];
 
 // How running a task ended. A run whose signal aborted ends as it may: the
-// runner reads its result only when it wasn't the one that aborted it.
+// runner reads its result only when it wasn't the one that aborted it. A run
+// that succeeded may carry the text of the tasks file it left, which the
+// completion sends for the server to judge.
 export type Result =
-  | { outcome: 'succeeded' }
+  | { outcome: 'succeeded'; tasks?: string }
   | { outcome: 'failed'; reason: string };
 
 // Runs a task, and stops it once the signal aborts. Its logger is the
@@ -175,13 +177,17 @@ async function work(
 // A completion whose answer didn't arrive, or that the server didn't serve in
 // time, is sent again as it was, which the server accepts once more. One the
 // server refused, the lease lost included, is dropped: sending it again gets
-// the same answer.
+// the same answer. Its records carry the outcome and the reason sent, never
+// the tasks text, which holds every task's context. Once answered, it logs
+// each task the server created from the text, and why the server failed a
+// run that succeeded: only its tasks file does that.
 async function complete(
   { client, name, pollMs, logger }: RunnerOptions,
   ids: Ids,
-  result: { outcome: Outcome; reason?: string },
+  result: { outcome: Outcome; reason?: string; tasks?: string },
   signal: AbortSignal,
 ) {
+  const sent = { ...ids, outcome: result.outcome, reason: result.reason };
   while (!signal.aborted) {
     const done = await client.complete({
       runner: name,
@@ -189,7 +195,16 @@ async function complete(
       ...result,
     });
     if (done.ok) {
-      logger.info({ ...ids, ...result }, 'completed');
+      logger.info(sent, 'completed');
+      for (const { key, id } of done.value.created) {
+        logger.info({ ...ids, key, id }, 'task created');
+      }
+      if (result.outcome === 'succeeded' && done.value.outcome === 'failed') {
+        logger.warn(
+          { ...ids, reason: done.value.reason },
+          'tasks file refused',
+        );
+      }
       return;
     }
     if (done.failure === 'lease_lost') {
@@ -197,14 +212,11 @@ async function complete(
       return;
     }
     if (done.failure === 'refused') {
-      logger.warn(
-        { ...ids, ...result, message: done.message },
-        'complete refused',
-      );
+      logger.warn({ ...sent, message: done.message }, 'complete refused');
       return;
     }
     logger.warn(
-      { ...ids, ...result, failure: done.failure, message: done.message },
+      { ...sent, failure: done.failure, message: done.message },
       'complete failed',
     );
     await sleep(pollMs, signal);

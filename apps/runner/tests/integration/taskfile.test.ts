@@ -359,6 +359,7 @@ async function execute(
     listener = answer(archive({ ...files, [path]: yaml })),
     context = null,
     uses = { repo: 'thatsnotmynameio/sextou', sha, taskfile: path },
+    maxTasksFileBytes = 1048576,
   }: {
     taskBin?: string;
     tarBin?: string;
@@ -367,6 +368,7 @@ async function execute(
     listener?: RequestListener;
     context?: Record<string, unknown> | null;
     uses?: Parameters<Execute>[0]['uses'];
+    maxTasksFileBytes?: number;
   } = {},
 ) {
   const server = await serve(listener);
@@ -376,6 +378,7 @@ async function execute(
     downloadTimeoutMs: 5000,
     tarBin,
     bin: taskBin,
+    maxTasksFileBytes,
     ...limits,
   })(
     {
@@ -566,6 +569,111 @@ goTask(
     });
 
     expect(result).toEqual({ outcome: 'failed', reason: 'spawn E2BIG' });
+  },
+);
+
+goTask(
+  'taskfileExecute hands the Taskfile tasks.json in the run folder in TASKS_FILE, beside the repository and the workspace',
+  async () => {
+    await execute(['pwd', 'echo {{.TASKS_FILE}}']);
+
+    expect(lines()[1]).toEqual({
+      stream: 'stdout',
+      line: join(runFolder(), 'tasks.json'),
+    });
+  },
+);
+
+goTask(
+  'taskfileExecute resolves succeeded with the text of the tasks file the run wrote',
+  async () => {
+    const { result } = await execute([
+      `printf '%s' '{"tasks": []}' > {{.TASKS_FILE | q}}`,
+    ]);
+
+    expect(result).toEqual({ outcome: 'succeeded', tasks: '{"tasks": []}' });
+  },
+);
+
+goTask(
+  'taskfileExecute resolves succeeded with no tasks when the run wrote no tasks file',
+  async () => {
+    expect((await execute(['true'])).result).toEqual({ outcome: 'succeeded' });
+  },
+);
+
+goTask(
+  'taskfileExecute reads a tasks file of exactly maxTasksFileBytes',
+  async () => {
+    const { result } = await execute(
+      [`printf '%s' 0123456789 > {{.TASKS_FILE | q}}`],
+      { maxTasksFileBytes: 10 },
+    );
+
+    expect(result).toEqual({ outcome: 'succeeded', tasks: '0123456789' });
+  },
+);
+
+goTask(
+  'taskfileExecute resolves failed when the tasks file is one byte over maxTasksFileBytes',
+  async () => {
+    const { result } = await execute(
+      [`printf '%s' 0123456789x > {{.TASKS_FILE | q}}`],
+      { maxTasksFileBytes: 10 },
+    );
+
+    expect(result).toEqual({
+      outcome: 'failed',
+      reason: 'tasks file: larger than 10 bytes',
+    });
+  },
+);
+
+goTask(
+  'taskfileExecute resolves failed, without blocking, when the tasks file is a FIFO',
+  async () => {
+    const { result } = await execute(['mkfifo {{.TASKS_FILE | q}}']);
+
+    expect(result).toEqual({
+      outcome: 'failed',
+      reason: 'tasks file: not a regular file',
+    });
+  },
+);
+
+goTask(
+  'taskfileExecute resolves failed when the tasks file is a link, without following it',
+  async () => {
+    const { result } = await execute([
+      `printf '%s' '{"tasks": []}' > {{.WORKSPACE | q}}/tasks.json`,
+      'ln -s {{.WORKSPACE | q}}/tasks.json {{.TASKS_FILE | q}}',
+    ]);
+
+    expect(result).toEqual({ outcome: 'failed', reason: 'tasks file: a link' });
+  },
+);
+
+goTask(
+  'taskfileExecute resolves failed with the error code when the tasks file cannot be opened',
+  async () => {
+    const { result } = await execute([
+      `printf '%s' '{"tasks": []}' > {{.TASKS_FILE | q}}`,
+      'chmod 000 {{.TASKS_FILE | q}}',
+    ]);
+
+    expect(result).toEqual({ outcome: 'failed', reason: 'tasks file: EACCES' });
+  },
+);
+
+goTask(
+  'taskfileExecute resolves failed with no tasks when the run wrote the tasks file, then failed',
+  async () => {
+    const { result } = await execute([
+      `printf '%s' '{"tasks": []}' > {{.TASKS_FILE | q}}`,
+      'exit 1',
+    ]);
+
+    expect(result).toEqual({ outcome: 'failed', reason: 'exit code 1' });
   },
 );
 

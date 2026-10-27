@@ -804,3 +804,189 @@ test('startRunner completes a run that ended before a cancel arrived with how it
     [{ runner: 'r1', executionId: 'exe_1', outcome: 'succeeded' }],
   ]);
 });
+
+// A tasks file's text, whose context no record may hold.
+const tasks = JSON.stringify({
+  tasks: [
+    {
+      key: 'lane',
+      title: 'Lane',
+      kind: 'task',
+      priority: 2,
+      assignee: 'dev',
+      context: { secret: 'context-only' },
+    },
+  ],
+});
+
+test('startRunner sends the tasks text a succeeded run left with its completion', async () => {
+  const { run, execute } = controlled();
+  client.claim.mockResolvedValueOnce(task(60000));
+  start(execute);
+  await vi.advanceTimersByTimeAsync(0);
+
+  run.end({ outcome: 'succeeded', tasks });
+  await vi.advanceTimersByTimeAsync(0);
+
+  expect(client.complete.mock.calls).toEqual([
+    [{ runner: 'r1', executionId: 'exe_1', outcome: 'succeeded', tasks }],
+  ]);
+  expect(output.records().at(-1)).toEqual(
+    expect.objectContaining({
+      msg: 'completed',
+      taskId: 'tsk_1',
+      executionId: 'exe_1',
+      attempt: 1,
+      outcome: 'succeeded',
+    }),
+  );
+  expect(output.lines.join('')).not.toContain('context-only');
+});
+
+test('startRunner sends a completion with tasks that got no answer again, as it was, and logs no tasks text', async () => {
+  const { run, execute } = controlled();
+  client.claim.mockResolvedValueOnce(task(60000));
+  client.complete.mockResolvedValueOnce(noAnswer);
+  start(execute);
+  await vi.advanceTimersByTimeAsync(0);
+
+  run.end({ outcome: 'succeeded', tasks });
+  await vi.advanceTimersByTimeAsync(pollMs);
+
+  expect(client.complete.mock.calls).toEqual([
+    [{ runner: 'r1', executionId: 'exe_1', outcome: 'succeeded', tasks }],
+    [{ runner: 'r1', executionId: 'exe_1', outcome: 'succeeded', tasks }],
+  ]);
+  expect(messages()).toEqual(['claimed', 'complete failed', 'completed']);
+  expect(output.records()[1]).toMatchObject({
+    executionId: 'exe_1',
+    outcome: 'succeeded',
+    failure: 'no_answer',
+  });
+  expect(output.lines.join('')).not.toContain('context-only');
+});
+
+test('startRunner logs a refused completion with tasks with no tasks text', async () => {
+  const { run, execute } = controlled();
+  client.claim.mockResolvedValueOnce(task(60000));
+  client.complete.mockResolvedValueOnce({
+    ok: false,
+    failure: 'refused',
+    message: 'not_found',
+  });
+  start(execute);
+  await vi.advanceTimersByTimeAsync(0);
+
+  run.end({ outcome: 'succeeded', tasks });
+  await vi.advanceTimersByTimeAsync(0);
+
+  expect(output.records().at(-1)).toMatchObject({
+    msg: 'complete refused',
+    outcome: 'succeeded',
+    message: 'not_found',
+  });
+  expect(output.lines.join('')).not.toContain('context-only');
+});
+
+test('startRunner logs each task the completion created, with its key and id', async () => {
+  const { run, execute } = controlled();
+  client.claim.mockResolvedValueOnce(task(60000));
+  client.complete.mockResolvedValueOnce(
+    ok({
+      outcome: 'succeeded',
+      reason: null,
+      created: [
+        { key: 'lane', id: 'tsk_a' },
+        { key: 'synth', id: 'tsk_b' },
+      ],
+    }),
+  );
+  start(execute);
+  await vi.advanceTimersByTimeAsync(0);
+
+  run.end({ outcome: 'succeeded', tasks });
+  await vi.advanceTimersByTimeAsync(0);
+
+  expect(messages()).toEqual([
+    'claimed',
+    'completed',
+    'task created',
+    'task created',
+  ]);
+  expect(output.records().slice(2)).toEqual([
+    expect.objectContaining({
+      level: 30,
+      taskId: 'tsk_1',
+      executionId: 'exe_1',
+      attempt: 1,
+      key: 'lane',
+      id: 'tsk_a',
+    }),
+    expect.objectContaining({
+      level: 30,
+      taskId: 'tsk_1',
+      executionId: 'exe_1',
+      attempt: 1,
+      key: 'synth',
+      id: 'tsk_b',
+    }),
+  ]);
+});
+
+test('startRunner logs why the server failed a succeeded run over its tasks file', async () => {
+  const { run, execute } = controlled();
+  client.claim.mockResolvedValueOnce(task(60000));
+  client.complete.mockResolvedValueOnce(
+    ok({
+      outcome: 'failed',
+      reason: 'tasks file: task lane: unknown field blocked_by',
+      created: [],
+    }),
+  );
+  start(execute);
+  await vi.advanceTimersByTimeAsync(0);
+
+  run.end({ outcome: 'succeeded', tasks });
+  await vi.advanceTimersByTimeAsync(0);
+
+  expect(messages()).toEqual(['claimed', 'completed', 'tasks file refused']);
+  expect(output.records().at(-1)).toEqual(
+    expect.objectContaining({
+      level: 40,
+      taskId: 'tsk_1',
+      executionId: 'exe_1',
+      attempt: 1,
+      reason: 'tasks file: task lane: unknown field blocked_by',
+    }),
+  );
+});
+
+test('startRunner logs no refused tasks file for a failed run the server failed', async () => {
+  const { run, execute } = controlled();
+  client.claim.mockResolvedValueOnce(task(60000));
+  client.complete.mockResolvedValueOnce(
+    ok({ outcome: 'failed', reason: 'exit code 3', created: [] }),
+  );
+  start(execute);
+  await vi.advanceTimersByTimeAsync(0);
+
+  run.end({ outcome: 'failed', reason: 'exit code 3' });
+  await vi.advanceTimersByTimeAsync(0);
+
+  expect(messages()).toEqual(['claimed', 'completed']);
+});
+
+test('startRunner completes a cancelled run that left tasks as cancelled, without them', async () => {
+  const { run, execute } = controlled();
+  client.claim.mockResolvedValueOnce(task(3000));
+  client.heartbeat.mockResolvedValueOnce(ok({ cancel: true, leaseMs: 3000 }));
+  start(execute);
+  await vi.advanceTimersByTimeAsync(1000);
+
+  run.end({ outcome: 'succeeded', tasks });
+  await vi.advanceTimersByTimeAsync(0);
+
+  expect(client.complete.mock.calls).toEqual([
+    [{ runner: 'r1', executionId: 'exe_1', outcome: 'cancelled' }],
+  ]);
+});

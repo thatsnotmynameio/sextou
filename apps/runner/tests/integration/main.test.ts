@@ -154,13 +154,14 @@ async function startRunner(assignee: string) {
 }
 
 // Each task names a Taskfile in sextou's repository on GitHub. The runner
-// downloads it from a server on localhost instead, whose tarball has three:
+// downloads it from a server on localhost instead, whose tarball has four:
 // tasks/hello-world writes a line, then the context it got; tasks/released
 // writes the line, then runs until the file its context's `release` names
 // exists, for at most 5 seconds, so a test holds the run until it saw what
-// happens while it runs; and tasks/long-run runs for 2 seconds, for a cancel
-// to stop. Stryker runs each test again for every mutant it covers, so each
-// second a run lasts costs minutes.
+// happens while it runs; tasks/long-run runs for 2 seconds, for a cancel to
+// stop; and tasks/create-tasks writes the context it got as its tasks file.
+// Stryker runs each test again for every mutant it covers, so each second a
+// run lasts costs minutes.
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'sextou-runner-'));
   github = await serve(
@@ -175,6 +176,9 @@ beforeAll(async () => {
           'for i in $(seq 100); do [ -e {{(fromJson .CONTEXT).release | q}} ] && exit 0; sleep 0.05; done; exit 1',
         ]),
         'tasks/long-run/Taskfile.yml': plaintext(['sleep 2']),
+        'tasks/create-tasks/Taskfile.yml': plaintext([
+          'echo {{.CONTEXT | q}} > {{.TASKS_FILE | q}}',
+        ]),
       }),
     ),
   );
@@ -294,6 +298,52 @@ goTask(
         line: JSON.stringify(context),
       }),
     ).toMatchObject({ stream: 'stdout' });
+  },
+);
+
+goTask(
+  'main sends the tasks file its Taskfile wrote, and logs each task the server created from it',
+  async () => {
+    // Tasks for an assignee no runner serves, so the test claims them.
+    const assignee = assigned('created-by-run');
+    const tasks = [
+      { key: 'first', title: 'First', kind: 'task', priority: 2, assignee },
+      {
+        key: 'second',
+        title: 'Second',
+        kind: 'task',
+        priority: 1,
+        assignee,
+        blockedBy: ['first'],
+      },
+    ];
+    const task = await createTask('creates', {
+      folder: 'tasks/create-tasks',
+      context: { tasks },
+    });
+    await startRunner('creates');
+
+    expect(await logged('completed', { taskId: task.id })).toMatchObject({
+      outcome: 'succeeded',
+    });
+    const first = await logged('task created', {
+      taskId: task.id,
+      key: 'first',
+    });
+    const second = await logged('task created', {
+      taskId: task.id,
+      key: 'second',
+    });
+    expect(second.id).not.toBe(first.id);
+    expect(messages()).not.toContain('tasks file refused');
+    // second waits for first, so a claim gets first, whatever its priority.
+    expect(
+      await call('runners.claim', {
+        claimId: randomUUID(),
+        runner: 'other',
+        assignees: [assignee],
+      }),
+    ).toMatchObject({ task: { id: first.id } });
   },
 );
 
