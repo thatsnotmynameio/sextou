@@ -20,6 +20,7 @@ import {
 } from 'vitest';
 import { createLogger } from '@sextou/logger';
 import { checkGoTask, runTaskfile, taskfileExecute } from '../../src/taskfile';
+import type { Execute } from '../../src/runner';
 import { answer, archive, plaintext, serve, sha } from '../archive';
 import { bin, goTask } from '../go-task';
 import { memory } from '@sextou/logger/testing';
@@ -359,7 +360,7 @@ async function execute(
     yaml?: string;
     listener?: RequestListener;
     context?: Record<string, unknown> | null;
-    uses?: { repo: string; sha: string; taskfile: string } | null;
+    uses?: Parameters<Execute>[0]['uses'];
   } = {},
 ) {
   const server = await serve(listener);
