@@ -35,6 +35,7 @@ import {
   linkSchema,
   listReadySchema,
   renewExecutionSchema,
+  fileTaskKeySchema,
   tasksFileSchema,
   unlinkSchema,
 } from './schemas';
@@ -435,8 +436,6 @@ type FileRead = { ok: true; tasks: FileTask[] } | { ok: false; reason: string };
 // anything else of the file: it is the run's output, recorded and logged.
 const longestQuoted = 64;
 
-const fileKey = tasksFileSchema.shape.tasks.element.shape.key;
-
 function refuseFile(why: string): FileRead {
   return { ok: false, reason: `tasks file: ${why}` };
 }
@@ -444,7 +443,7 @@ function refuseFile(why: string): FileRead {
 // A task of the file, by its key when it is one and short, else by its
 // position, from 1.
 function named(key: unknown, index: number) {
-  const parsed = fileKey.safeParse(key);
+  const parsed = fileTaskKeySchema.safeParse(key);
   return parsed.success && parsed.data.length <= longestQuoted
     ? `task ${JSON.stringify(parsed.data)}`
     : `task ${index + 1}`;
@@ -453,20 +452,20 @@ function named(key: unknown, index: number) {
 // What the first issue tasksFileSchema found says about the file.
 function schemaRefusal(file: unknown, issue: z.core.$ZodIssue) {
   const [, index, field] = issue.path;
-  const unknown =
+  const unknownField =
     issue.code === 'unrecognized_keys' && issue.keys[0].length <= longestQuoted
       ? `has the unknown field ${JSON.stringify(issue.keys[0])}`
       : 'has an unknown field';
   if (typeof index !== 'number') {
     return issue.code === 'unrecognized_keys'
-      ? unknown
+      ? unknownField
       : 'not an object with a list of tasks';
   }
   const task = (file as { tasks: { key?: unknown }[] }).tasks[index];
   const name = named(task?.key, index);
   if (field === undefined) {
     return issue.code === 'unrecognized_keys'
-      ? `${name} ${unknown}`
+      ? `${name} ${unknownField}`
       : `${name} is not an object`;
   }
   return `${name} has no valid ${String(field)}`;

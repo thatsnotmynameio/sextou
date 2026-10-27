@@ -131,13 +131,16 @@ export const createTaskSchema = z.object({
   createdBy: label,
 });
 
+// The key that names a task within the file a run leaves.
+export const fileTaskKeySchema = label;
+
 // A task in the file a run leaves: what createTask takes but its parent and
 // its creator, which the finish gives, under the names tasks.create takes
 // (source for sourcePath), with a key that names it within the file and the
 // keys of the file's tasks it waits for. A field the format doesn't define is
 // refused, so a typo such as blocked_by can't make a task ready out of order.
 const fileTaskSchema = z.strictObject({
-  key: label,
+  key: fileTaskKeySchema,
   title: label,
   kind: label,
   priority,
