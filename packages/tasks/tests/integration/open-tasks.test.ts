@@ -77,6 +77,7 @@ async function applied(client: Database) {
 
 const taskTables = [
   '__drizzle_migrations',
+  'task_execution_tasks',
   'task_executions',
   'task_links',
   'task_status_changes',

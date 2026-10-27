@@ -85,6 +85,13 @@ export interface Execution {
   leaseMs: number;
 }
 
+// A task a run's tasks file created, by its key in the file and the id the
+// tasks gave it.
+export interface CreatedTask {
+  key: string;
+  id: string;
+}
+
 // An attempt whose lease expired, which the server ended, and the status its
 // task took: open again while attempts are left, else failed, or cancelled
 // when someone asked for it.
@@ -159,15 +166,25 @@ export interface Tasks {
         | typeof Refusal.timeout
       >
   >;
-  // The runner that holds the attempt ends its task. The same finish sent
-  // again succeeds.
+  // The runner that holds the attempt ends its task. A finish as succeeded
+  // may carry the text of the tasks file its run left: its tasks are created
+  // as the task's children in the same write, and created names them. A file
+  // the tasks can't take fails the task instead, with a reason, and creates
+  // nothing: outcome and reason are what the tasks recorded. The same finish
+  // sent again gets the same answer and changes nothing.
   finish: (finish: {
     executionId: string;
     runner: Actor;
     outcome: Outcome;
     reason?: string;
+    tasks?: string;
   }) => Promise<
-    | { ok: true }
+    | {
+        ok: true;
+        outcome: Outcome;
+        reason: string | null;
+        created: CreatedTask[];
+      }
     | Refused<
         | typeof Refusal.invalid
         | typeof Refusal.leaseLost

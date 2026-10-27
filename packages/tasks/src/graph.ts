@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import {
   and,
   desc,
@@ -16,9 +16,11 @@ import type {
   TursoDatabaseDatabase,
   TursoDatabaseRunResult,
 } from 'drizzle-orm/tursodatabase';
+import type { z } from 'zod';
 import {
   ready,
   taskExecutions,
+  taskExecutionTasks,
   taskLinks,
   tasks,
   taskStatusChanges,
@@ -33,9 +35,11 @@ import {
   linkSchema,
   listReadySchema,
   renewExecutionSchema,
+  fileTaskKeySchema,
+  tasksFileSchema,
   unlinkSchema,
 } from './schemas';
-import type { Context } from './schemas';
+import type { Context, FileTask } from './schemas';
 import { type FinalStatus, holds, Status } from './status';
 
 // Why an operation changed nothing.
@@ -112,6 +116,12 @@ export interface Execution {
   attempt: number;
   // When the lease ends unless renewed, in milliseconds since the epoch.
   expiresAt: number;
+}
+
+// A task a finish created, by the key its file of tasks gave it.
+export interface CreatedTask {
+  key: string;
+  id: string;
 }
 
 // An attempt expireExecutions ended, and the status its task took: open
@@ -206,20 +216,47 @@ export interface Graph {
   >;
   // Ends the attempt and moves its task to a final state, judging the lease
   // as renewExecution does. The one who finishes it need not be the one who
-  // started it. The same finish sent again, by the same one with the same
-  // status, reason and result, succeeds and changes nothing while the
-  // attempt's end is still its task's last change.
-  finishTask: (finish: {
-    executionId: string;
-    changedBy: string;
-    status: FinalStatus;
-    // Why it ended so, recorded with the change; blank is null.
-    reason?: string;
-    // Where the run's result is, recorded on its attempt. Stored as given;
-    // blank is null.
-    resultPath?: string;
-  }) => Promise<
-    | { ok: true }
+  // started it. The answer is the state the task took, the reason recorded
+  // with it, and the tasks the finish created.
+  //
+  // A finish as succeeded may carry the text of the file of tasks its run
+  // left, JSON as tasksFileSchema reads it. Its tasks are created as the
+  // task's children, recorded as the finisher's, and linked as the file
+  // says, and each open task that waited for the task also waits for each
+  // of the file's final tasks, those no other task in it waits for, all in
+  // the same write. A file the graph can't take fails the task with a
+  // reason that names what was wrong, and creates nothing: one that isn't
+  // JSON or that tasksFileSchema refuses, a key two tasks have, a blocker no
+  // task in it has or that one task names twice, links that close a cycle,
+  // more than maxTasks tasks, or tasks that would sit deeper than maxDepth,
+  // a task's depth being the number of parents above it. When someone asked
+  // to cancel the task, a file that holds tasks, or doesn't read as a file,
+  // cancels it instead, recorded as theirs. A blank text or a file with no
+  // tasks creates nothing, and a finish as another state ignores its text.
+  //
+  // The same finish sent again, its answer lost, gets the same answer and
+  // changes nothing: the attempt keeps a digest of the finish that ended it.
+  finishTask: (
+    finish: {
+      executionId: string;
+      changedBy: string;
+      status: FinalStatus;
+      // Why it ended so, recorded with the change; blank is null.
+      reason?: string;
+      // Where the run's result is, recorded on its attempt. Stored as given;
+      // blank is null.
+      resultPath?: string;
+    } & (
+      | { tasks: string; maxTasks: number; maxDepth: number }
+      | { tasks?: undefined; maxTasks?: number; maxDepth?: number }
+    ),
+  ) => Promise<
+    | {
+        ok: true;
+        status: FinalStatus;
+        reason: string | null;
+        created: CreatedTask[];
+      }
     | Refused<
         typeof Reason.invalid | typeof Reason.leaseLost | typeof Reason.timeout
       >
@@ -366,6 +403,169 @@ function reaches(tx: Transaction, from: string, to: string) {
 SELECT 1 FROM reached WHERE id = ${to} LIMIT 1`);
 }
 
+// How many parents sit above the task, up its chain of parent_id. A parent
+// exists before its children, so the chain ends. A count answers one row.
+function depth(tx: Transaction, taskId: string) {
+  return tx.get(sql`WITH RECURSIVE above (id) AS (
+  SELECT ${tasks.parentId} FROM ${tasks} WHERE ${tasks.id} = ${taskId}
+  UNION ALL
+  SELECT ${tasks.parentId} FROM above JOIN ${tasks} ON ${tasks.id} = above.id
+)
+SELECT count(id) AS depth FROM above`) as Promise<{ depth: number }>;
+}
+
+// A digest of a finish, as its schema outputs it, which its attempt keeps
+// so the same finish sent again is told apart from any other.
+function digest(finish: {
+  changedBy: string;
+  status: FinalStatus;
+  reason: string | null;
+  resultPath: string | null;
+  tasks?: string;
+}) {
+  const { changedBy, status, reason, resultPath, tasks: text } = finish;
+  return createHash('sha256')
+    .update(JSON.stringify([changedBy, status, reason, resultPath, text]))
+    .digest('hex');
+}
+
+// The tasks a file of tasks holds, or why the graph refuses it.
+type FileRead = { ok: true; tasks: FileTask[] } | { ok: false; reason: string };
+
+// The longest key or field name a reason quotes. A reason never quotes
+// anything else of the file: it is the run's output, recorded and logged.
+const longestQuoted = 64;
+
+function refuseFile(why: string): FileRead {
+  return { ok: false, reason: `tasks file: ${why}` };
+}
+
+// A task of the file, by its key when it is one and short, else by its
+// position, from 1.
+function named(key: unknown, index: number) {
+  const parsed = fileTaskKeySchema.safeParse(key);
+  return parsed.success && parsed.data.length <= longestQuoted
+    ? `task ${JSON.stringify(parsed.data)}`
+    : `task ${index + 1}`;
+}
+
+// What the first issue tasksFileSchema found says about the file.
+function schemaRefusal(file: unknown, issue: z.core.$ZodIssue) {
+  const [, index, field] = issue.path;
+  const unknownField =
+    issue.code === 'unrecognized_keys' && issue.keys[0].length <= longestQuoted
+      ? `has the unknown field ${JSON.stringify(issue.keys[0])}`
+      : 'has an unknown field';
+  if (typeof index !== 'number') {
+    return issue.code === 'unrecognized_keys'
+      ? unknownField
+      : 'not an object with a list of tasks';
+  }
+  const task = (file as { tasks: { key?: unknown }[] }).tasks[index];
+  const name = named(task?.key, index);
+  if (field === undefined) {
+    return issue.code === 'unrecognized_keys'
+      ? `${name} ${unknownField}`
+      : `${name} is not an object`;
+  }
+  return `${name} has no valid ${String(field)}`;
+}
+
+// The position of the first task, in the file's order, on a cycle of the
+// file's links, or -1 when no link closes one. Every blocker names a task of
+// the file, once.
+function onCycle(file: FileTask[]) {
+  // How many of its blockers each task still waits for, freed in turn from
+  // the tasks that wait for none: those never freed wait, through their
+  // links, for a cycle.
+  const waiting = new Map(
+    file.map((task) => [task.key, task.blockedBy?.length ?? 0]),
+  );
+  const free = file.filter((task) => waiting.get(task.key) === 0);
+  for (let next = free.pop(); next !== undefined; next = free.pop()) {
+    waiting.delete(next.key);
+    for (const task of file) {
+      if (task.blockedBy?.includes(next.key)) {
+        const left = (waiting.get(task.key) as number) - 1;
+        waiting.set(task.key, left);
+        if (left === 0) {
+          free.push(task);
+        }
+      }
+    }
+  }
+  if (waiting.size === 0) {
+    return -1;
+  }
+  // Each task left waits for another left: following them from the first
+  // comes back to a task on a cycle.
+  const byKey = new Map(file.map((task, index) => [task.key, index]));
+  const seen = new Set<string>();
+  let [key] = waiting.keys();
+  while (!seen.has(key)) {
+    seen.add(key);
+    const { blockedBy } = file[byKey.get(key) as number];
+    key = (blockedBy as string[]).find((blocker) =>
+      waiting.has(blocker),
+    ) as string;
+  }
+  return byKey.get(key) as number;
+}
+
+// Reads a file of tasks, refusing one with more than maxTasks tasks or any
+// the graph can't create as the file says. A blank text holds no tasks.
+function readTasksFile(text: string, maxTasks: number): FileRead {
+  if (text.trim() === '') {
+    return { ok: true, tasks: [] };
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    // The parser's message quotes the text.
+    return refuseFile('not JSON');
+  }
+  const parsed = tasksFileSchema.safeParse(value);
+  if (!parsed.success) {
+    return refuseFile(schemaRefusal(value, parsed.error.issues[0]));
+  }
+  const file = parsed.data.tasks;
+  if (file.length > maxTasks) {
+    return refuseFile(
+      `${file.length} tasks, more than the limit of ${maxTasks}`,
+    );
+  }
+  const keys = new Set<string>();
+  for (const [index, task] of file.entries()) {
+    if (keys.has(task.key)) {
+      return refuseFile(
+        `${named(task.key, index)} repeats the key of an earlier task`,
+      );
+    }
+    keys.add(task.key);
+  }
+  for (const [index, task] of file.entries()) {
+    const blockers = task.blockedBy ?? [];
+    if (blockers.some((blocker) => !keys.has(blocker))) {
+      return refuseFile(
+        `${named(task.key, index)} waits for a key no task in the file has`,
+      );
+    }
+    if (new Set(blockers).size < blockers.length) {
+      return refuseFile(
+        `${named(task.key, index)} waits for the same key twice`,
+      );
+    }
+  }
+  const cycle = onCycle(file);
+  if (cycle !== -1) {
+    return refuseFile(
+      `${named(file[cycle].key, cycle)} waits for itself through its links`,
+    );
+  }
+  return { ok: true, tasks: file };
+}
+
 // One level of a logger: a message, or fields and then a message.
 interface LogMethod {
   (msg: string): void;
@@ -381,6 +581,38 @@ export interface Logger {
   info: LogMethod;
   debug: LogMethod;
   trace: LogMethod;
+}
+
+// Makes each open task the finishing task blocks wait for the file's final
+// tasks too, those no other task of the file waits for. A cancelled one
+// keeps its links and gets none.
+async function handOver(
+  tx: Transaction,
+  taskId: string,
+  file: FileTask[],
+  created: CreatedTask[],
+) {
+  // Stryker disable next-line ArrayDeclaration: a key no task has waits for nothing either
+  const waitedFor = new Set(file.flatMap((task) => task.blockedBy ?? []));
+  const finals = created.filter(({ key }) => !waitedFor.has(key));
+  const dependents = await tx
+    .select({ id: tasks.id })
+    .from(taskLinks)
+    .innerJoin(tasks, eq(tasks.id, taskLinks.taskId))
+    .where(and(eq(taskLinks.blockerId, taskId), eq(tasks.status, Status.open)));
+  for (const dependent of dependents) {
+    for (const final of finals) {
+      await tx
+        .insert(taskLinks)
+        .values({ taskId: dependent.id, blockerId: final.id });
+    }
+    await tx
+      .update(tasks)
+      .set({
+        holdingBlockers: sql`${tasks.holdingBlockers} + ${finals.length}`,
+      })
+      .where(eq(tasks.id, dependent.id));
+  }
 }
 
 // The graph's operations over a migrated database. Readiness is kept in each
@@ -548,14 +780,23 @@ export function createGraph(
       changedBy: string;
       reason: string | null;
       resultPath?: string | null;
+      // The digest of the finish that ends it, when one does.
+      finishDigest?: string;
     },
   ) {
-    const { taskId, executionId, status, changedBy, reason, resultPath } =
-      attempt;
+    const {
+      taskId,
+      executionId,
+      status,
+      changedBy,
+      reason,
+      resultPath,
+      finishDigest,
+    } = attempt;
     await move(tx, taskId, Status.running, status, changedBy, reason);
     await tx
       .update(taskExecutions)
-      .set({ expiresAt: null, resultPath })
+      .set({ expiresAt: null, resultPath, finishDigest })
       .where(eq(taskExecutions.id, executionId));
     if (!holds(status)) {
       await tx
@@ -571,6 +812,73 @@ export function createGraph(
           ),
         );
     }
+  }
+
+  // Creates the tasks of a file as the children of the task whose run left
+  // it, recorded as the creator's and under their keys as the attempt's,
+  // then links them as the file says. Each blocker is a task of the file,
+  // new and open, so it holds: each task starts held by all of its own.
+  async function createFileTasks(
+    tx: Transaction,
+    {
+      taskId,
+      executionId,
+      createdBy,
+    }: { taskId: string; executionId: string; createdBy: string },
+    file: FileTask[],
+  ) {
+    const created: CreatedTask[] = [];
+    for (const { key, source, blockedBy = [], ...fields } of file) {
+      const id = newId('tsk');
+      await tx.insert(tasks).values({
+        id,
+        ...fields,
+        sourcePath: source,
+        parentId: taskId,
+        status: Status.open,
+        holdingBlockers: blockedBy.length,
+      });
+      await recordChange(tx, id, null, Status.open, createdBy);
+      await tx
+        .insert(taskExecutionTasks)
+        .values({ executionId, key, taskId: id });
+      created.push({ key, id });
+    }
+    const ids = new Map(created.map(({ key, id }) => [key, id]));
+    for (const { key, blockedBy = [] } of file) {
+      for (const blocker of blockedBy) {
+        await tx.insert(taskLinks).values({
+          taskId: ids.get(key) as string,
+          blockerId: ids.get(blocker) as string,
+        });
+      }
+    }
+    return created;
+  }
+
+  // The answer of the finish that ended the attempt: the change that ended
+  // it, its task's last since the task is final, and the tasks it created,
+  // in the file's order.
+  async function answered(
+    tx: Transaction,
+    taskId: string,
+    executionId: string,
+  ) {
+    const last = (await lastChange(tx, taskId)) as {
+      toStatus: FinalStatus;
+      reason: string | null;
+    };
+    const created = await tx
+      .select({ key: taskExecutionTasks.key, id: taskExecutionTasks.taskId })
+      .from(taskExecutionTasks)
+      .where(eq(taskExecutionTasks.executionId, executionId))
+      .orderBy(sql`rowid`);
+    return {
+      ok: true as const,
+      status: last.toStatus,
+      reason: last.reason,
+      created,
+    };
   }
 
   return {
@@ -757,14 +1065,17 @@ export function createGraph(
       if (!parsed.success) {
         return refuse(Reason.invalid);
       }
-      const { executionId, changedBy, status, reason, resultPath } =
-        parsed.data;
+      const finish = parsed.data;
+      const { executionId, changedBy, status, reason, resultPath } = finish;
+      const finishDigest = digest(finish);
       return write(async (tx) => {
         const execution = await tx
           .select({
             taskId: taskExecutions.taskId,
             expiresAt: taskExecutions.expiresAt,
-            resultPath: taskExecutions.resultPath,
+            cancelRequestedBy: taskExecutions.cancelRequestedBy,
+            cancelReason: taskExecutions.cancelReason,
+            finishDigest: taskExecutions.finishDigest,
           })
           .from(taskExecutions)
           .where(eq(taskExecutions.id, executionId))
@@ -772,36 +1083,67 @@ export function createGraph(
         if (execution === undefined) {
           return refuse(Reason.leaseLost);
         }
+        const { taskId } = execution;
         if (execution.expiresAt === null) {
           // The attempt ended: by this same finish, whose answer was lost,
-          // when it is the task's latest attempt and its end is the task's
-          // last change and says the same.
-          const latest = await tx
-            .select({ id: taskExecutions.id })
-            .from(taskExecutions)
-            .where(eq(taskExecutions.taskId, execution.taskId))
-            .orderBy(desc(taskExecutions.attempt))
-            .limit(1)
-            .get();
-          const last = await lastChange(tx, execution.taskId);
-          const same =
-            latest?.id === executionId &&
-            last?.fromStatus === Status.running &&
-            last.toStatus === status &&
-            last.changedBy === changedBy &&
-            last.reason === reason &&
-            execution.resultPath === resultPath;
-          return same ? { ok: true } : refuse(Reason.leaseLost);
+          // when the digests match. A finish leaves its task final, so its
+          // end stays the task's last change, and its attempt the latest;
+          // the sweep keeps no digest.
+          return execution.finishDigest === finishDigest
+            ? answered(tx, taskId, executionId)
+            : refuse(Reason.leaseLost);
         }
-        await end(tx, {
-          taskId: execution.taskId,
-          executionId,
-          status,
-          changedBy,
-          reason,
-          resultPath,
-        });
-        return { ok: true };
+        const ended = async (
+          to: FinalStatus,
+          by: string,
+          why: string | null,
+          created: CreatedTask[] = [],
+        ) => {
+          await end(tx, {
+            taskId,
+            executionId,
+            status: to,
+            changedBy: by,
+            reason: why,
+            resultPath,
+            finishDigest,
+          });
+          return { ok: true as const, status: to, reason: why, created };
+        };
+        if (status !== Status.succeeded || finish.tasks === undefined) {
+          return ended(status, changedBy, reason);
+        }
+        const file = readTasksFile(finish.tasks, finish.maxTasks);
+        if (file.ok && file.tasks.length === 0) {
+          return ended(status, changedBy, reason);
+        }
+        // A cancellation asked for wins over a file that would start more.
+        if (execution.cancelRequestedBy !== null) {
+          return ended(
+            Status.cancelled,
+            execution.cancelRequestedBy,
+            execution.cancelReason,
+          );
+        }
+        if (!file.ok) {
+          return ended(Status.failed, changedBy, file.reason);
+        }
+        // The file's tasks sit one level below the task.
+        const above = await depth(tx, taskId);
+        if (above.depth + 1 > finish.maxDepth) {
+          return ended(
+            Status.failed,
+            changedBy,
+            `tasks file: its tasks would sit deeper than the limit of ${finish.maxDepth}`,
+          );
+        }
+        const created = await createFileTasks(
+          tx,
+          { taskId, executionId, createdBy: changedBy },
+          file.tasks,
+        );
+        await handOver(tx, taskId, file.tasks, created);
+        return ended(status, changedBy, reason, created);
       });
     },
 

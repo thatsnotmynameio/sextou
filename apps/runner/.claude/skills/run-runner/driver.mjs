@@ -292,7 +292,8 @@ function serverCommand(args, serverState, env = {}) {
 /**
  * The runner's whole flow against a server of its own, with a short lease: no
  * server, a task naming hello-world's uses completed as succeeded, a task
- * cancelled while its Taskfile runs, and the stop. Touches neither skill's
+ * cancelled while its Taskfile runs, a task whose run leaves a tasks file,
+ * which creates two tasks, and the stop. Touches neither skill's
  * usual state file. Exits 1 at the first step that differs.
  */
 async function smoke() {
@@ -434,6 +435,63 @@ async function smoke() {
       assignees: [assignee],
     });
     await check('nothing left to claim', left?.task === null);
+
+    // examples/create-tasks writes its context to the run's tasks file, so a
+    // task whose context is a tasks file creates those tasks: here two, under
+    // an assignee no runner serves, second waiting for first. Pinned, as
+    // hello-world is, at the commit that added it.
+    const lanes = `${assignee}-lanes`;
+    const lane = (key, blockedBy) => ({
+      key,
+      title: key,
+      kind: 'task',
+      priority: 2,
+      assignee: lanes,
+      blockedBy,
+    });
+    const creates = await call('tasks.create', {
+      title: 'Creates tasks',
+      kind: 'task',
+      priority: 2,
+      assignee,
+      createdBy: 'smoke',
+      uses: 'thatsnotmynameio/sextou/packages/workflows/examples/create-tasks/Taskfile.yml@d89b3947f3f428cb1b93bf984f98bb1b2bc345a4',
+      context: { tasks: [lane('first'), lane('second', ['first'])] },
+    });
+    await check(
+      'created a task that creates tasks',
+      Boolean(creates?.id),
+      creates,
+    );
+    const createdEnd = await seen('completed', creates.id);
+    await check(
+      'completed as succeeded, with its tasks file',
+      createdEnd?.outcome === 'succeeded',
+      createdEnd,
+    );
+    const created = records(runner.log).filter(
+      (record) => record.msg === 'task created' && record.taskId === creates.id,
+    );
+    await check(
+      'logged each task created',
+      created.map((record) => record.key).join() === 'first,second',
+      created,
+    );
+    const laneClaim = { runner: 'other', assignees: [lanes] };
+    const first = await call('runners.claim', {
+      ...laneClaim,
+      claimId: `n1-${run}`,
+    });
+    await check(
+      'the created first is ready',
+      first?.task?.id === created[0].id,
+      first,
+    );
+    const second = await call('runners.claim', {
+      ...laneClaim,
+      claimId: `n2-${run}`,
+    });
+    await check('the created second waits for first', second?.task === null);
 
     await terminate(runner.pid);
     await check(

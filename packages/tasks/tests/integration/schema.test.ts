@@ -97,6 +97,7 @@ test("the schema lets an execution's result path and lease be updated", async ()
       cancel_requested_by: null,
       cancel_reason: null,
       claim_id: 'c',
+      finish_digest: null,
     },
   ]);
 });
@@ -140,6 +141,67 @@ test("the schema takes an actor's claim id once", async () => {
 
 test('the schema refuses an execution of a missing task', async () => {
   await expect(insertExecution('e1', 1)).rejects.toThrow(
+    'FOREIGN KEY constraint failed',
+  );
+});
+
+// A task an attempt created, under its key in the attempt's file.
+function insertCreated(executionId: string, key: string, taskId: string) {
+  return connection().run(
+    'INSERT INTO task_execution_tasks (execution_id, key, task_id) VALUES (?, ?, ?)',
+    executionId,
+    key,
+    taskId,
+  );
+}
+
+// A running task a, its attempt e1, and the open tasks b and c.
+async function insertAttemptAndTasks() {
+  await connection().exec(
+    "INSERT INTO tasks (id, title, kind, priority, assignee, status) VALUES ('a', 'A', 'task', 2, 'dev', 'running'), ('b', 'B', 'task', 2, 'dev', 'open'), ('c', 'C', 'task', 2, 'dev', 'open')",
+  );
+  await insertExecution('e1', 1);
+}
+
+test("the schema lets an execution's finish digest be set", async () => {
+  await insertAttemptAndTasks();
+  await connection().run(
+    "UPDATE task_executions SET finish_digest = 'abc' WHERE id = 'e1'",
+  );
+  expect(
+    await connection().get('SELECT finish_digest FROM task_executions'),
+  ).toEqual({ finish_digest: 'abc' });
+});
+
+test("the schema takes each key of an attempt's created tasks once", async () => {
+  await insertAttemptAndTasks();
+  await insertCreated('e1', 'lint', 'b');
+  await expect(insertCreated('e1', 'lint', 'c')).rejects.toThrow(
+    'UNIQUE constraint failed',
+  );
+  expect(await connection().all('SELECT * FROM task_execution_tasks')).toEqual([
+    { execution_id: 'e1', key: 'lint', task_id: 'b' },
+  ]);
+});
+
+test('the schema records a created task under one key only', async () => {
+  await insertAttemptAndTasks();
+  await insertCreated('e1', 'lint', 'b');
+  await expect(insertCreated('e1', 'test', 'b')).rejects.toThrow(
+    'UNIQUE constraint failed',
+  );
+});
+
+test('the schema refuses a created task that is missing', async () => {
+  await insertAttemptAndTasks();
+  await expect(insertCreated('e1', 'lint', 'missing')).rejects.toThrow(
+    'FOREIGN KEY constraint failed',
+  );
+});
+
+test('the schema refuses a created task of a missing attempt', async () => {
+  await insertAttemptAndTasks();
+  await expect(insertCreated('missing', 'lint', 'b')).rejects.toThrow(
     'FOREIGN KEY constraint failed',
   );
 });

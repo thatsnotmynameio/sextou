@@ -2,6 +2,8 @@ import { TRPCError } from '@trpc/server';
 import { expect, test, vi } from 'vitest';
 import { runnersRouter } from '../../../../src/modules/runners/runners.router';
 import { Outcome, Refusal, Status, type Tasks } from '../../../../src/tasks';
+import { createLogger } from '@sextou/logger';
+import { memory } from '@sextou/logger/testing';
 import { createCallerFactory } from '../../../../src/trpc';
 import { aTask, fakeTasks, testContext } from '../../../tasks';
 
@@ -153,9 +155,14 @@ test('runners.heartbeat refuses an empty attempt as BAD_REQUEST', async () => {
 });
 
 test.each(Object.values(Outcome))(
-  'runners.complete ends the task as %s for the runner',
+  'runners.complete ends the task as %s for the runner, with no created tasks',
   async (outcome) => {
-    const finish = vi.fn(async () => ({ ok: true as const }));
+    const finish = vi.fn(async () => ({
+      ok: true as const,
+      outcome,
+      reason: 'done',
+      created: [],
+    }));
 
     expect(
       await caller({ finish }).complete({
@@ -164,7 +171,7 @@ test.each(Object.values(Outcome))(
         outcome,
         reason: 'done',
       }),
-    ).toBeNull();
+    ).toEqual({ outcome, reason: 'done', created: [] });
     expect(finish).toHaveBeenCalledWith({
       executionId: 'exe_1',
       runner: { name: 'runner-1' },
@@ -173,6 +180,165 @@ test.each(Object.values(Outcome))(
     });
   },
 );
+
+const created = [
+  { key: 'review', id: 'tsk_2' },
+  { key: 'merge', id: 'tsk_3' },
+];
+
+// Completes an attempt that succeeded with a tasks file, against tasks that
+// created two tasks from it.
+async function completeWithTasks() {
+  const finish = vi.fn(async () => ({
+    ok: true as const,
+    outcome: Outcome.succeeded,
+    reason: null,
+    created,
+  }));
+  const answer = await caller({ finish }).complete({
+    runner: 'runner-1',
+    executionId: 'exe_1',
+    outcome: Outcome.succeeded,
+    tasks: '{"tasks":[]}',
+  });
+  return { finish, answer };
+}
+
+test("runners.complete passes the run's tasks file to the tasks", async () => {
+  const { finish } = await completeWithTasks();
+
+  expect(finish).toHaveBeenCalledWith({
+    executionId: 'exe_1',
+    runner: { name: 'runner-1' },
+    outcome: Outcome.succeeded,
+    tasks: '{"tasks":[]}',
+  });
+});
+
+test('runners.complete answers the tasks it created from the tasks file', async () => {
+  const { answer } = await completeWithTasks();
+
+  expect(answer).toEqual({ outcome: Outcome.succeeded, reason: null, created });
+});
+
+test('runners.complete answers the outcome the tasks recorded, failed with its reason, for a file they refused', async () => {
+  const reason = 'the tasks file holds 51 tasks, more than 50';
+
+  expect(
+    await caller({
+      finish: async () => ({
+        ok: true,
+        outcome: Outcome.failed,
+        reason,
+        created: [],
+      }),
+    }).complete({
+      runner: 'runner-1',
+      executionId: 'exe_1',
+      outcome: Outcome.succeeded,
+      tasks: '{"tasks":[]}',
+    }),
+  ).toEqual({ outcome: Outcome.failed, reason, created: [] });
+});
+
+// The records a completion that created two tasks logs.
+async function createdRecords() {
+  const output = memory();
+  const logger = createLogger(
+    { level: 'info', pretty: false },
+    output.destination,
+  );
+
+  await createCaller(
+    testContext({
+      logger,
+      tasks: fakeTasks({
+        finish: async () => ({
+          ok: true,
+          outcome: Outcome.succeeded,
+          reason: null,
+          created,
+        }),
+      }),
+    }),
+  ).complete({
+    runner: 'runner-1',
+    executionId: 'exe_1',
+    outcome: Outcome.succeeded,
+    tasks: '{"tasks":[]}',
+  });
+  return output.records();
+}
+
+test('runners.complete logs one record per created task', async () => {
+  expect(await createdRecords()).toEqual([
+    expect.objectContaining({ level: 30, msg: 'task created' }),
+    expect.objectContaining({ level: 30, msg: 'task created' }),
+  ]);
+});
+
+test('runners.complete logs each created task with its key, its id, the attempt that created it', async () => {
+  expect(await createdRecords()).toEqual([
+    expect.objectContaining({
+      key: 'review',
+      taskId: 'tsk_2',
+      executionId: 'exe_1',
+    }),
+    expect.objectContaining({
+      key: 'merge',
+      taskId: 'tsk_3',
+      executionId: 'exe_1',
+    }),
+  ]);
+});
+
+test('runners.complete logs nothing when it created no task', async () => {
+  const output = memory();
+  const logger = createLogger(
+    { level: 'info', pretty: false },
+    output.destination,
+  );
+
+  await createCaller(
+    testContext({
+      logger,
+      tasks: fakeTasks({
+        finish: async () => ({
+          ok: true,
+          outcome: Outcome.succeeded,
+          reason: null,
+          created: [],
+        }),
+      }),
+    }),
+  ).complete({
+    runner: 'runner-1',
+    executionId: 'exe_1',
+    outcome: Outcome.succeeded,
+  });
+
+  expect(output.records()).toEqual([]);
+});
+
+test('runners.complete fails with INTERNAL_SERVER_ERROR when its answer breaks the output schema', async () => {
+  await expect(
+    caller({
+      finish: async () => ({
+        ok: true,
+        outcome: Outcome.succeeded,
+        reason: null,
+        created: [{ key: 'review', id: '' }],
+      }),
+    }).complete({
+      runner: 'runner-1',
+      executionId: 'exe_1',
+      outcome: Outcome.succeeded,
+    }),
+  ).rejects.toMatchObject({
+    code: 'INTERNAL_SERVER_ERROR',
+    message: 'Output validation failed',
+  });
+});
 
 test('runners.complete fails with CONFLICT, lease_lost, for an attempt that lost its lease', async () => {
   await expect(

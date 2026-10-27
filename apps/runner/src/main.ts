@@ -68,6 +68,7 @@ function run(config: Config, logger: Logger) {
       bin: config.taskBin,
       timeoutMs: config.runTimeoutMs,
       killGraceMs: config.killGraceMs,
+      maxTasksFileBytes: config.maxTasksFileBytes,
     }),
     logger,
     newId: randomUUID,

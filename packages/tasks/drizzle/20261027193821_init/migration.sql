@@ -1,3 +1,12 @@
+CREATE TABLE `task_execution_tasks` (
+	`execution_id` text NOT NULL,
+	`key` text NOT NULL,
+	`task_id` text NOT NULL,
+	CONSTRAINT `task_execution_tasks_pk` PRIMARY KEY(`execution_id`, `key`),
+	CONSTRAINT `fk_task_execution_tasks_execution_id_task_executions_id_fk` FOREIGN KEY (`execution_id`) REFERENCES `task_executions`(`id`),
+	CONSTRAINT `fk_task_execution_tasks_task_id_tasks_id_fk` FOREIGN KEY (`task_id`) REFERENCES `tasks`(`id`)
+);
+--> statement-breakpoint
 CREATE TABLE `task_executions` (
 	`id` text PRIMARY KEY,
 	`task_id` text NOT NULL,
@@ -9,6 +18,7 @@ CREATE TABLE `task_executions` (
 	`expires_at` integer,
 	`cancel_requested_by` text,
 	`cancel_reason` text,
+	`finish_digest` text,
 	CONSTRAINT `fk_task_executions_task_id_tasks_id_fk` FOREIGN KEY (`task_id`) REFERENCES `tasks`(`id`),
 	CONSTRAINT "task_execution_attempt" CHECK("attempt" >= 1)
 );
@@ -54,6 +64,7 @@ CREATE TABLE `tasks` (
 	CONSTRAINT "task_context" CHECK(CASE WHEN json_valid("context") THEN json_type("context") = 'object' ELSE "context" IS NULL END)
 );
 --> statement-breakpoint
+CREATE UNIQUE INDEX `task_execution_task_created` ON `task_execution_tasks` (`task_id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `task_execution_task_attempt` ON `task_executions` (`task_id`,`attempt`);--> statement-breakpoint
 CREATE UNIQUE INDEX `task_execution_claim` ON `task_executions` (`actor`,`claim_id`);--> statement-breakpoint
 CREATE INDEX `task_execution_lease` ON `task_executions` (`expires_at`) WHERE "task_executions"."expires_at" IS NOT NULL;--> statement-breakpoint

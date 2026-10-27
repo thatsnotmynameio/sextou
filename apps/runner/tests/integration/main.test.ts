@@ -154,13 +154,14 @@ async function startRunner(assignee: string) {
 }
 
 // Each task names a Taskfile in sextou's repository on GitHub. The runner
-// downloads it from a server on localhost instead, whose tarball has three:
+// downloads it from a server on localhost instead, whose tarball has four:
 // tasks/hello-world writes a line, then the context it got; tasks/released
 // writes the line, then runs until the file its context's `release` names
 // exists, for at most 5 seconds, so a test holds the run until it saw what
-// happens while it runs; and tasks/long-run runs for 2 seconds, for a cancel
-// to stop. Stryker runs each test again for every mutant it covers, so each
-// second a run lasts costs minutes.
+// happens while it runs; tasks/long-run runs for 2 seconds, for a cancel to
+// stop; and tasks/create-tasks writes the context it got as its tasks file.
+// Stryker runs each test again for every mutant it covers, so each second a
+// run lasts costs minutes.
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'sextou-runner-'));
   github = await serve(
@@ -175,6 +176,9 @@ beforeAll(async () => {
           'for i in $(seq 100); do [ -e {{(fromJson .CONTEXT).release | q}} ] && exit 0; sleep 0.05; done; exit 1',
         ]),
         'tasks/long-run/Taskfile.yml': plaintext(['sleep 2']),
+        'tasks/create-tasks/Taskfile.yml': plaintext([
+          'echo {{.CONTEXT | q}} > {{.TASKS_FILE | q}}',
+        ]),
       }),
     ),
   );
@@ -294,6 +298,72 @@ goTask(
         line: JSON.stringify(context),
       }),
     ).toMatchObject({ stream: 'stdout' });
+  },
+);
+
+/**
+ * Runs main on a task whose Taskfile writes a tasks file of two tasks, second
+ * waiting for first, for an assignee no runner serves, so the test claims them.
+ * @param name the runner's assignee, and the created tasks' with a suffix
+ * @returns the task that ran and the created tasks' assignee
+ */
+async function runCreatingTasks(name: string) {
+  const assignee = assigned(`${name}-created`);
+  const tasks = [
+    { key: 'first', title: 'First', kind: 'task', priority: 2, assignee },
+    {
+      key: 'second',
+      title: 'Second',
+      kind: 'task',
+      priority: 1,
+      assignee,
+      blockedBy: ['first'],
+    },
+  ];
+  const task = await createTask(name, {
+    folder: 'tasks/create-tasks',
+    context: { tasks },
+  });
+  await startRunner(name);
+  return { task, assignee };
+}
+
+goTask('main sends the tasks file its Taskfile wrote', async () => {
+  const { task, assignee } = await runCreatingTasks('sends-tasks');
+
+  // The server recorded the run as it was sent: it took the file.
+  expect(await logged('completed', { taskId: task.id })).toMatchObject({
+    outcome: 'succeeded',
+    reason: null,
+  });
+  const first = await logged('task created', {
+    taskId: task.id,
+    key: 'first',
+  });
+  // second waits for first, so a claim gets first, whatever its priority.
+  expect(
+    await call('runners.claim', {
+      claimId: randomUUID(),
+      runner: 'other',
+      assignees: [assignee],
+    }),
+  ).toMatchObject({ task: { id: first.id } });
+});
+
+goTask(
+  'main logs each task the server created from the tasks file its Taskfile wrote',
+  async () => {
+    const { task } = await runCreatingTasks('logs-created');
+
+    const first = await logged('task created', {
+      taskId: task.id,
+      key: 'first',
+    });
+    const second = await logged('task created', {
+      taskId: task.id,
+      key: 'second',
+    });
+    expect(second.id).not.toBe(first.id);
   },
 );
 

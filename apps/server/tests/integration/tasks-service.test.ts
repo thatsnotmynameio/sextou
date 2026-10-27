@@ -47,6 +47,8 @@ function service(
     logger,
     leaseMs,
     maxAttempts: 1,
+    maxCreatedTasks: 50,
+    maxTaskDepth: 20,
     timeoutMs: 20_000,
     ...options,
   });
@@ -509,9 +511,9 @@ test('finish sent again, the same finish, succeeds', async () => {
   await createOpen(tasks);
   const executionId = await claimed(tasks);
   const finish = { executionId, runner, outcome: Outcome.succeeded };
-  await tasks.finish(finish);
+  const first = await tasks.finish(finish);
 
-  expect(await tasks.finish(finish)).toEqual({ ok: true });
+  expect(await tasks.finish(finish)).toEqual(first);
 });
 
 test('a call past timeoutMs writes nothing and is refused as timeout', async () => {
@@ -562,7 +564,7 @@ test.each(Object.values(Outcome))(
     const result = await tasks.finish({ executionId, runner, outcome });
     await tasks.stop();
 
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, outcome, reason: null, created: [] });
     expect(
       await readRow(path, 'SELECT status FROM tasks WHERE id = ?', task.id),
     ).toEqual({ status: outcome });
@@ -590,6 +592,154 @@ test('finish records the runner as who finished the task, with the reason given'
       task.id,
     ),
   ).toEqual({ changed_by: 'alice', reason: 'The tests time out' });
+});
+
+// A file of tasks a run left: a review, then a merge that waits for it.
+const tasksFile = JSON.stringify({
+  tasks: [
+    {
+      key: 'review',
+      title: 'Review the change',
+      kind: 'task',
+      priority: 2,
+      assignee: 'dev',
+    },
+    {
+      key: 'merge',
+      title: 'Merge the change',
+      kind: 'task',
+      priority: 2,
+      assignee: 'dev',
+      blockedBy: ['review'],
+    },
+  ],
+});
+
+// Finishes a claimed task with the tasks file, on a tasks database at
+// `path`, and stops the service.
+async function finishWithFile(path: string) {
+  const tasks = await startedService(path);
+  const task = await createOpen(tasks);
+  const executionId = await claimed(tasks);
+
+  const result = await tasks.finish({
+    executionId,
+    runner,
+    outcome: Outcome.succeeded,
+    tasks: tasksFile,
+  });
+  await tasks.stop();
+  return { task, result };
+}
+
+test('finish with a tasks file answers the ids of its tasks by key', async () => {
+  const { result } = await finishWithFile(join(dir, 'tasks.db'));
+
+  expect(result).toEqual({
+    ok: true,
+    outcome: Outcome.succeeded,
+    reason: null,
+    created: [
+      { key: 'review', id: expect.stringMatching(/^tsk_/) },
+      { key: 'merge', id: expect.stringMatching(/^tsk_/) },
+    ],
+  });
+});
+
+test("finish with a tasks file creates its tasks as the task's children", async () => {
+  const path = join(dir, 'tasks.db');
+  const { task, result } = await finishWithFile(path);
+
+  const [review, merge] = result.ok ? result.created : [];
+  expect(
+    await readRow(
+      path,
+      'SELECT title, parent_id FROM tasks WHERE id = ?',
+      review?.id ?? '',
+    ),
+  ).toEqual({ title: 'Review the change', parent_id: task.id });
+  expect(
+    await readRow(
+      path,
+      'SELECT title, parent_id FROM tasks WHERE id = ?',
+      merge?.id ?? '',
+    ),
+  ).toEqual({ title: 'Merge the change', parent_id: task.id });
+});
+
+// Finishes a claimed task with the tasks file twice, on a tasks database at
+// `path`, and stops the service.
+async function finishWithFileTwice(path: string) {
+  const tasks = await startedService(path);
+  await createOpen(tasks);
+  const executionId = await claimed(tasks);
+  const finish = {
+    executionId,
+    runner,
+    outcome: Outcome.succeeded,
+    tasks: tasksFile,
+  };
+  const first = await tasks.finish(finish);
+
+  const again = await tasks.finish(finish);
+  await tasks.stop();
+  return { first, again };
+}
+
+test('finish with a tasks file sent again answers the same ids', async () => {
+  const { first, again } = await finishWithFileTwice(join(dir, 'tasks.db'));
+
+  expect(again).toEqual(first);
+});
+
+test('finish with a tasks file sent again creates nothing more', async () => {
+  const path = join(dir, 'tasks.db');
+  await finishWithFileTwice(path);
+
+  expect(await readRow(path, 'SELECT count(*) AS count FROM tasks')).toEqual({
+    count: 3,
+  });
+});
+
+test('finish fails the task, creating nothing, when its file holds more tasks than maxCreatedTasks', async () => {
+  const tasks = await startedService(':memory:', { maxCreatedTasks: 1 });
+  await createOpen(tasks);
+  const executionId = await claimed(tasks);
+
+  expect(
+    await tasks.finish({
+      executionId,
+      runner,
+      outcome: Outcome.succeeded,
+      tasks: tasksFile,
+    }),
+  ).toEqual({
+    ok: true,
+    outcome: Outcome.failed,
+    reason: 'tasks file: 2 tasks, more than the limit of 1',
+    created: [],
+  });
+});
+
+test('finish fails the task, creating nothing, when its file would sit deeper than maxTaskDepth', async () => {
+  const tasks = await startedService(':memory:', { maxTaskDepth: 1 });
+  const parent = await createOpen(tasks, { assignee: alice });
+  await createOpen(tasks, { parentId: parent.id });
+  const executionId = await claimed(tasks);
+
+  expect(
+    await tasks.finish({
+      executionId,
+      runner,
+      outcome: Outcome.succeeded,
+      tasks: tasksFile,
+    }),
+  ).toEqual({
+    ok: true,
+    outcome: Outcome.failed,
+    reason: 'tasks file: its tasks would sit deeper than the limit of 1',
+    created: [],
+  });
 });
 
 test('finish refuses an unknown attempt as lease_lost', async () => {

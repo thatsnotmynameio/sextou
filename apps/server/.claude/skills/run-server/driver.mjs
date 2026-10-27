@@ -179,7 +179,9 @@ async function request(procedure, input) {
 /**
  * One runner's whole flow: create with a context and a uses, claim it back
  * with the context and the uses split, heartbeat, cancel, complete, and the
- * conflict a lost lease gets. Exits 1 at the first step that differs.
+ * conflict a lost lease gets; a task held by a link; a completion with a file
+ * of tasks, its resend, and a file refused. Exits 1 at the first step that
+ * differs.
  */
 async function smoke() {
   const run = Date.now().toString(36);
@@ -377,6 +379,103 @@ async function smoke() {
       outcome: 'succeeded',
     },
     (s) => s === 200,
+  );
+  // A run that leaves a file of two tasks, second waiting for first, under
+  // an assignee of their own, then a file the tasks refuse.
+  const creates = `${assignee}-creates`;
+  const lanes = `${assignee}-lanes`;
+  const lane = (key, blockedBy) => ({
+    key,
+    title: key,
+    kind: 'task',
+    priority: 2,
+    assignee: lanes,
+    context: { lane: key },
+    blockedBy,
+  });
+  const claimToRun = async (name, claimId) => {
+    const task = await step(
+      `create ${name}`,
+      'tasks.create',
+      { ...newTask, title: name, assignee: creates },
+      (s) => s === 200,
+    );
+    return step(
+      `claim ${name}`,
+      'runners.claim',
+      { claimId, runner: 'smoke-runner', assignees: [creates] },
+      (s, b) => s === 200 && b.result.data.task?.id === task.id,
+    );
+  };
+  const withFile = await claimToRun(
+    'a task whose run leaves a file',
+    `f1-${run}`,
+  );
+  const completeWithFile = {
+    runner: 'smoke-runner',
+    executionId: withFile.execution.id,
+    outcome: 'succeeded',
+    tasks: JSON.stringify({
+      tasks: [lane('first'), lane('second', ['first'])],
+    }),
+  };
+  const created = await step(
+    'complete with a file of two linked tasks',
+    'runners.complete',
+    completeWithFile,
+    (s, b) =>
+      s === 200 &&
+      b.result.data.outcome === 'succeeded' &&
+      b.result.data.created.map((task) => task.key).join() === 'first,second',
+  );
+  await step(
+    'complete with the file resent: the same ids',
+    'runners.complete',
+    completeWithFile,
+    (s, b) =>
+      s === 200 &&
+      JSON.stringify(b.result.data.created) === JSON.stringify(created.created),
+  );
+  const laneClaim = { runner: 'smoke-runner', assignees: [lanes] };
+  await step(
+    'claim first, with the context the file gave it',
+    'runners.claim',
+    { ...laneClaim, claimId: `n1-${run}` },
+    (s, b) =>
+      s === 200 &&
+      b.result.data.task?.id === created.created[0].id &&
+      b.result.data.task.context?.lane === 'first',
+  );
+  await step(
+    'claim, second waits for first',
+    'runners.claim',
+    { ...laneClaim, claimId: `n2-${run}` },
+    (s, b) => s === 200 && b.result.data.task === null,
+  );
+  const refused = await claimToRun('a task whose file is refused', `f2-${run}`);
+  await step(
+    'complete with blocked_by in the file: failed, nothing created',
+    'runners.complete',
+    {
+      runner: 'smoke-runner',
+      executionId: refused.execution.id,
+      outcome: 'succeeded',
+      tasks: JSON.stringify({
+        tasks: [lane('third'), { ...lane('fourth'), blocked_by: ['third'] }],
+      }),
+    },
+    (s, b) =>
+      s === 200 &&
+      b.result.data.outcome === 'failed' &&
+      b.result.data.reason ===
+        'tasks file: task "fourth" has the unknown field "blocked_by"' &&
+      b.result.data.created.length === 0,
+  );
+  await step(
+    'claim, nothing the refused file named',
+    'runners.claim',
+    { ...laneClaim, claimId: `n3-${run}` },
+    (s, b) => s === 200 && b.result.data.task === null,
   );
   out(steps.join('\n'));
 }

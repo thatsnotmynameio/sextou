@@ -19,6 +19,7 @@ test('loadConfig uses every default when no variable is set', () => {
     downloadTimeoutMs: 300000,
     runTimeoutMs: 21600000,
     killGraceMs: 10000,
+    maxTasksFileBytes: 1048576,
     dev: false,
     logLevel: 'info',
   });
@@ -39,6 +40,7 @@ test('loadConfig takes every variable that is set', () => {
       SEXTOU_RUNNER_DOWNLOAD_TIMEOUT_MS: '600',
       SEXTOU_RUNNER_RUN_TIMEOUT_MS: '900',
       SEXTOU_RUNNER_KILL_GRACE_MS: '800',
+      SEXTOU_RUNNER_MAX_TASKS_FILE_BYTES: '2048',
       SEXTOU_RUNNER_DEV: 'true',
       SEXTOU_RUNNER_LOG_LEVEL: 'debug',
     }),
@@ -55,6 +57,7 @@ test('loadConfig takes every variable that is set', () => {
     downloadTimeoutMs: 600,
     runTimeoutMs: 900,
     killGraceMs: 800,
+    maxTasksFileBytes: 2048,
     dev: true,
     logLevel: 'debug',
   });
@@ -154,6 +157,21 @@ test.each([
     `Invalid ${name}: ${JSON.stringify(value)} (expected a whole number of milliseconds from 1 to 2147483647)`,
   );
 });
+
+test('loadConfig takes SEXTOU_RUNNER_MAX_TASKS_FILE_BYTES from 1 byte', () => {
+  expect(
+    load({ SEXTOU_RUNNER_MAX_TASKS_FILE_BYTES: '1' }).maxTasksFileBytes,
+  ).toBe(1);
+});
+
+test.each(['0', '1.5', '-5', '1e3', ''])(
+  'loadConfig rejects SEXTOU_RUNNER_MAX_TASKS_FILE_BYTES=%j',
+  (value) => {
+    expect(() => load({ SEXTOU_RUNNER_MAX_TASKS_FILE_BYTES: value })).toThrow(
+      `Invalid SEXTOU_RUNNER_MAX_TASKS_FILE_BYTES: ${JSON.stringify(value)} (expected a whole number of bytes from 1)`,
+    );
+  },
+);
 
 test('loadConfig trims SEXTOU_RUNNER_TASK_BIN', () => {
   expect(load({ SEXTOU_RUNNER_TASK_BIN: ' go-task ' }).taskBin).toBe('go-task');

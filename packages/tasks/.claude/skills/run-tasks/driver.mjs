@@ -92,8 +92,9 @@ async function query(sql) {
  * a uses stored and handed out with the claim, a context and a uses refused,
  * a task with no uses claimed with a null one, links, ready list, claim and
  * its resend, renew, the lease expiring into a second attempt, a stale finish
- * refused, cancel requested and seen, finish and its resend, and the blocked
- * task freed. Exits 1 at the first step that differs.
+ * refused, cancel requested and seen, finish and its resend, the blocked
+ * task freed, a finish with a file of two linked tasks and its resend, and a
+ * file refused. Exits 1 at the first step that differs.
  */
 async function smoke() {
   let now = 1_700_000_000_000;
@@ -263,10 +264,98 @@ async function smoke() {
     ready,
     (r) => r.ok && ids(r).join() === b.id,
   );
-  await step(
+  const claimedB = await step(
     'claim b, no uses',
     () => tasks.claimTask({ ...claim, claimId: 'c4' }),
     (r) => r.ok && r.task?.id === b.id && r.task.uses === null,
+  );
+  // b's run leaves a file of two tasks, second waiting for first, under an
+  // assignee of their own; c, which waits for b, then waits for second.
+  const { task: c } = await step(
+    'create c',
+    () => tasks.createTask(newTask('C')),
+    (r) => r.ok,
+  );
+  await step(
+    'link c blocked by the running b',
+    () => tasks.link({ taskId: c.id, blockerId: b.id }),
+    (r) => r.ok,
+  );
+  const lane = (key, blockedBy) => ({
+    key,
+    title: key,
+    kind: 'task',
+    priority: 2,
+    assignee: 'lane',
+    blockedBy,
+  });
+  const withFile = (executionId, file) => ({
+    executionId,
+    changedBy: 'r1',
+    status: 'succeeded',
+    tasks: JSON.stringify({ tasks: file }),
+    maxTasks: 50,
+    maxDepth: 20,
+  });
+  const finishB = withFile(claimedB.execution.id, [
+    lane('first'),
+    lane('second', ['first']),
+  ]);
+  const created = await step(
+    'finish b with a file of two linked tasks',
+    () => tasks.finishTask(finishB),
+    (r) =>
+      r.ok &&
+      r.status === 'succeeded' &&
+      r.created.map((task) => task.key).join() === 'first,second',
+  );
+  await step(
+    'finish b resent: the same tasks',
+    () => tasks.finishTask(finishB),
+    (r) =>
+      r.ok &&
+      r.status === 'succeeded' &&
+      JSON.stringify(r.created) === JSON.stringify(created.created),
+  );
+  const readyAll = () =>
+    tasks.listReady({ assignees: ['dev', 'lane'], limit: 10 });
+  const [firstLane] = created.created;
+  await step(
+    "ready lists only first, as b's child: second waits for it, c for second",
+    readyAll,
+    (r) =>
+      r.ok && ids(r).join() === firstLane.id && r.tasks[0].parentId === b.id,
+  );
+  const { task: d } = await step(
+    'create d',
+    () => tasks.createTask(newTask('D')),
+    (r) => r.ok,
+  );
+  const claimedD = await step(
+    'claim d',
+    () => tasks.claimTask({ ...claim, claimId: 'c5' }),
+    (r) => r.ok && r.task?.id === d.id,
+  );
+  await step(
+    'finish d with blocked_by in its file: failed, nothing created',
+    () =>
+      tasks.finishTask(
+        withFile(claimedD.execution.id, [
+          lane('first'),
+          { ...lane('second'), blocked_by: ['first'] },
+        ]),
+      ),
+    (r) =>
+      r.ok &&
+      r.status === 'failed' &&
+      r.reason ===
+        'tasks file: task "second" has the unknown field "blocked_by"' &&
+      r.created.length === 0,
+  );
+  await step(
+    'ready still lists only first',
+    readyAll,
+    (r) => r.ok && ids(r).join() === firstLane.id,
   );
   await tasks.close();
   out(steps.join('\n'));

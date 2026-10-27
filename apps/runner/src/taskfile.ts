@@ -1,9 +1,11 @@
 import { type ChildProcessByStdio, execFile, spawn } from 'node:child_process';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { type FileHandle, mkdir, mkdtemp, open, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
+import { buffer } from 'node:stream/consumers';
 import { download } from './download';
 import type { Logger } from '@sextou/logger';
 import type { Execute, Result } from './runner';
@@ -16,11 +18,15 @@ import type { Execute, Result } from './runner';
  * the run ended. A task whose uses is null names nothing to run: it resolves
  * failed, with why, and makes no folder.
  *
- * The Taskfile gets two variables: CONTEXT, the task's context as JSON ({}
- * when it has none), and WORKSPACE, the path of workspace/, an empty folder
+ * The Taskfile gets three variables: CONTEXT, the task's context as JSON ({}
+ * when it has none), WORKSPACE, the path of workspace/, an empty folder
  * beside source/ where the run does its work, as a checkout of another
- * repository. A download that fails resolves failed, with download: and why,
- * and runs nothing. The folder is removed once the run ends, without waiting
+ * repository, and TASKS_FILE, the path of tasks.json beside them, where the
+ * run may write the tasks that follow it, out of reach of what it does to its
+ * workspace. A run that succeeded resolves with that file's text, read with
+ * readTasksFile; the file of a run that failed is never read. A download that
+ * fails resolves failed, with download: and why, and runs nothing. The folder
+ * is removed once the run ends, without waiting
  * for it: a large folder takes a while, and the run's result is already
  * settled. A folder that can't be removed, as one the run made read-only, is
  * logged and left behind.
@@ -30,12 +36,15 @@ export function taskfileExecute({
   githubUrl,
   downloadTimeoutMs,
   tarBin,
+  maxTasksFileBytes,
   ...options
 }: Pick<TaskfileOptions, 'bin' | 'timeoutMs' | 'killGraceMs'> & {
   githubUrl: string;
   downloadTimeoutMs: number;
   // tar's binary, which extracts the repository: `tar` on the PATH, or a path.
   tarBin: string;
+  // The largest tasks file it reads: a larger one fails the run.
+  maxTasksFileBytes: number;
 }): Execute {
   return async ({ uses, context }, { signal, logger }) => {
     if (uses === null) {
@@ -61,19 +70,74 @@ export function taskfileExecute({
       if (failed !== undefined) {
         return { outcome: 'failed', reason: `download: ${failed}` };
       }
-      return await runTaskfile({
+      const tasksFile = join(dir, 'tasks.json');
+      const result = await runTaskfile({
         ...options,
         taskfile: join(repository, uses.taskfile),
-        vars: { CONTEXT: contextVar(context), WORKSPACE: workspace },
+        vars: {
+          CONTEXT: contextVar(context),
+          WORKSPACE: workspace,
+          TASKS_FILE: tasksFile,
+        },
         logger,
         signal,
       });
+      if (result.outcome !== 'succeeded') {
+        return result;
+      }
+      return await readTasksFile(tasksFile, maxTasksFileBytes);
     } finally {
       rm(dir, { recursive: true }).catch((error: Error) =>
         logger.warn({ dir, error: error.message }, 'folder not removed'),
       );
     }
   };
+}
+
+// The result of a run that succeeded, with the text of the tasks file it left
+// at `path`: none is no tasks. It never follows a link, which may point at
+// /dev/zero, and reads only a regular file, opened without blocking, so a
+// FIFO doesn't hang it, and at most maxBytes + 1 bytes of it, so a file that
+// grows after the run reads no further. A file that breaks a rule fails the
+// run with a reason that names the rule, never the file's content.
+async function readTasksFile(path: string, maxBytes: number): Promise<Result> {
+  let handle: FileHandle;
+  try {
+    handle = await open(
+      path,
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    );
+  } catch (error) {
+    const { code } = error as NodeJS.ErrnoException;
+    if (code === 'ENOENT') {
+      return { outcome: 'succeeded' };
+    }
+    return tasksFileFailed(code === 'ELOOP' ? 'a link' : String(code));
+  }
+  try {
+    if (!(await handle.stat()).isFile()) {
+      return tasksFileFailed('not a regular file');
+    }
+    const text = await buffer(
+      // end only bounds the memory a growing file takes, as the length check
+      // below refuses it either way, and the finally closes the handle.
+      // Stryker disable next-line ObjectLiteral,BooleanLiteral: memory only
+      handle.createReadStream({ end: maxBytes, autoClose: false }),
+    );
+    if (text.length > maxBytes) {
+      return tasksFileFailed(`larger than ${maxBytes} bytes`);
+    }
+    return { outcome: 'succeeded', tasks: text.toString() };
+    // An unclosed handle leaks a descriptor until the process exits, which no
+    // test sees.
+    // Stryker disable next-line BlockStatement: a leak only
+  } finally {
+    await handle.close();
+  }
+}
+
+function tasksFileFailed(why: string): Result {
+  return { outcome: 'failed', reason: `tasks file: ${why}` };
 }
 
 // The context as the value of a go-task variable: JSON, with every {{

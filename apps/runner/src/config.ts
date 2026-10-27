@@ -1,6 +1,7 @@
 import {
   invalid,
   parseBoolean,
+  parseCount,
   parseOneOf,
   parseTimeout,
   reader,
@@ -41,6 +42,9 @@ export interface Config {
   // How long a stopped run has to exit after SIGTERM before SIGKILL, and how
   // long a run's output may stay open once go-task exited, stopped or not.
   killGraceMs: number;
+  // The largest tasks file the runner reads from a run that succeeded: a
+  // larger one fails the task.
+  maxTasksFileBytes: number;
   // Readable log lines instead of JSON.
   dev: boolean;
   // The lowest level the logger writes.
@@ -108,6 +112,11 @@ export function loadConfig(
       () => 21600000,
     ),
     killGraceMs: read('SEXTOU_RUNNER_KILL_GRACE_MS', parseTimeout, () => 10000),
+    maxTasksFileBytes: read(
+      'SEXTOU_RUNNER_MAX_TASKS_FILE_BYTES',
+      parseBytes,
+      () => 1048576,
+    ),
     dev: read('SEXTOU_RUNNER_DEV', parseBoolean, () => false),
     logLevel: read(
       'SEXTOU_RUNNER_LOG_LEVEL',
@@ -141,6 +150,15 @@ function nonEmpty(expected: string) {
     }
     return trimmed;
   };
+}
+
+function parseBytes(value: string, name: string): number {
+  return parseCount(
+    value,
+    name,
+    Number.MAX_SAFE_INTEGER,
+    'a whole number of bytes from 1',
+  );
 }
 
 // Names separated by commas, each trimmed: at least one, none empty.

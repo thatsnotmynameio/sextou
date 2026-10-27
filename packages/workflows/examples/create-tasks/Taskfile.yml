@@ -1,0 +1,11 @@
+# A minimal example, for tests and smokes, not a workflow for real use: it
+# writes the task's context, as JSON, to the run's tasks file (TASKS_FILE,
+# the path the runner passes go-task), so a task whose context is a tasks
+# file, { "tasks": [ ... ] }, creates those tasks when its run succeeds. It
+# needs nothing but go-task.
+version: '3'
+
+tasks:
+  default:
+    cmds:
+      - printf '%s' {{.CONTEXT | q}} > {{.TASKS_FILE | q}}

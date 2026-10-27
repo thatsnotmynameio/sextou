@@ -1,9 +1,13 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "5f2c556b-1dc7-4787-a5d3-4fabcff0cb85",
+  "id": "d6c2ce27-f045-4bcc-9b62-abbb1a98b1da",
   "prevIds": ["00000000-0000-0000-0000-000000000000"],
   "ddl": [
+    {
+      "name": "task_execution_tasks",
+      "entityType": "tables"
+    },
     {
       "name": "task_executions",
       "entityType": "tables"
@@ -19,6 +23,36 @@
     {
       "name": "tasks",
       "entityType": "tables"
+    },
+    {
+      "table": "task_execution_tasks",
+      "name": "execution_id",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "task_execution_tasks",
+      "name": "key",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "task_execution_tasks",
+      "name": "task_id",
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
     },
     {
       "table": "task_executions",
@@ -113,6 +147,16 @@
     {
       "table": "task_executions",
       "name": "cancel_reason",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "task_executions",
+      "name": "finish_digest",
       "type": "text",
       "notNull": false,
       "autoincrement": false,
@@ -331,6 +375,20 @@
       "entityType": "columns"
     },
     {
+      "table": "task_execution_tasks",
+      "name": "task_execution_task_created",
+      "columns": [
+        {
+          "value": "task_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "entityType": "indexes"
+    },
+    {
       "table": "task_executions",
       "name": "task_execution_task_attempt",
       "columns": [
@@ -413,6 +471,28 @@
       "entityType": "indexes"
     },
     {
+      "table": "task_execution_tasks",
+      "name": "fk_task_execution_tasks_execution_id_task_executions_id_fk",
+      "columns": ["execution_id"],
+      "tableTo": "task_executions",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "entityType": "fks"
+    },
+    {
+      "table": "task_execution_tasks",
+      "name": "fk_task_execution_tasks_task_id_tasks_id_fk",
+      "columns": ["task_id"],
+      "tableTo": "tasks",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "entityType": "fks"
+    },
+    {
       "table": "task_executions",
       "name": "fk_task_executions_task_id_tasks_id_fk",
       "columns": ["task_id"],
@@ -466,6 +546,13 @@
       "onDelete": "NO ACTION",
       "nameExplicit": false,
       "entityType": "fks"
+    },
+    {
+      "table": "task_execution_tasks",
+      "name": "task_execution_tasks_pk",
+      "columns": ["execution_id", "key"],
+      "nameExplicit": false,
+      "entityType": "pks"
     },
     {
       "table": "task_links",

@@ -115,11 +115,13 @@ const uses = z
   .optional()
   .transform((value) => value ?? null);
 
+// 0 is the most urgent, 4 the least.
+const priority = integer.min(0).max(4);
+
 export const createTaskSchema = z.object({
   title: label,
   kind: label,
-  // 0 is the most urgent, 4 the least.
-  priority: integer.min(0).max(4),
+  priority,
   parentId: id.optional(),
   assignee: label,
   description: optional,
@@ -128,6 +130,37 @@ export const createTaskSchema = z.object({
   uses,
   createdBy: label,
 });
+
+// The key that names a task within the file a run leaves.
+export const fileTaskKeySchema = label;
+
+// A task in the file a run leaves: what createTask takes but its parent and
+// its creator, which the finish gives, under the names tasks.create takes
+// (source for sourcePath), with a key that names it within the file and the
+// keys of the file's tasks it waits for. A field the format doesn't define is
+// refused, so a typo such as blocked_by can't make a task ready out of order.
+const fileTaskSchema = z.strictObject({
+  key: fileTaskKeySchema,
+  title: label,
+  kind: label,
+  priority,
+  assignee: label,
+  description: optional,
+  source: optional,
+  context,
+  uses,
+  blockedBy: z.array(label).optional(),
+});
+
+export type FileTask = z.infer<typeof fileTaskSchema>;
+
+// The file of tasks a run leaves, as JSON: an object, so a later field can
+// join the format without breaking the files written before it.
+export const tasksFileSchema = z.strictObject({
+  tasks: z.array(fileTaskSchema),
+});
+
+export type TasksFile = z.infer<typeof tasksFileSchema>;
 
 export const linkSchema = z.object({ taskId: id, blockerId: id });
 
@@ -149,13 +182,28 @@ export const renewExecutionSchema = z.object({
   leaseMs: duration,
 });
 
-export const finishTaskSchema = z.object({
+const finish = z.object({
   executionId: id,
   changedBy: label,
   status: z.enum(finalStatuses),
   reason: optional,
   resultPath: optional,
 });
+
+// A limit on what a file of tasks creates: the tasks in one file, or how deep
+// they sit under their roots.
+const limit = integer.min(1);
+
+// A finish carries the text of the file its run left, as sent, and the
+// limits that judge it; without a text, the limits may be left out.
+export const finishTaskSchema = z.union([
+  finish.extend({ tasks: z.string(), maxTasks: limit, maxDepth: limit }),
+  finish.extend({
+    tasks: z.undefined().optional(),
+    maxTasks: limit.optional(),
+    maxDepth: limit.optional(),
+  }),
+]);
 
 export const cancelTaskSchema = z.object({
   id,
