@@ -367,6 +367,9 @@ async function smoke() {
       });
       return (await response.json()).result?.data;
     };
+    // This repository's hello-world on GitHub, at the commit that added it.
+    const uses =
+      'thatsnotmynameio/sextou/tasks/hello-world/Taskfile.yml@87dfc7f4f839d6e334ab1a1cdf6494c62499d9ff';
     const create = (title) =>
       call('tasks.create', {
         title,
@@ -374,6 +377,7 @@ async function smoke() {
         priority: 2,
         assignee,
         createdBy: 'smoke',
+        uses,
       });
 
     const runner = launch(env(url));
@@ -396,7 +400,7 @@ async function smoke() {
       succeeded,
     );
     await check(
-      'ran the stub Taskfile',
+      "ran the task's Taskfile",
       records(runner.log).some(
         (record) =>
           record.msg === 'output' &&

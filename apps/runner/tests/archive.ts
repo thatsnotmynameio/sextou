@@ -6,7 +6,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-// A commit the tests' sources name.
+// A commit the tests' uses name.
 export const sha = '0123456789abcdef0123456789abcdef01234567';
 
 // A gzipped tarball as GitHub serves a repository at a commit: each file,

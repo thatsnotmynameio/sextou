@@ -87,8 +87,9 @@ async function query(sql) {
   }
 }
 
-// A task's whole life on an in-memory graph with a fake clock: a context
-// stored and handed out with the claim, one refused, links, ready list,
+// A task's whole life on an in-memory graph with a fake clock: a context and
+// a uses stored and handed out with the claim, a context and a uses refused,
+// a task with no uses claimed with a null one, links, ready list,
 // claim and its resend, renew, the lease expiring into a second
 // attempt, a stale finish refused, cancel requested and seen, finish and its
 // resend, and the blocked task freed. Exits 1 at the first step that differs.
@@ -108,15 +109,19 @@ async function smoke() {
     }
     return result;
   };
-  const newTask = (title, context) => ({
+  const newTask = (title, context, uses) => ({
     title,
     kind: 'task',
     priority: 2,
     assignee: 'dev',
     createdBy: 'smoke',
     context,
+    uses,
   });
   const context = { repo: 'org/app', sha: 'abc' };
+  // This repository's hello-world, at the commit that added it.
+  const uses =
+    'thatsnotmynameio/sextou/tasks/hello-world/Taskfile.yml@87dfc7f4f839d6e334ab1a1cdf6494c62499d9ff';
   const sameContext = (task) =>
     JSON.stringify(task.context) === JSON.stringify(context);
   const ready = () => tasks.listReady({ assignees: ['dev'], limit: 10 });
@@ -124,17 +129,29 @@ async function smoke() {
 
   const { task: a } = await step(
     'create a',
-    () => tasks.createTask(newTask('A', context)),
-    (r) => r.ok && r.task.status === 'open' && sameContext(r.task),
+    () => tasks.createTask(newTask('A', context, uses)),
+    (r) =>
+      r.ok &&
+      r.task.status === 'open' &&
+      sameContext(r.task) &&
+      r.task.uses === uses,
   );
   const { task: b } = await step(
-    'create b, no context',
+    'create b, no context, no uses',
     () => tasks.createTask(newTask('B')),
-    (r) => r.ok && r.task.context === null,
+    (r) => r.ok && r.task.context === null && r.task.uses === null,
   );
   await step(
     'create with a context that is not an object',
     () => tasks.createTask(newTask('C', ['x'])),
+    (r) => !r.ok && r.reason === 'invalid',
+  );
+  await step(
+    'create with a uses whose ref is a branch',
+    () =>
+      tasks.createTask(
+        newTask('D', undefined, uses.replace(/@[0-9a-f]+$/, '@main')),
+      ),
     (r) => !r.ok && r.reason === 'invalid',
   );
   await step(
@@ -160,6 +177,7 @@ async function smoke() {
       r.ok &&
       r.task?.id === a.id &&
       sameContext(r.task) &&
+      r.task.uses === uses &&
       r.execution.attempt === 1,
   );
   await step(
@@ -242,6 +260,11 @@ async function smoke() {
     'ready lists b, freed',
     ready,
     (r) => r.ok && ids(r).join() === b.id,
+  );
+  await step(
+    'claim b, no uses',
+    () => tasks.claimTask({ ...claim, claimId: 'c4' }),
+    (r) => r.ok && r.task?.id === b.id && r.task.uses === null,
   );
   await tasks.close();
   out(steps.join('\n'));

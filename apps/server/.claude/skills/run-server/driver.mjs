@@ -176,8 +176,9 @@ async function request(procedure, input) {
   return { status: response.status, body: await response.json() };
 }
 
-// One runner's whole flow: create with a context, claim it back with the
-// context, heartbeat, cancel, complete, and the conflict a lost lease gets.
+// One runner's whole flow: create with a context and a uses, claim it back
+// with the context and the uses split, heartbeat, cancel, complete, and the
+// conflict a lost lease gets.
 // Exits 1 at the first step that differs.
 async function smoke() {
   const run = Date.now().toString(36);
@@ -202,6 +203,9 @@ async function smoke() {
     (s, b) => s === 200 && b.result.data.database === 'up',
   );
   const context = { repo: 'thatsnotmynameio/sextou', ref: 'main' };
+  // This repository's hello-world, at the commit that added it.
+  const sha = '87dfc7f4f839d6e334ab1a1cdf6494c62499d9ff';
+  const uses = `thatsnotmynameio/sextou/tasks/hello-world/Taskfile.yml@${sha}`;
   const newTask = {
     title: 'Smoke',
     kind: 'task',
@@ -212,17 +216,24 @@ async function smoke() {
   const task = await step(
     'create',
     'tasks.create',
-    { ...newTask, context },
+    { ...newTask, context, uses },
     (s, b) =>
       s === 200 &&
       b.result.data.status === 'open' &&
-      JSON.stringify(b.result.data.context) === JSON.stringify(context),
+      JSON.stringify(b.result.data.context) === JSON.stringify(context) &&
+      b.result.data.uses === uses,
   );
   await step(
     'create, context not an object',
     'tasks.create',
     { ...newTask, context: [] },
     (s) => s === 400,
+  );
+  await step(
+    'create, uses at a branch',
+    'tasks.create',
+    { ...newTask, uses: uses.replace(sha, 'main') },
+    (s, b) => s === 400 && b.error?.message === 'invalid',
   );
   const claim = {
     claimId: `c-${run}`,
@@ -236,8 +247,9 @@ async function smoke() {
     (s, b) =>
       s === 200 &&
       b.result.data.task?.id === task.id &&
-      b.result.data.task.source?.taskfile ===
-        'tasks/hello-world/Taskfile.yml' &&
+      b.result.data.task.uses?.repo === 'thatsnotmynameio/sextou' &&
+      b.result.data.task.uses.sha === sha &&
+      b.result.data.task.uses.taskfile === 'tasks/hello-world/Taskfile.yml' &&
       JSON.stringify(b.result.data.task.context) === JSON.stringify(context),
   );
   const executionId = claimed.execution.id;
