@@ -1,16 +1,14 @@
-import { spawn, type ChildProcess } from 'node:child_process';
-import { once } from 'node:events';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
-import { createInterface } from 'node:readline';
+import { join } from 'node:path';
 import {
   afterAll,
   afterEach,
   beforeAll,
   beforeEach,
   expect,
+  inject,
   test,
   vi,
   type MockInstance,
@@ -25,13 +23,15 @@ import {
 } from '../archive';
 import { goTask } from '../go-task';
 
-// The server runs as its own process, from its sources, with its own tsx:
-// the runner imports nothing from it but its router's type. Its folder is
-// found through the workspace's link, which Stryker's sandbox, a copy of this
-// package in another folder, reaches too.
-const serverDir = dirname(
-  dirname(createRequire(import.meta.url).resolve('@sextou/server/router')),
-);
+// The server tests/server.ts started for this Vitest instance, which serves
+// every run of this file: Stryker runs it once per mutant. Each run's tasks go
+// to assignees of its own, so a task an earlier run left reaches no runner.
+const serverUrl = inject('serverUrl');
+const run = randomUUID();
+
+function assigned(assignee: string) {
+  return `${assignee}-${run}`;
+}
 
 // The real logger, writing to memory instead of stdout, so each test reads
 // the records main wrote. Each logger gets a stream of its own, as pino-pretty
@@ -83,47 +83,10 @@ function logged(msg: string, fields: LogRecord = {}): Promise<LogRecord> {
 }
 
 let dir: string;
-let server: ChildProcess;
-let serverUrl: string;
 let github: Served;
 let on: MockInstance<typeof process.on>;
 let off: MockInstance<typeof process.off>;
 let exit: MockInstance<typeof process.exit>;
-
-// Starts the server on a port the system picks, with a short lease, and
-// resolves with its URL, from the record it logs once listening.
-async function startServer(): Promise<string> {
-  const child = spawn(process.execPath, ['--import', 'tsx', 'src/main.ts'], {
-    cwd: serverDir,
-    env: {
-      PATH: process.env.PATH,
-      SEXTOU_SERVER_PORT: '0',
-      SEXTOU_SERVER_DATA_DIR: dir,
-      SEXTOU_SERVER_LEASE_MS: '600',
-      SEXTOU_SERVER_LEASE_SWEEP_MS: '100',
-      SEXTOU_SERVER_LOG_LEVEL: 'info',
-    },
-    stdio: ['ignore', 'pipe', 'inherit'],
-  });
-  // The spawned process keeps its stdio's types; the variable the cleanup
-  // reads doesn't.
-  server = child;
-  for await (const line of createInterface({ input: child.stdout })) {
-    const record = parseRecord(line);
-    if (record?.msg === 'listening' && typeof record.url === 'string') {
-      return record.url;
-    }
-  }
-  throw new Error('The server exited before listening');
-}
-
-function parseRecord(line: string): LogRecord | undefined {
-  try {
-    return JSON.parse(line) as LogRecord;
-  } catch {
-    return undefined;
-  }
-}
 
 // Calls a mutation on the server over HTTP and resolves with its data.
 async function call(procedure: string, input: unknown): Promise<unknown> {
@@ -136,15 +99,18 @@ async function call(procedure: string, input: unknown): Promise<unknown> {
   return body.result.data;
 }
 
-// The Taskfile each task names, in sextou's repository, at the commit the
-// tarball on localhost holds.
-const uses = `thatsnotmynameio/sextou/tasks/hello-world/Taskfile.yml@${sha}`;
+// The Taskfile in a folder of sextou's repository, at the commit the tarball
+// on localhost holds.
+function uses(folder: string) {
+  return `thatsnotmynameio/sextou/${folder}/Taskfile.yml@${sha}`;
+}
 
 /**
  * Creates a task on the server for the runner to claim.
  * @param assignee who may take it: the runner a test starts serves it
  * @param options.context the task's context
- * @param options.withUses whether the task names the tarball's Taskfile
+ * @param options.withUses whether the task names one of the tarball's Taskfiles
+ * @param options.folder the folder of the Taskfile it names
  * @returns the created task's id
  */
 async function createTask(
@@ -152,16 +118,21 @@ async function createTask(
   {
     context,
     withUses = true,
-  }: { context?: Record<string, unknown>; withUses?: boolean } = {},
+    folder = 'tasks/hello-world',
+  }: {
+    context?: Record<string, unknown>;
+    withUses?: boolean;
+    folder?: string;
+  } = {},
 ) {
   return (await call('tasks.create', {
     title: 'Say hi',
     kind: 'task',
     priority: 2,
-    assignee,
+    assignee: assigned(assignee),
     createdBy: 'me',
     context,
-    uses: withUses ? uses : undefined,
+    uses: withUses ? uses(folder) : undefined,
   })) as { id: string };
 }
 
@@ -176,16 +147,20 @@ async function startRunner(assignee: string) {
   vi.stubEnv('SEXTOU_RUNNER_SERVER_URL', serverUrl);
   vi.stubEnv('SEXTOU_RUNNER_GITHUB_URL', github.url);
   vi.stubEnv('SEXTOU_RUNNER_NAME', `runner-${assignee}`);
-  vi.stubEnv('SEXTOU_RUNNER_ASSIGNEES', assignee);
+  vi.stubEnv('SEXTOU_RUNNER_ASSIGNEES', assigned(assignee));
   vi.stubEnv('SEXTOU_RUNNER_POLL_MS', '50');
   vi.stubEnv('SEXTOU_RUNNER_LOG_LEVEL', 'debug');
   await import('../../src/main');
 }
 
-// Each task names tasks/hello-world in sextou's repository on GitHub. The
-// runner downloads it from a server on localhost instead, whose tarball has a
-// Taskfile at that path that writes a line, then the context it got, and runs
-// for 2 seconds.
+// Each task names a Taskfile in sextou's repository on GitHub. The runner
+// downloads it from a server on localhost instead, whose tarball has three:
+// tasks/hello-world writes a line, then the context it got; tasks/released
+// writes the line, then runs until the file its context's `release` names
+// exists, for at most 5 seconds, so a test holds the run until it saw what
+// happens while it runs; and tasks/long-run runs for 2 seconds, for a cancel
+// to stop. Stryker runs each test again for every mutant it covers, so each
+// second a run lasts costs minutes.
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'sextou-runner-'));
   github = await serve(
@@ -194,20 +169,18 @@ beforeAll(async () => {
         'tasks/hello-world/Taskfile.yml': plaintext([
           'echo "sextou task"',
           'echo {{.CONTEXT | q}}',
-          'sleep 2',
         ]),
+        'tasks/released/Taskfile.yml': plaintext([
+          'echo "sextou task"',
+          'for i in $(seq 100); do [ -e {{(fromJson .CONTEXT).release | q}} ] && exit 0; sleep 0.05; done; exit 1',
+        ]),
+        'tasks/long-run/Taskfile.yml': plaintext(['sleep 2']),
       }),
     ),
   );
-  serverUrl = await startServer();
-}, 30_000);
+});
 
 afterAll(async () => {
-  if (server.exitCode === null && server.signalCode === null) {
-    const exited = once(server, 'exit');
-    server.kill('SIGTERM');
-    await exited;
-  }
   await github.close();
   rmSync(dir, { recursive: true, force: true });
 });
@@ -242,7 +215,7 @@ goTask(
     expect(await logged('started')).toMatchObject({
       level: 30,
       name: 'runner-started',
-      assignees: ['started'],
+      assignees: [assigned('started')],
       serverUrl,
     });
   },
@@ -251,7 +224,11 @@ goTask(
 goTask(
   'main completes a claimed task as succeeded once its Taskfile ran',
   async () => {
-    const task = await createTask('succeeds');
+    const release = join(dir, assigned('release'));
+    const task = await createTask('succeeds', {
+      context: { release },
+      folder: 'tasks/released',
+    });
     await startRunner('succeeds');
 
     expect(await logged('claimed')).toMatchObject({
@@ -266,16 +243,17 @@ goTask(
     expect(github.paths.at(-1)).toMatch(
       /^\/thatsnotmynameio\/sextou\/archive\/[0-9a-f]{40}\.tar\.gz$/,
     );
+    expect(await logged('heartbeat')).toMatchObject({ taskId: task.id });
+    writeFileSync(release, '');
     expect(await logged('completed')).toMatchObject({
       taskId: task.id,
       outcome: 'succeeded',
     });
-    expect(messages()).toContain('heartbeat');
     expect(
       await call('runners.claim', {
-        claimId: 'after',
+        claimId: assigned('after'),
         runner: 'other',
-        assignees: ['succeeds'],
+        assignees: [assigned('succeeds')],
       }),
     ).toEqual({ task: null });
   },
@@ -322,7 +300,7 @@ goTask(
 goTask(
   'main completes a task as cancelled once someone asks to cancel it while its Taskfile runs',
   async () => {
-    const task = await createTask('cancels');
+    const task = await createTask('cancels', { folder: 'tasks/long-run' });
     await startRunner('cancels');
     await logged('claimed');
 
