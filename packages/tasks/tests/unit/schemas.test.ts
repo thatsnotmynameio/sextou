@@ -329,6 +329,12 @@ test('splitUses splits a uses whose path holds an @ at its last @', () => {
   });
 });
 
+// A regex that splits at the last @ backtracks over every @ when the text
+// ends in a line terminator, taking time quadratic in the @s.
+test('createTaskSchema refuses a uses of 100,000 @ and a line terminator in linear time', () => {
+  expect(parseUses(`a/b/${'@'.repeat(100_000)}\n`).success).toBe(false);
+});
+
 test('splitUses returns null for a uses it refuses', () => {
   expect(splitUses('org/app/Taskfile.yml@main')).toBeNull();
 });

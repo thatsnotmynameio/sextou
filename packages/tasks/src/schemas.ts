@@ -86,17 +86,20 @@ export type Uses = z.infer<typeof usesPartsSchema>;
 
 // Splits a uses, owner/name/path/to/Taskfile.yml@sha, into its parts: at its
 // last @, since a SHA holds none, then owner/name and the path. null when a
-// part breaks its rules.
+// part breaks its rules. It splits with string search, in time linear in the
+// text: a regex that splits at the last @ backtracks over every @ before it.
 export function splitUses(uses: string): Uses | null {
-  // A string this matches anywhere it matches from its start, and .* runs to
-  // its end, so neither anchor changes a match.
-  // Stryker disable next-line Regex: the anchors change no match
-  const match = /^([^/]*\/[^/]*)\/(.*)@(.*)$/.exec(uses);
-  if (match === null) {
+  const at = uses.lastIndexOf('@');
+  // Stryker disable next-line ConditionalExpression,BlockStatement,UnaryOperator: with no @, or one before the second /, owner/name or the path is incomplete and refused anyway
+  if (at === -1) {
     return null;
   }
-  const [, repo, taskfile, sha] = match;
-  const parsed = usesPartsSchema.safeParse({ repo, sha, taskfile });
+  const [owner, name, ...path] = uses.slice(0, at).split('/');
+  const parsed = usesPartsSchema.safeParse({
+    repo: [owner, name].join('/'),
+    sha: uses.slice(at + 1),
+    taskfile: path.join('/'),
+  });
   return parsed.success ? parsed.data : null;
 }
 
