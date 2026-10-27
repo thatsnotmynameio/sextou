@@ -47,6 +47,9 @@ export interface Task {
   // A JSON object the creator stores with the task, which the server never
   // reads: the repository and commit a reusable Taskfile works on, say.
   context: Record<string, unknown> | null;
+  // The Taskfile a runner runs for the task, owner/name/path/to/Taskfile.yml@sha,
+  // as its creator gave it, or null when it names none.
+  uses: string | null;
   status: Status;
 }
 
@@ -59,7 +62,17 @@ export interface NewTask {
   description?: string;
   source?: string;
   context?: Record<string, unknown>;
+  // The ref is a full commit SHA: the tasks refuse any other as invalid.
+  uses?: string;
   createdBy: Actor;
+}
+
+// A task's uses, split: the public GitHub repository, owner/name, the commit,
+// and the Taskfile's path inside it.
+export interface Uses {
+  repo: string;
+  sha: string;
+  taskfile: string;
 }
 
 // An attempt a runner holds, as the runner sees it.
@@ -119,13 +132,14 @@ export interface Tasks {
   // then the oldest, and holds it under a lease. task is null when none is
   // ready. claimId is the runner's name for the claim: the same claim sent
   // again, when its answer was lost, gets the same attempt back while it
-  // runs, and no task once it ended.
+  // runs, and no task once it ended. uses is the task's uses split, or null
+  // when it names none.
   claim: (claim: {
     claimId: string;
     runner: Actor;
     assignees: Actor[];
   }) => Promise<
-    | { ok: true; task: Task; execution: Execution }
+    | { ok: true; task: Task; uses: Uses | null; execution: Execution }
     | { ok: true; task: null }
     | Refused<typeof Refusal.invalid | typeof Refusal.timeout>
   >;

@@ -29,6 +29,8 @@ const server = { name: 'server' };
 const unknownId = `tsk_${'0'.repeat(32)}`;
 const logger = createLogger({ level: 'silent', pretty: false });
 const leaseMs = 30_000;
+const sha = '87dfc7f4f839d6e334ab1a1cdf6494c62499d9ff';
+const uses = `thatsnotmynameio/sextou/packages/workflows/sextou/development/Taskfile.yml@${sha}`;
 
 // A claim id no claim used before.
 let claims = 0;
@@ -221,6 +223,7 @@ test('create returns the open task it created, with the fields it was given', as
       description: 'Cover the service',
       source: '/specs/tests.md',
       context: { repo: 'org/app', commit: { sha: 'abc' } },
+      uses,
     }),
   );
 
@@ -236,18 +239,31 @@ test('create returns the open task it created, with the fields it was given', as
       description: 'Cover the service',
       source: '/specs/tests.md',
       context: { repo: 'org/app', commit: { sha: 'abc' } },
+      uses,
       status: Status.open,
     },
   });
 });
 
-test('create without a context returns the task with a null context', async () => {
+test('create without a context or a uses returns the task with both null', async () => {
   const tasks = await startedService();
 
   expect(await tasks.create(newTask())).toMatchObject({
     ok: true,
-    task: { context: null },
+    task: { context: null, uses: null },
   });
+});
+
+test('create refuses a uses whose ref is a branch as invalid', async () => {
+  const tasks = await startedService();
+
+  expect(
+    await tasks.create(
+      newTask({
+        uses: 'thatsnotmynameio/sextou/packages/workflows/hello-world/Taskfile.yml@main',
+      }),
+    ),
+  ).toEqual({ ok: false, refusal: Refusal.invalid });
 });
 
 test('create refuses a context nested deeper than 500 levels as invalid', async () => {
@@ -316,10 +332,28 @@ test('claim hands the runner the most urgent ready task of its assignees, runnin
   ).toEqual({
     ok: true,
     task: { ...urgent, status: Status.running },
+    uses: null,
     execution: {
       id: expect.stringMatching(/^exe_[0-9a-f]{32}$/),
       attempt: 1,
       leaseMs,
+    },
+  });
+});
+
+test('claim hands the runner the uses of a task created with one, split', async () => {
+  const tasks = await startedService();
+  await createOpen(tasks, { uses });
+
+  expect(
+    await tasks.claim({ claimId: newClaim(), runner, assignees: [dev] }),
+  ).toMatchObject({
+    ok: true,
+    task: { uses },
+    uses: {
+      repo: 'thatsnotmynameio/sextou',
+      sha,
+      taskfile: 'packages/workflows/sextou/development/Taskfile.yml',
     },
   });
 });

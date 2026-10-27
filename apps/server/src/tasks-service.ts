@@ -2,6 +2,7 @@ import {
   type Context,
   type Logger,
   openTasks,
+  splitUses,
   type Task as StoredTask,
   type Tasks as TasksDb,
 } from '@sextou/tasks';
@@ -92,6 +93,7 @@ export function createTasksService(
         sourcePath: task.source,
         // The library refuses a context that isn't a JSON object as invalid.
         context: task.context as Context | undefined,
+        uses: task.uses,
         createdBy: task.createdBy.name,
       });
       return result.ok
@@ -114,9 +116,12 @@ export function createTasksService(
         return { ok: true, task: null };
       }
       const { id, attempt } = result.execution;
+      const { uses } = result.task;
       return {
         ok: true,
         task: toTask(result.task),
+        // The tasks stored only a uses they split.
+        uses: uses === null ? null : splitUses(uses),
         execution: { id, attempt, leaseMs },
       };
     },
@@ -184,6 +189,7 @@ function toTask(task: StoredTask): Task {
     description: task.description,
     source: task.sourcePath,
     context: task.context,
+    uses: task.uses,
     status: task.status,
   };
 }

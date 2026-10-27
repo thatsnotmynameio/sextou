@@ -33,6 +33,7 @@ export const taskSchema = z.object({
   description: z.string().nullable(),
   source: z.string().nullable(),
   context: contextSchema.nullable(),
+  uses: z.string().nullable(),
   status: z.enum(Status),
 });
 
@@ -45,6 +46,10 @@ export const createInputSchema = z.object({
   description: z.string().optional(),
   source: z.string().optional(),
   context: contextSchema.optional(),
+  // owner/name/path/to/Taskfile.yml@sha, the Taskfile a runner runs for the
+  // task: the tasks check it, and refuse one that breaks their rules as
+  // invalid.
+  uses: z.string().optional(),
   createdBy: nameSchema,
 });
 
