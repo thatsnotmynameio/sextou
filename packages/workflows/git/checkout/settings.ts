@@ -6,6 +6,9 @@ export interface Settings {
   url: string;
   // A full commit SHA, a branch or a tag.
   ref: string;
+  // A branch fetched with the ref, both with their whole history, and kept
+  // as origin/<base>; absent when the context names none.
+  base?: string;
   // Where the repository is checked out: an absolute path inside the
   // workspace, or the workspace itself.
   path: string;
@@ -24,6 +27,7 @@ const part = /^[\w.-]+$/;
 //
 //   repo    owner/name, required
 //   ref     a full commit SHA, a branch or a tag, required
+//   base    a branch to fetch with ref, optional
 //   path    where in the workspace, . by default
 //   server  where repo lives, an https URL, https://github.com by default
 //
@@ -36,6 +40,7 @@ export function readSettings(context: string, workspace: string): ReadSettings {
   const {
     repo,
     ref,
+    base,
     // Stryker disable next-line StringLiteral: an empty path resolves to the workspace too
     path = '.',
     server = 'https://github.com',
@@ -50,16 +55,11 @@ export function readSettings(context: string, workspace: string): ReadSettings {
     return refuse('repo is owner/name');
   }
 
-  // One that starts with - would reach git fetch as an option, and one with
-  // : or * is a refspec, which fetches other refs and writes them. A NUL ends
-  // no argument: spawn throws on it.
-  if (
-    typeof ref !== 'string' ||
-    ref === '' ||
-    ref.startsWith('-') ||
-    /[:*\s\0]/.test(ref)
-  ) {
+  if (!isRef(ref)) {
     return refuse('ref is a commit, a branch or a tag');
+  }
+  if (base !== undefined && !isRef(base)) {
+    return refuse('base is a branch');
   }
 
   const destination = insideWorkspace(workspace, path);
@@ -80,9 +80,22 @@ export function readSettings(context: string, workspace: string): ReadSettings {
     settings: {
       url: `${origin.origin}/${parts[0]}/${parts[1]}`,
       ref,
+      ...(base === undefined ? {} : { base }),
       path: destination,
     },
   };
+}
+
+// Whether `name` reaches git fetch as one ref. One that starts with - would
+// reach it as an option, and one with : or * is a refspec, which fetches
+// other refs and writes them. A NUL ends no argument: spawn throws on it.
+function isRef(name: unknown): name is string {
+  return (
+    typeof name === 'string' &&
+    name !== '' &&
+    !name.startsWith('-') &&
+    !/[:*\s\0]/.test(name)
+  );
 }
 
 function refuse(reason: string): ReadSettings {

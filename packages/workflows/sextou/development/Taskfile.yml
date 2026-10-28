@@ -3,6 +3,7 @@
 # task's context. It reads from it what each of them reads:
 #
 #   repo, ref, server   what git/checkout clones, repo and ref required
+#   base                a branch git/checkout fetches with ref, optional
 #   path                where in the workspace, . by default: the checkout
 #                       clones there, and claude runs there
 #   prompt              what claude is asked, required

@@ -136,6 +136,47 @@ test.each([
   });
 });
 
+test('readSettings takes a branch as base', () => {
+  expect(read({ base: 'main' })).toEqual({
+    ok: true,
+    settings: {
+      url: 'https://github.com/org/app',
+      ref: 'main',
+      base: 'main',
+      path: workspace,
+    },
+  });
+});
+
+test('readSettings takes a branch with a slash as base', () => {
+  expect(read({ base: 'release/1.x' })).toMatchObject({
+    ok: true,
+    settings: { base: 'release/1.x' },
+  });
+});
+
+test('readSettings leaves base out when the context has none', () => {
+  const result = read();
+
+  expect(result.ok && 'base' in result.settings).toBe(false);
+});
+
+test.each([
+  ['an empty base', ''],
+  ['a base that is not a string', 7],
+  ['a null base', null],
+  ['a base that is an option', '--upload-pack=touch'],
+  ['a base that starts with -', '-main'],
+  ['a base with a :', 'main:refs/heads/x'],
+  ['a base with a *', 'refs/heads/*'],
+  ['a base with a space', 'main other'],
+  ['a base with a second line', 'main\nother'],
+  ['a base with a tab', 'main\tother'],
+  ['a base with a NUL', 'main\0'],
+])('readSettings refuses %s', (_name, base) => {
+  expect(read({ base })).toEqual({ ok: false, reason: 'base is a branch' });
+});
+
 test.each([
   ['a path that is not a string', 7],
   ['the folder above the workspace', '..'],

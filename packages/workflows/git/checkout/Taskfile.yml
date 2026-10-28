@@ -3,10 +3,13 @@
 #
 #   repo    owner/name, required
 #   ref     a full commit SHA, a branch or a tag, required
+#   base    a branch, optional: fetched with ref, both with their whole
+#           history, and kept as origin/<base>, so git log origin/<base>..HEAD
+#           and git diff origin/<base>...HEAD work in the checkout
 #   path    where in the workspace, . by default
 #   server  where repo lives, an https URL, https://github.com by default
 #
-# Run it as a task's Taskfile, or include it from another (includes:
+# Without base, it fetches ref alone, with no history behind it. Run it as a task's Taskfile, or include it from another (includes:
 # checkout: ../git/checkout) and call checkout:default before the steps that
 # work on the files. It needs node and git on the runner's machine, and
 # reaches only public repositories. Its git may take 5 minutes, all of it

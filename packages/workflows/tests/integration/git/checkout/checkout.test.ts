@@ -113,6 +113,78 @@ test('checkout fetches no tag', async () => {
   expect(git(workspace, 'tag')).toBe('');
 });
 
+test('checkout with a base logs only the commits the ref added to it', async () => {
+  const { feature } = served;
+
+  expect(await run({ repo: 'org/app', ref: 'feature', base: 'main' })).toBe(0);
+  expect(git(workspace, 'log', '--format=%H', 'origin/main..HEAD')).toBe(
+    feature,
+  );
+});
+
+test('checkout with a base diffs the ref from where it left the base', async () => {
+  await run({ repo: 'org/app', ref: 'feature', base: 'main' });
+
+  expect(git(workspace, 'diff', '--name-only', 'origin/main...HEAD')).toBe(
+    'file.txt',
+  );
+});
+
+test('checkout with a base keeps it as origin/<base> at its last commit', async () => {
+  await run({ repo: 'org/app', ref: 'feature', base: 'main' });
+
+  expect(git(workspace, 'log', '-1', '--format=%s', 'origin/main')).toBe(
+    'main',
+  );
+});
+
+test('checkout with a base checks the ref out detached', async () => {
+  const { feature } = served;
+
+  await run({ repo: 'org/app', ref: 'feature', base: 'main' });
+
+  expect(git(workspace, 'rev-parse', 'HEAD')).toBe(feature);
+  expect(git(workspace, 'branch', '--show-current')).toBe('');
+});
+
+test('checkout with a base fetches the whole history of the ref', async () => {
+  await run({ repo: 'org/app', ref: 'feature', base: 'main' });
+
+  expect(git(workspace, 'rev-list', '--count', 'HEAD')).toBe('3');
+});
+
+test('checkout with a base fetches no other ref and no tag', async () => {
+  await run({ repo: 'org/app', ref: 'feature', base: 'main' });
+
+  expect(git(workspace, 'for-each-ref', '--format=%(refname)')).toBe(
+    'refs/remotes/origin/feature\nrefs/remotes/origin/main',
+  );
+});
+
+test('checkout takes the base as the ref, with nothing to log or diff', async () => {
+  expect(await run({ repo: 'org/app', ref: 'main', base: 'main' })).toBe(0);
+  expect(git(workspace, 'log', 'origin/main..HEAD')).toBe('');
+  expect(git(workspace, 'diff', 'origin/main...HEAD')).toBe('');
+});
+
+test('checkout with a base checks out a ref that is a commit', async () => {
+  const { first } = served;
+
+  expect(await run({ repo: 'org/app', ref: first, base: 'main' })).toBe(0);
+  expect(git(workspace, 'rev-parse', 'HEAD')).toBe(first);
+});
+
+test.each([
+  ['a branch the server lacks', 'release'],
+  ['a tag', 'v1'],
+])(
+  'checkout resolves git exit code for a base that is %s, checking nothing out',
+  async (_name, base) => {
+    expect(await run({ repo: 'org/app', ref: 'feature', base })).toBe(128);
+    expect(existsSync(join(workspace, 'file.txt'))).toBe(false);
+  },
+);
+
 test('checkout checks out into the path inside the workspace', async () => {
   await run({ repo: 'org/app', ref: 'main', path: 'code/app' });
 
@@ -400,25 +472,60 @@ test('checkout refuses a CHECKOUT_GIT_BIN that is a relative path, which would r
   ]);
 });
 
-test('checkout kills git and resolves timedOut when it takes longer than CHECKOUT_TIMEOUT_MS', async () => {
-  // A server that takes the connection and never answers.
-  const sockets: Socket[] = [];
-  const silent = createServer((socket) => sockets.push(socket));
-  silent.listen(0, '127.0.0.1');
-  await new Promise((resolve) => silent.once('listening', resolve));
-  const { port } = silent.address() as { port: number };
+test.each([
+  ['without a base', {}],
+  ['with a base', { base: 'main' }],
+])(
+  'checkout %s kills git and resolves timedOut when it takes longer than CHECKOUT_TIMEOUT_MS',
+  async (_name, fields) => {
+    // A server that takes the connection and never answers.
+    const sockets: Socket[] = [];
+    const silent = createServer((socket) => sockets.push(socket));
+    silent.listen(0, '127.0.0.1');
+    await new Promise((resolve) => silent.once('listening', resolve));
+    const { port } = silent.address() as { port: number };
+    const started = Date.now();
+
+    const code = await run(
+      {
+        repo: 'org/app',
+        ref: 'main',
+        server: `https://127.0.0.1:${port}`,
+        ...fields,
+      },
+      { CHECKOUT_TIMEOUT_MS: '200' },
+    );
+
+    for (const socket of sockets) {
+      socket.destroy();
+    }
+    silent.close();
+    expect(code).toBe(timedOut);
+    expect(logged).toContain('checkout: git took longer than 200 ms');
+    expect(Date.now() - started).toBeLessThan(5000);
+  },
+);
+
+test('checkout with a base gives both fetches one CHECKOUT_TIMEOUT_MS between them', async () => {
+  // A git that takes 3 s over the base's fetch, then never ends the ref's.
+  const slow = join(dir, 'git');
+  writeFileSync(
+    slow,
+    '#!/bin/sh\ncase "$*" in\n  *refs/heads/main:*) sleep 3 ;;\n  fetch*) exec sleep 60 ;;\nesac\nexec git "$@"\n',
+    { mode: 0o755 },
+  );
   const started = Date.now();
 
   const code = await run(
-    { repo: 'org/app', ref: 'main', server: `https://127.0.0.1:${port}` },
-    { CHECKOUT_TIMEOUT_MS: '200' },
+    { repo: 'org/app', ref: 'feature', base: 'main' },
+    { CHECKOUT_GIT_BIN: slow, CHECKOUT_TIMEOUT_MS: '5000' },
   );
 
-  for (const socket of sockets) {
-    socket.destroy();
-  }
-  silent.close();
   expect(code).toBe(timedOut);
-  expect(logged).toContain('checkout: git took longer than 200 ms');
-  expect(Date.now() - started).toBeLessThan(5000);
-});
+  expect(logged).toContain('checkout: git took longer than 5000 ms');
+  expect(git(workspace, 'log', '-1', '--format=%s', 'origin/main')).toBe(
+    'main',
+  );
+  // A deadline of its own for the ref's fetch would end past 8 s.
+  expect(Date.now() - started).toBeLessThan(7000);
+}, 20_000);
