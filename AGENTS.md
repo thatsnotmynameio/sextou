@@ -14,7 +14,7 @@ Run every command from the repository root. Use pnpm, never npm.
 
 ```sh
 pnpm install
-pnpm lint             # oxlint, then oxfmt --check
+pnpm lint             # oxlint, with its react, jsx-a11y, vitest and import plugins, then oxfmt --check
 pnpm lint:fix         # both, fixing what they can
 pnpm typecheck        # tsc --noEmit in each package
 pnpm test:unit        # every unit suite, with coverage
@@ -204,7 +204,7 @@ Tests are organized by package, then by level. Each package has only the levels 
 
 - **unit** (`tests/unit/`): one unit of a package through its public API, in one process, touching neither the disk nor the network. Real in-memory collaborators are fine, an in-memory SQLite database (`':memory:'`) included. Runs in Node, or in jsdom for `apps/web` and `packages/ui`.
 - **integration** (`tests/integration/`): real parts working together: the package with a real resource (a file on disk, a server listening on localhost, a child process), or two or more sextou packages used for real, whether the test imports the other package or the code under test does.
-- **component** (the stories, `*.stories.tsx`): a UI component rendered in a real browser, Chromium through Playwright; each story must pass its `play` function, which checks what needs a real browser (layout, focus, truncation). Only `packages/ui` has one.
+- **component** (the stories, `*.stories.tsx`): a UI component rendered in a real browser, Chromium through Playwright; each story must pass its `play` function, which checks what needs a real browser (layout, focus, truncation), and axe's accessibility checks (`@storybook/addon-a11y`, whose `test: 'error'` in `.storybook/preview.tsx` fails the story on a violation). Only `packages/ui` has one.
 - **e2e**: a flow the way a person uses sextou, the web app in a browser or the desktop window talking to a real server process, acting only through the interface and replacing no part with a test double. None exists yet; the first one must meet this.
 
 Every package has a unit suite, an integration suite wherever its code reaches a real resource or another sextou package, and a component suite only where it has UI to render. Today `apps/runner`, `apps/server`, `apps/web`, `packages/tasks` and `packages/workflows` have an integration suite, and `packages/ui` a component suite. `apps/web`'s integration suite renders the health page against the server started as a child process, and answers for no file: its unit suite already reaches each one at the floor.

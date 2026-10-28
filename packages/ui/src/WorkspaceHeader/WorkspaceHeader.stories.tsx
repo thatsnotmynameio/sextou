@@ -3,6 +3,9 @@ import { expect, fn, userEvent } from 'storybook/test';
 import { WorkspaceHeader } from './WorkspaceHeader';
 
 const meta = {
+  // Its colors need Storybook's dark background, which the component suite
+  // doesn't paint, so axe lists this design's findings without failing it.
+  parameters: { a11y: { test: 'todo' } },
   component: WorkspaceHeader,
   args: {
     name: 'Tatu',

@@ -32,6 +32,7 @@
     "@lingui/core": "^6.10.0",
     "@lingui/message-utils": "^6.10.0",
     "@lingui/react": "^6.10.0",
+    "@storybook/addon-a11y": "10.6.3",
     "@storybook/addon-vitest": "^10.6.3",
     "@storybook/react-vite": "^10.6.3",
     "@stryker-mutator/core": "10.1.1",
