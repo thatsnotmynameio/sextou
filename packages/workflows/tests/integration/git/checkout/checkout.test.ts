@@ -16,6 +16,7 @@ import {
   beforeAll,
   beforeEach,
   expect,
+  inject,
   test,
   vi,
 } from 'vitest';
@@ -27,26 +28,25 @@ import {
   timedOut,
 } from '../../../../git/checkout/checkout';
 import { serveGit, type GitServer } from '../../../git-server';
-import { git, isolateGit, repository } from '../../../repository';
+import { git, isolateGit } from '../../../repository';
 
 // checkout() in this process, so coverage and Stryker see it, running git
 // against a git server on localhost over HTTPS, the only scheme it takes.
 
-// The folder the git server serves, its repositories under <owner>/<name>.
-let served: string;
+// The repository tests/repository.ts made for this Vitest instance, under
+// the folder the git server serves.
+const served = inject('served');
 let server: GitServer;
 let dir: string;
 let workspace: string;
 let logged: string[];
 
 beforeAll(async () => {
-  served = mkdtempSync(join(tmpdir(), 'sextou-served-'));
-  server = await serveGit(served);
+  server = await serveGit(served.root);
 });
 
 afterAll(async () => {
   await server.close();
-  rmSync(served, { recursive: true, force: true });
 });
 
 beforeEach(() => {
@@ -60,7 +60,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllEnvs();
   rmSync(dir, { recursive: true, force: true });
-  rmSync(join(served, 'org'), { recursive: true, force: true });
   server.credentials.length = 0;
 });
 
@@ -81,7 +80,7 @@ function run(context: Record<string, unknown>, env: NodeJS.ProcessEnv = {}) {
 }
 
 test('checkout checks the repository out at a commit into the workspace', async () => {
-  const { first } = repository(served);
+  const { first } = served;
 
   expect(await run({ repo: 'org/app', ref: first })).toBe(0);
   expect(readFileSync(join(workspace, 'file.txt'), 'utf8')).toBe('first');
@@ -89,7 +88,7 @@ test('checkout checks the repository out at a commit into the workspace', async 
 });
 
 test('checkout checks out the last commit of a branch', async () => {
-  const { feature } = repository(served);
+  const { feature } = served;
 
   await run({ repo: 'org/app', ref: 'feature' });
 
@@ -97,33 +96,24 @@ test('checkout checks out the last commit of a branch', async () => {
 });
 
 test('checkout leaves HEAD detached', async () => {
-  repository(served);
-
   await run({ repo: 'org/app', ref: 'main' });
 
   expect(git(workspace, 'branch', '--show-current')).toBe('');
 });
 
 test('checkout fetches only the ref, with no history behind it', async () => {
-  repository(served);
-
   await run({ repo: 'org/app', ref: 'main' });
 
   expect(git(workspace, 'rev-list', '--count', 'HEAD')).toBe('1');
 });
 
 test('checkout fetches no tag', async () => {
-  repository(served);
-  git(join(served, 'org/app'), 'tag', 'v1');
-
   await run({ repo: 'org/app', ref: 'main' });
 
   expect(git(workspace, 'tag')).toBe('');
 });
 
 test('checkout checks out into the path inside the workspace', async () => {
-  repository(served);
-
   await run({ repo: 'org/app', ref: 'main', path: 'code/app' });
 
   expect(readdirSync(workspace)).toEqual(['code']);
@@ -133,8 +123,6 @@ test('checkout checks out into the path inside the workspace', async () => {
 });
 
 test('checkout points origin at the repository', async () => {
-  repository(served);
-
   await run({ repo: 'org/app', ref: 'main' });
 
   expect(git(workspace, 'remote', 'get-url', 'origin')).toBe(
@@ -163,7 +151,6 @@ test('checkout refuses an environment with no context or workspace', async () =>
 test.each(['link', 'link/app', 'code/link/app'])(
   'checkout refuses the path %s through a symlink out of the workspace, writing nothing',
   async (path) => {
-    repository(served);
     const outside = join(dir, 'outside');
     mkdirSync(outside);
     mkdirSync(join(workspace, 'code'));
@@ -177,14 +164,12 @@ test.each(['link', 'link/app', 'code/link/app'])(
 );
 
 test('checkout takes a path beside a symlink', async () => {
-  repository(served);
   symlinkSync(join(dir, 'outside'), join(workspace, 'link'));
 
   expect(await run({ repo: 'org/app', ref: 'main', path: 'code' })).toBe(0);
 });
 
 test('checkout refuses a path where a file is, running no git on it', async () => {
-  repository(served);
   writeFileSync(join(workspace, 'code'), '');
 
   expect(await run({ repo: 'org/app', ref: 'main', path: 'code' })).toBe(
@@ -223,13 +208,10 @@ test.each([
     }),
   ],
 ])("checkout reads no configuration of the runner's %s", async (_name, env) => {
-  repository(served);
-
   expect(await run({ repo: 'org/app', ref: 'main' }, env())).toBe(0);
 });
 
 test('checkout checks out into the workspace whatever GIT_DIR the runner has', async () => {
-  repository(served);
   const elsewhere = join(dir, 'elsewhere');
 
   expect(
@@ -287,7 +269,6 @@ test('checkout sends the server no password of the .netrc NETRC names', async ()
 });
 
 test('checkout removes the HOME it gave git once it ended', async () => {
-  repository(served);
   const temporary = join(dir, 'tmp');
   mkdirSync(temporary);
   vi.stubEnv('TMPDIR', temporary);
@@ -317,7 +298,7 @@ function gitPath() {
 }
 
 test('checkout runs the git CHECKOUT_GIT_BIN names, with no PATH to find it', async () => {
-  const { first } = repository(served);
+  const { first } = served;
 
   expect(
     await run(
@@ -340,7 +321,7 @@ test('checkout resolves noGit when CHECKOUT_GIT_BIN names no program, writing no
 });
 
 test('checkout runs git from the PATH when CHECKOUT_GIT_BIN is empty', async () => {
-  const { first } = repository(served);
+  const { first } = served;
 
   expect(
     await run({ repo: 'org/app', ref: first }, { CHECKOUT_GIT_BIN: '' }),
@@ -348,23 +329,17 @@ test('checkout runs git from the PATH when CHECKOUT_GIT_BIN is empty', async () 
 });
 
 test('checkout resolves git exit code when the repository has no such ref', async () => {
-  repository(served);
-
   expect(await run({ repo: 'org/app', ref: 'missing' })).toBe(128);
   expect(git(workspace, 'rev-parse', '--is-inside-work-tree')).toBe('true');
 });
 
 test('checkout logs each line git writes', async () => {
-  repository(served);
-
   await run({ repo: 'org/app', ref: 'missing' });
 
   expect(logged).toContain("fatal: couldn't find remote ref missing");
 });
 
 test('checkout logs nothing of the version check', async () => {
-  repository(served);
-
   await run({ repo: 'org/app', ref: 'main' });
 
   expect(logged.filter((line) => line.startsWith('git version'))).toEqual([]);
@@ -375,7 +350,7 @@ test('checkout resolves git exit code when the server has no such repository', a
 });
 
 test('checkout refuses a second checkout into the same path, leaving the first as it was', async () => {
-  const { first } = repository(served);
+  const { first } = served;
   await run({ repo: 'org/app', ref: first });
 
   expect(await run({ repo: 'org/app', ref: 'feature' })).toBe(refused);
@@ -384,7 +359,7 @@ test('checkout refuses a second checkout into the same path, leaving the first a
 });
 
 test('checkout takes a second checkout into another path', async () => {
-  const { first, feature } = repository(served);
+  const { first, feature } = served;
   await run({ repo: 'org/app', ref: first, path: 'one' });
 
   expect(await run({ repo: 'org/app', ref: 'feature', path: 'two' })).toBe(0);
@@ -436,7 +411,7 @@ test('checkout kills git and resolves timedOut when it takes longer than CHECKOU
 
   const code = await run(
     { repo: 'org/app', ref: 'main', server: `https://127.0.0.1:${port}` },
-    { CHECKOUT_TIMEOUT_MS: '500' },
+    { CHECKOUT_TIMEOUT_MS: '200' },
   );
 
   for (const socket of sockets) {
@@ -444,6 +419,6 @@ test('checkout kills git and resolves timedOut when it takes longer than CHECKOU
   }
   silent.close();
   expect(code).toBe(timedOut);
-  expect(logged).toContain('checkout: git took longer than 500 ms');
+  expect(logged).toContain('checkout: git took longer than 200 ms');
   expect(Date.now() - started).toBeLessThan(5000);
 });

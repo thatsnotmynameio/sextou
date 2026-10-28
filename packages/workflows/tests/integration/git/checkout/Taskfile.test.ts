@@ -9,10 +9,18 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, afterEach, beforeAll, beforeEach, expect, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  expect,
+  inject,
+  vi,
+} from 'vitest';
 import { serveGit, type GitServer } from '../../../git-server';
 import { bin, goTask } from '../../../go-task';
-import { git, isolateGit, repository } from '../../../repository';
+import { git, isolateGit } from '../../../repository';
 
 // git/checkout/Taskfile.yml run with go-task as the runner runs a claim's
 // Taskfile: its default task, with the task's context as JSON in CONTEXT and
@@ -21,19 +29,19 @@ import { git, isolateGit, repository } from '../../../repository';
 
 const folder = join(import.meta.dirname, '../../../../git/checkout');
 
-let served: string;
+// The repository tests/repository.ts made for this Vitest instance, under
+// the folder the git server serves.
+const served = inject('served');
 let server: GitServer;
 let dir: string;
 let workspace: string;
 
 beforeAll(async () => {
-  served = mkdtempSync(join(tmpdir(), 'sextou-served-'));
-  server = await serveGit(served);
+  server = await serveGit(served.root);
 });
 
 afterAll(async () => {
   await server.close();
-  rmSync(served, { recursive: true, force: true });
 });
 
 beforeEach(() => {
@@ -48,7 +56,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllEnvs();
   rmSync(dir, { recursive: true, force: true });
-  rmSync(join(served, 'org'), { recursive: true, force: true });
 });
 
 // Runs the default task of `taskfile` with `context`, from the git server
@@ -91,7 +98,7 @@ function run(
 goTask(
   'Taskfile.yml checks out the repository and ref of the context into the workspace',
   async () => {
-    const { first } = repository(served);
+    const { first } = served;
 
     expect((await run({ repo: 'org/app', ref: first })).code).toBe(0);
     expect(git(workspace, 'rev-parse', 'HEAD')).toBe(first);
@@ -99,8 +106,6 @@ goTask(
 );
 
 goTask('Taskfile.yml checks out into the path of the context', async () => {
-  repository(served);
-
   await run({ repo: 'org/app', ref: 'main', path: 'code' });
 
   expect(readdirSync(workspace)).toEqual(['code']);
@@ -119,8 +124,6 @@ goTask(
 goTask(
   'Taskfile.yml hands the script a context value as written, never as a template',
   async () => {
-    repository(served);
-
     await run({ repo: 'org/app', ref: 'main', path: '{{.WORKSPACE}}' });
 
     expect(readdirSync(workspace)).toEqual(['{{.WORKSPACE}}']);
@@ -130,7 +133,7 @@ goTask(
 goTask(
   'Taskfile.yml checks out into the workspace when another Taskfile includes it',
   async () => {
-    const { first } = repository(served);
+    const { first } = served;
     const tasks = join(dir, 'tasks');
     cpSync(join(folder, '..'), join(tasks, 'git'), { recursive: true });
     // The code its script shares with the other workflows, as a runner

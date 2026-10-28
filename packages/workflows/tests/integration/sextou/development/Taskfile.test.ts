@@ -2,11 +2,19 @@ import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, afterEach, beforeAll, beforeEach, expect, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  expect,
+  inject,
+  vi,
+} from 'vitest';
 import { received, writeFakeClaude } from '../../../fake-claude';
 import { serveGit, type GitServer } from '../../../git-server';
 import { bin, goTask } from '../../../go-task';
-import { git, isolateGit, repository } from '../../../repository';
+import { git, isolateGit } from '../../../repository';
 
 // sextou/development/Taskfile.yml run with go-task as the runner runs a
 // claim's Taskfile: its default task, with the task's context as JSON in
@@ -20,7 +28,9 @@ const taskfile = join(
   '../../../../sextou/development/Taskfile.yml',
 );
 
-let served: string;
+// The repository tests/repository.ts made for this Vitest instance, under
+// the folder the git server serves.
+const served = inject('served');
 let server: GitServer;
 let dir: string;
 let workspace: string;
@@ -28,13 +38,11 @@ let claude: string;
 let file: string;
 
 beforeAll(async () => {
-  served = mkdtempSync(join(tmpdir(), 'sextou-served-'));
-  server = await serveGit(served);
+  server = await serveGit(served.root);
 });
 
 afterAll(async () => {
   await server.close();
-  rmSync(served, { recursive: true, force: true });
 });
 
 beforeEach(() => {
@@ -51,7 +59,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllEnvs();
   rmSync(dir, { recursive: true, force: true });
-  rmSync(join(served, 'org'), { recursive: true, force: true });
 });
 
 // Runs the default task with `context`, from the git server, and `env` on
@@ -99,7 +106,7 @@ function run(context: Record<string, unknown>, env: NodeJS.ProcessEnv = {}) {
 goTask(
   'Taskfile.yml checks out the ref of the context into its path',
   async () => {
-    const { first } = repository(served);
+    const { first } = served;
 
     await run({ repo: 'org/app', ref: first, path: 'code', prompt: 'hi' });
 
@@ -110,8 +117,6 @@ goTask(
 goTask(
   'Taskfile.yml runs claude in the checkout with the prompt of the context',
   async () => {
-    repository(served);
-
     await run({ repo: 'org/app', ref: 'main', path: 'code', prompt: 'hi' });
 
     expect(received(file)).toMatchObject({
@@ -122,8 +127,6 @@ goTask(
 );
 
 goTask('Taskfile.yml passes on what claude writes on stdout', async () => {
-  repository(served);
-
   const { code, stdout } = await run({
     repo: 'org/app',
     ref: 'main',
@@ -143,8 +146,6 @@ goTask('Taskfile.yml runs no claude when the checkout is refused', async () => {
 });
 
 goTask('Taskfile.yml exits with claude’s code when claude fails', async () => {
-  repository(served);
-
   const { code } = await run(
     { repo: 'org/app', ref: 'main', prompt: 'hi' },
     { FAKE_CLAUDE_EXIT: '3' },
