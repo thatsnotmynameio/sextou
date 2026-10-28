@@ -1,19 +1,8 @@
-import { insideWorkspace, readContext } from '../../shared/settings.ts';
-
-// What a run of claude -p gets.
-export interface Settings {
-  // Where claude runs: an absolute path inside the workspace, or the
-  // workspace itself.
-  cwd: string;
-  // Its arguments, -p first, each option as --name=value, so a value that
-  // starts with - is never read as another option.
-  args: string[];
-  // What claude is asked, through its stdin, never as an argument.
-  prompt: string;
-}
-
-export type ReadSettings =
-  | { ok: true; settings: Settings }
+// claude -p's arguments for a context: -p first, each option as
+// --name=value, so a value that starts with - is never read as another
+// option. The prompt goes through claude's stdin, never as an argument.
+export type ReadArgs =
+  | { ok: true; args: string[] }
   | { ok: false; reason: string };
 
 // How an option of claude's CLI reads its value from the context:
@@ -95,34 +84,16 @@ const expected: Record<Kind, string> = {
 // A worktree's name: letters, digits, _, . and -, not starting with -.
 const worktreeName = /^[\w.][\w.-]*$/;
 
-// Reads a run's settings from the task's context, as JSON, and the run's
-// workspace, an absolute path:
+// Reads claude's arguments from the fields of the task's context, which the
+// agnostic core already read the prompt and the path from:
 //
-//   prompt    what claude is asked, required
-//   path      where in the workspace claude runs, . by default
 //   worktree  true, or a name: claude works in a new git worktree of the
 //             repository at path, which it creates
 //
-// and the options `options` lists. Every other key is left for the other
-// steps of the run, such as a checkout before it.
-export function readSettings(context: string, workspace: string): ReadSettings {
-  const input = readContext(context, workspace);
-  if (!input.ok) {
-    return input;
-  }
-  const { fields } = input;
-  // Stryker disable next-line StringLiteral: an empty path resolves to the workspace too
-  const { prompt, path = '.', worktree } = fields;
-
-  if (typeof prompt !== 'string' || prompt.trim() === '') {
-    return refuse('prompt is a string with text');
-  }
-
-  const cwd = insideWorkspace(workspace, path);
-  if (cwd === undefined) {
-    return refuse('path is inside the workspace');
-  }
-
+// and the options `options` lists. Every other key is left for the core or
+// the other steps of the run, such as a checkout before it.
+export function readArgs(fields: Record<string, unknown>): ReadArgs {
+  const { worktree } = fields;
   const args = ['-p'];
   if (worktree === true) {
     args.push('--worktree');
@@ -152,7 +123,7 @@ export function readSettings(context: string, workspace: string): ReadSettings {
     );
   }
 
-  return { ok: true, settings: { cwd, args, prompt } };
+  return { ok: true, args };
 }
 
 // allowedTools as allowed-tools.
@@ -212,7 +183,7 @@ function json(value: unknown): [string] | undefined {
     : undefined;
 }
 
-function refuse(reason: string): ReadSettings {
+function refuse(reason: string): ReadArgs {
   return { ok: false, reason };
 }
 

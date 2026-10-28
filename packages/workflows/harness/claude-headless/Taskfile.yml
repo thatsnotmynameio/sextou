@@ -11,6 +11,12 @@
 # permissionMode, allowedTools, mcpConfig and the rest settings.ts lists.
 # Every other key is left for the other steps of the run.
 #
+# An action that keeps skills of its own, in .claude/skills/ in its folder,
+# doesn't include this Taskfile to load them: its own script calls
+# headless.ts with that folder, which only it knows, and claude gets it as
+# one more --add-dir. A context whose settingSources leaves out project, or
+# that sets safeMode, keeps those skills from loading, with no error.
+#
 # It works on what the workspace already holds: it fetches nothing. claude
 # runs with the runner's environment, so its login or its key is the
 # runner's, and the prompt does whatever the run hands on, a push included.
