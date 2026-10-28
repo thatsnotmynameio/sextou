@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useLingui } from '@lingui/react/macro';
 import { Menu, type LucideIcon } from 'lucide-react';
 
@@ -24,6 +24,9 @@ export type AppShellProps = {
   children: ReactNode;
 };
 
+// Tailwind's lg, where the navigation stops covering the page.
+const large = '(min-width: 64rem)';
+
 // The frame every page shares: the navigation beside the page on large
 // screens, and behind a button on small ones; the page's header, its content
 // and the footer.
@@ -40,6 +43,42 @@ export function AppShell({
   const { t } = useLingui();
   const toggle = useId();
   const [open, setOpen] = useState(false);
+  const opener = useRef<HTMLButtonElement>(null);
+  const navigation = useRef<HTMLElement>(null);
+  const wasOpen = useRef(false);
+
+  // Focus goes into the navigation when it covers the page, and back to the
+  // button that opened it when it closes.
+  const focusNavigation = () => {
+    const nav = navigation.current;
+    if (nav && !nav.contains(document.activeElement)) {
+      nav.focus();
+    }
+  };
+  useEffect(() => {
+    if (open) {
+      focusNavigation();
+    } else if (wasOpen.current) {
+      opener.current?.focus();
+    }
+    wasOpen.current = open;
+  }, [open]);
+
+  // The page is inert while the navigation covers it, so a screen that grows
+  // to lg, where nothing covers the page and the overlay is gone, closes it.
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const query = window.matchMedia(large);
+    const close = () => {
+      if (query.matches) {
+        setOpen(false);
+      }
+    };
+    query.addEventListener('change', close);
+    return () => query.removeEventListener('change', close);
+  }, [open]);
 
   return (
     <div
@@ -61,9 +100,14 @@ export function AppShell({
         checked={open}
         readOnly
       />
-      <div className="drawer-content flex min-h-screen min-w-0 flex-col">
+      {/* While the navigation covers it, the page takes no focus or clicks. */}
+      <div
+        className="drawer-content flex min-h-screen min-w-0 flex-col"
+        inert={open}
+      >
         <header className="navbar min-h-14 gap-2 border-b border-base-300 px-4 lg:px-6">
           <button
+            ref={opener}
             type="button"
             className="btn btn-square btn-ghost btn-sm drawer-button lg:hidden"
             aria-label={t`Open navigation`}
@@ -90,7 +134,15 @@ export function AppShell({
           </footer>
         )}
       </div>
-      <div className="drawer-side z-10">
+      {/* daisyUI shows the navigation only after a delay, so it takes focus once its transition ends. */}
+      <div
+        className="drawer-side z-10"
+        onTransitionEnd={() => {
+          if (open) {
+            focusNavigation();
+          }
+        }}
+      >
         {/* Only where the navigation covers the page is there anything to close. */}
         <button
           type="button"
@@ -100,9 +152,11 @@ export function AppShell({
           onClick={() => setOpen(false)}
         />
         <nav
+          ref={navigation}
           id={`${toggle}-navigation`}
+          tabIndex={-1}
           aria-label={t`Main navigation`}
-          className="flex min-h-full w-60 flex-col border-r border-base-300 bg-base-200 p-2"
+          className="flex min-h-full w-60 flex-col outline-none border-r border-base-300 bg-base-200 p-2"
         >
           <div className="px-4 py-2 text-base font-semibold">{brand}</div>
           <ul className="menu w-full">

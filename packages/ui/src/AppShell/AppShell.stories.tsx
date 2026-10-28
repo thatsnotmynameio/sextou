@@ -127,7 +127,8 @@ export const Bare: Story = {
 };
 
 // On a phone the navigation hides behind the header's button and covers the
-// page once open, until the overlay, Escape or a followed link closes it.
+// page once open, with focus inside it, until the overlay, Escape or a
+// followed link closes it and focus goes back to the button.
 export const Phone: Story = {
   globals: { viewport: { value: 'mobile1' } },
   // Following a link would move the test runner's page away; the shell still sees the click.
@@ -148,8 +149,12 @@ export const Phone: Story = {
     const opened = async () => {
       await userEvent.click(open);
       await waitFor(() => expect(nav).toBeVisible());
+      await waitFor(() => expect(nav).toHaveFocus());
     };
-    const closed = () => waitFor(() => expect(nav).not.toBeVisible());
+    const closed = async () => {
+      await waitFor(() => expect(nav).not.toBeVisible());
+      await expect(open).toHaveFocus();
+    };
 
     await expect(nav).not.toBeVisible();
     await step('the button opens it', async () => {
@@ -176,5 +181,41 @@ export const Phone: Story = {
         await closed();
       }
     });
+  },
+};
+
+// A screen that matchMedia reports, whose size the story sets: no story can
+// resize its own window.
+class Screen extends EventTarget {
+  matches = false;
+  grow() {
+    this.matches = true;
+    this.dispatchEvent(new Event('change'));
+  }
+}
+const screen = new Screen();
+
+// A phone turned into a large screen with the navigation open, as a tablet
+// rotated to landscape: the page beside the navigation takes input again.
+export const PhoneTurnedLarge: Story = {
+  globals: { viewport: { value: 'mobile1' } },
+  beforeEach: () => {
+    const matchMedia = window.matchMedia;
+    screen.matches = false;
+    window.matchMedia = () => screen as unknown as MediaQueryList;
+    return () => {
+      window.matchMedia = matchMedia;
+    };
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(
+      canvas.getByRole('button', { name: 'Open navigation' }),
+    );
+    const page = canvas.getByRole('main').parentElement;
+    await expect(page).toHaveAttribute('inert');
+
+    screen.grow();
+
+    await waitFor(() => expect(page).not.toHaveAttribute('inert'));
   },
 };

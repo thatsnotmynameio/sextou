@@ -1,7 +1,8 @@
 import { fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { House, ListTodo, Server } from 'lucide-react';
-import { expect, test } from 'vitest';
+import { act } from 'react';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { renderWithI18n } from '../../render';
 import { AppShell, type AppShellProps } from '../../../src/AppShell/AppShell';
 
@@ -20,6 +21,36 @@ const props: AppShellProps = {
   title: 'Tasks',
   children: <p>The page</p>,
 };
+
+// window.matchMedia, which jsdom lacks, for a screen whose width the test sets.
+let large = false;
+const changes = new Set<() => void>();
+beforeEach(() => {
+  large = false;
+  changes.clear();
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    media: query,
+    get matches() {
+      return large && query === '(min-width: 64rem)';
+    },
+    addEventListener: (_: string, listener: () => void) =>
+      changes.add(listener),
+    removeEventListener: (_: string, listener: () => void) =>
+      changes.delete(listener),
+  }));
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+function resize(toLarge: boolean) {
+  large = toLarge;
+  act(() => {
+    for (const change of changes) {
+      change();
+    }
+  });
+}
 
 // The checkbox daisyUI's drawer reads to show the navigation on small screens.
 function drawerToggle(container: HTMLElement) {
@@ -147,4 +178,112 @@ test('AppShell keeps the navigation open on another key', async () => {
   fireEvent.keyDown(screen.getByRole('navigation'), { key: 'Enter' });
 
   expect(drawerToggle(container)).toBeChecked();
+});
+
+test('AppShell moves focus into the navigation when it opens', async () => {
+  renderWithI18n(<AppShell {...props} />);
+
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Open navigation' }),
+  );
+
+  expect(screen.getByRole('navigation')).toHaveFocus();
+});
+
+test('AppShell returns focus to the button that opened the navigation when it closes', async () => {
+  renderWithI18n(<AppShell {...props} />);
+  const open = screen.getByRole('button', { name: 'Open navigation' });
+  await userEvent.click(open);
+
+  fireEvent.keyDown(screen.getByRole('navigation'), { key: 'Escape' });
+
+  expect(open).toHaveFocus();
+});
+
+test('AppShell moves focus into the navigation once its transition ends, when it could not before', async () => {
+  renderWithI18n(<AppShell {...props} />);
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Open navigation' }),
+  );
+  const nav = screen.getByRole('navigation');
+  nav.blur();
+
+  fireEvent.transitionEnd(nav);
+
+  expect(nav).toHaveFocus();
+});
+
+test('AppShell leaves focus on a navigation link when the transition ends', async () => {
+  renderWithI18n(<AppShell {...props} />);
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Open navigation' }),
+  );
+  const runners = screen.getByRole('link', { name: 'Runners' });
+  runners.focus();
+
+  fireEvent.transitionEnd(screen.getByRole('navigation'));
+
+  expect(runners).toHaveFocus();
+});
+
+test('AppShell leaves focus alone when the closed navigation ends a transition', () => {
+  renderWithI18n(<AppShell {...props} />);
+
+  fireEvent.transitionEnd(screen.getByRole('navigation', { hidden: true }));
+
+  expect(document.body).toHaveFocus();
+});
+
+test('AppShell leaves focus alone on the first render', () => {
+  renderWithI18n(<AppShell {...props} />);
+  expect(document.body).toHaveFocus();
+});
+
+test('AppShell makes the page inert only while the navigation covers it', async () => {
+  renderWithI18n(<AppShell {...props} />);
+  const page = screen.getByRole('main').parentElement;
+  expect(page).not.toHaveAttribute('inert');
+
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Open navigation' }),
+  );
+  expect(page).toHaveAttribute('inert');
+
+  fireEvent.keyDown(screen.getByRole('navigation'), { key: 'Escape' });
+  expect(page).not.toHaveAttribute('inert');
+});
+
+test('AppShell closes the open navigation when the screen grows to lg', async () => {
+  const { container } = renderWithI18n(<AppShell {...props} />);
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Open navigation' }),
+  );
+
+  resize(true);
+
+  expect(drawerToggle(container)).not.toBeChecked();
+});
+
+test('AppShell keeps the navigation open when the screen changes but stays below lg', async () => {
+  const { container } = renderWithI18n(<AppShell {...props} />);
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Open navigation' }),
+  );
+
+  resize(false);
+
+  expect(drawerToggle(container)).toBeChecked();
+});
+
+test('AppShell watches the screen only while the navigation is open', async () => {
+  renderWithI18n(<AppShell {...props} />);
+  expect(changes.size).toBe(0);
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Open navigation' }),
+  );
+  expect(changes.size).toBe(1);
+
+  fireEvent.keyDown(screen.getByRole('navigation'), { key: 'Escape' });
+
+  expect(changes.size).toBe(0);
 });
