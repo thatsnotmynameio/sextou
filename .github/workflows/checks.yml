@@ -291,7 +291,10 @@ jobs:
     name: ${{ matrix.package }} / ${{ matrix.level }}
     needs: [packages, integration]
     if: ${{ !failure() && !cancelled() && needs.packages.outputs.component != '[]' }}
-    runs-on: ubuntu-latest
+    # The Ubuntu of Playwright's noble image, where the references are made:
+    # ubuntu-latest moves to a new release on its own, and text may render a
+    # pixel apart there.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
