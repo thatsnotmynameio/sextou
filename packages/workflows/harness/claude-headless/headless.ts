@@ -1,13 +1,6 @@
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import {
-  notRun,
-  type Harness,
-  type Output,
-  refused,
-  runHarness,
-  timedOut,
-} from '../agnostic-cli/run.ts';
+import { type Harness, type Output, runHarness } from '../agnostic-cli/run.ts';
 import {
   defaultKillGraceMs,
   readBin,
@@ -15,14 +8,11 @@ import {
 } from '../../shared/settings.ts';
 import { defaultTimeoutMs, readArgs } from './settings.ts';
 
-// Exits with 2 on an input it refuses, having run no claude.
-export { refused };
-// Exits with 127 when claude doesn't run.
-export const noClaude = notRun;
-// Exits with 124 when claude took longer than CLAUDE_HEADLESS_TIMEOUT_MS,
-// which stops it, as timeout(1) does: SIGTERM, then SIGKILL once
-// CLAUDE_HEADLESS_KILL_GRACE_MS went by.
-export { timedOut };
+// The core's exit codes, under claude's names: 2 on an input it refuses,
+// having run no claude; 127 when claude doesn't run; 124 when claude took
+// longer than CLAUDE_HEADLESS_TIMEOUT_MS, which stops it, as timeout(1)
+// does: SIGTERM, then SIGKILL once CLAUDE_HEADLESS_KILL_GRACE_MS went by.
+export { notRun as noClaude, refused, timedOut } from '../agnostic-cli/run.ts';
 
 // Runs claude -p in the run's workspace (CLAUDE_HEADLESS_WORKSPACE) with
 // the prompt and the options the task's context names
