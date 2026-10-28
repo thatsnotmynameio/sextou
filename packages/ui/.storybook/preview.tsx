@@ -8,6 +8,7 @@ import './storybook.css';
 i18n.setMessagesCompiler(compileMessage);
 i18n.loadAndActivate({ locale: 'en', messages: {} });
 
+// The page's background and colors come from the theme in theme.css, as in the apps.
 const preview: Preview = {
   decorators: [
     (Story) => (
@@ -19,12 +20,6 @@ const preview: Preview = {
   parameters: {
     // axe checks every story; a violation fails the story's test in the component suite.
     a11y: { test: 'error' },
-    backgrounds: {
-      options: { sidebar: { name: 'Sidebar', value: '#14110E' } },
-    },
-  },
-  initialGlobals: {
-    backgrounds: { value: 'sidebar' },
   },
 };
 

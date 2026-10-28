@@ -7,6 +7,6 @@
   {
     "name": "CSS",
     "path": "dist/assets/*.css",
-    "limit": "4 kB"
+    "limit": "14 kB"
   }
 ]

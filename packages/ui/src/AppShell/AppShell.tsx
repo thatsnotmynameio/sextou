@@ -1,0 +1,232 @@
+import {
+  Fragment,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import { useLingui } from '@lingui/react/macro';
+import { Menu, type LucideIcon } from 'lucide-react';
+
+export type AppShellLink = {
+  label: ReactNode;
+  href: string;
+  icon: LucideIcon;
+  current?: boolean;
+};
+
+// A group of links in the navigation, under its title when it has one. The id
+// tells the sections apart, since the title may be absent or not text.
+export type AppShellSection = {
+  id: string;
+  title?: ReactNode;
+  links: AppShellLink[];
+};
+
+export type AppShellProps = {
+  brand: ReactNode;
+  sections: AppShellSection[];
+  title: ReactNode;
+  actions?: ReactNode;
+  footer?: ReactNode;
+  children: ReactNode;
+};
+
+// Tailwind's lg, where the navigation stops covering the page.
+const large = '(min-width: 64rem)';
+
+// The frame every page shares: the navigation beside the page on large
+// screens, and behind a button on small ones; the page's header, its content
+// and the footer.
+// Stryker disable BlockStatement: emptying the body moves useLingui() out of the place Lingui's macro rewrites, so it would fail to compile, not to pass
+export function AppShell({
+  brand,
+  sections,
+  title,
+  actions,
+  footer,
+  children,
+}: Readonly<AppShellProps>) {
+  // Stryker restore BlockStatement
+  const { t } = useLingui();
+  const toggle = useId();
+  const [open, setOpen] = useState(false);
+  const opener = useRef<HTMLButtonElement>(null);
+  const navigation = useRef<HTMLElement>(null);
+  const wasOpen = useRef(false);
+
+  // Focus goes into the navigation when it covers the page, and back to the
+  // button that opened it when it closes.
+  useEffect(() => {
+    if (open) {
+      focusInto(navigation.current);
+    } else if (wasOpen.current) {
+      opener.current?.focus();
+    }
+    wasOpen.current = open;
+  }, [open]);
+
+  // While the navigation is open, Escape closes it wherever focus is. The page
+  // is inert while the navigation covers it, so a screen that grows to lg,
+  // where nothing covers the page and the overlay is gone, closes it too.
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpen(false);
+      }
+    };
+    const query = window.matchMedia(large);
+    const grow = () => {
+      if (query.matches) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('keydown', escape);
+    query.addEventListener('change', grow);
+    return () => {
+      document.removeEventListener('keydown', escape);
+      query.removeEventListener('change', grow);
+    };
+  }, [open]);
+
+  return (
+    <div className="drawer min-h-screen bg-base-100 font-sans text-base-content lg:drawer-open">
+      {/* daisyUI's drawer shows the navigation from this checkbox; the buttons, not the user, set it. */}
+      <input
+        id={toggle}
+        type="checkbox"
+        className="drawer-toggle"
+        tabIndex={-1}
+        aria-hidden="true"
+        aria-label={t`Navigation open`}
+        checked={open}
+        readOnly
+      />
+      {/* While the navigation covers it, the page takes no focus or clicks. */}
+      <div
+        className="drawer-content flex min-h-screen min-w-0 flex-col"
+        inert={open}
+      >
+        <header className="navbar min-h-14 gap-2 border-b border-base-300 px-4 lg:px-6">
+          <button
+            ref={opener}
+            type="button"
+            className="btn btn-square btn-ghost btn-sm drawer-button lg:hidden"
+            aria-label={t`Open navigation`}
+            aria-controls={`${toggle}-navigation`}
+            aria-expanded={open}
+            onClick={() => setOpen(true)}
+          >
+            <Menu aria-hidden="true" size={18} />
+          </button>
+          <h1 className="min-w-0 flex-1 truncate text-lg font-semibold">
+            {title}
+          </h1>
+          {actions && (
+            <div className="flex flex-none items-center gap-2">{actions}</div>
+          )}
+        </header>
+        <main className="min-w-0 flex-1 p-4 lg:p-6">{children}</main>
+        {footer && (
+          <footer className="footer border-t border-base-300 px-4 py-2 text-sm text-base-content/70 lg:px-6">
+            {/* daisyUI's footer stacks what each of its children holds; the status reads as one line. */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              {footer}
+            </div>
+          </footer>
+        )}
+      </div>
+      {/* daisyUI shows the navigation only after a delay, so it takes focus once its transition ends. */}
+      <div
+        className="drawer-side z-10"
+        onTransitionEnd={() => {
+          if (open) {
+            focusInto(navigation.current);
+          }
+        }}
+      >
+        {/* Only where the navigation covers the page is there anything to close. */}
+        <button
+          type="button"
+          className="drawer-overlay lg:hidden"
+          aria-label={t`Close navigation`}
+          tabIndex={-1}
+          onClick={() => setOpen(false)}
+        />
+        <nav
+          ref={navigation}
+          id={`${toggle}-navigation`}
+          tabIndex={-1}
+          aria-label={t`Main navigation`}
+          className="flex min-h-full w-60 flex-col outline-none border-r border-base-300 bg-base-200 p-2"
+        >
+          <div className="px-4 py-2 text-base font-semibold">{brand}</div>
+          <ul className="menu w-full">
+            {sections.map((section) =>
+              section.title ? (
+                <li key={section.id}>
+                  <h2 className="menu-title text-base-content/70">
+                    {section.title}
+                  </h2>
+                  <ul>
+                    {section.links.map((link) => (
+                      <Link
+                        key={link.href}
+                        link={link}
+                        onFollow={() => setOpen(false)}
+                      />
+                    ))}
+                  </ul>
+                </li>
+              ) : (
+                <Fragment key={section.id}>
+                  {section.links.map((link) => (
+                    <Link
+                      key={link.href}
+                      link={link}
+                      onFollow={() => setOpen(false)}
+                    />
+                  ))}
+                </Fragment>
+              ),
+            )}
+          </ul>
+        </nav>
+      </div>
+    </div>
+  );
+}
+
+// Moves focus to the navigation unless it is already inside it.
+function focusInto(nav: HTMLElement | null) {
+  if (nav && !nav.contains(document.activeElement)) {
+    nav.focus();
+  }
+}
+
+// Following a link closes the navigation, which matters where it covers the page.
+function Link({
+  link: { label, href, icon: Icon, current = false },
+  onFollow,
+}: Readonly<{
+  link: AppShellLink;
+  onFollow: () => void;
+}>) {
+  return (
+    <li>
+      <a
+        href={href}
+        aria-current={current ? 'page' : undefined}
+        className={current ? 'menu-active' : undefined}
+        onClick={onFollow}
+      >
+        <Icon aria-hidden="true" size={16} />
+        {label}
+      </a>
+    </li>
+  );
+}
