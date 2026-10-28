@@ -5,8 +5,13 @@
 # the pull request title check accepts.
 version: 2
 updates:
+  # '/' reads .github/workflows; each local action in .github/actions needs its
+  # own folder here, or the actions it pins never get updated.
   - package-ecosystem: 'github-actions'
-    directory: '/'
+    directories:
+      - '/'
+      - '/.github/actions/pnpm'
+      - '/.github/actions/go-task'
     schedule:
       interval: 'weekly'
     cooldown:
