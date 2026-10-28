@@ -17,12 +17,16 @@ function chromium() {
 
 // Each story against its reference image, in tests/component/. Text renders a
 // pixel or two apart from one Linux to another, so the references are this CI
-// runner's Ubuntu and only CI compares them; a run elsewhere leaves them out.
+// runner's Ubuntu and only CI (CI=true) compares them; a run elsewhere leaves
+// them out.
 const screenshots = {
   extends: true,
   test: {
     name: 'ui/screenshots',
     include: ['tests/component/**/*.test.tsx'],
+    // The unit suite's setup: English, and each story unmounted after its
+    // test, so no story's pixels depend on the ones rendered before it.
+    setupFiles: ['./vitest.setup.ts'],
     fsModuleCachePath: 'node_modules/.vitest-cache',
     browser: chromium(),
   },
@@ -54,7 +58,7 @@ export default mergeConfig(
             browser: chromium(),
           },
         },
-        ...(process.env.CI ? [screenshots] : []),
+        ...(process.env.CI === 'true' ? [screenshots] : []),
       ],
     },
   }),
