@@ -47,8 +47,9 @@ export function git(cwd: string, ...args: string[]) {
   ).trim();
 }
 
-// org/app under `root`, with two commits on main, tagged v1, and one more on
-// a branch, which answers a fetch of any commit, as GitHub does.
+// org/app under `root`, with two commits on main, tagged v1, one more on a
+// branch, then one on main that adds main.txt, so main moved on after the
+// branch left it. It answers a fetch of any commit, as GitHub does.
 function repository(root: string) {
   const path = join(root, 'org/app');
   mkdirSync(path, { recursive: true });
@@ -66,6 +67,9 @@ function repository(root: string) {
   git(path, 'commit', '-q', '-a', '-m', 'feature');
   const feature = git(path, 'rev-parse', 'HEAD');
   git(path, 'switch', '-q', 'main');
+  writeFileSync(join(path, 'main.txt'), 'main');
+  git(path, 'add', 'main.txt');
+  git(path, 'commit', '-q', '-m', 'main');
   return { first, feature };
 }
 

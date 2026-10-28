@@ -22,7 +22,9 @@ export const timedOut = 124;
 
 // Clones the repository the task's context names (CHECKOUT_CONTEXT, as JSON)
 // into the run's workspace (CHECKOUT_WORKSPACE): a shallow fetch of that one
-// ref, checked out detached. `env` is the environment git runs with, and
+// ref, checked out detached. With a base, the base branch comes first, kept
+// as origin/<base>, then the ref, both with their whole history, so a log
+// or a diff can compare the two. `env` is the environment git runs with, and
 // `log` gets each line the checkout writes, git's included. git is the
 // program CHECKOUT_GIT_BIN names, a command on the PATH or an absolute path,
 // git on the PATH when it is unset or empty.
@@ -104,6 +106,7 @@ async function clone({
   log,
   url,
   ref,
+  base,
   path,
 }: Settings & {
   env: NodeJS.ProcessEnv;
@@ -159,10 +162,25 @@ async function clone({
     log(`checkout: ${(error as Error).message}`);
     return refused;
   }
+  // The ref's fetch comes last, so FETCH_HEAD names it alone. A base names
+  // only a branch: a tag or a commit matches no refs/heads/ on the server.
+  const fetches =
+    base === undefined
+      ? [['fetch', '-q', '--no-tags', '--depth=1', 'origin', ref]]
+      : [
+          [
+            'fetch',
+            '-q',
+            '--no-tags',
+            'origin',
+            `+refs/heads/${base}:refs/remotes/origin/${base}`,
+          ],
+          ['fetch', '-q', '--no-tags', 'origin', ref],
+        ];
   for (const args of [
     ['init', '-q'],
     ['remote', 'add', 'origin', url],
-    ['fetch', '-q', '--no-tags', '--depth=1', 'origin', ref],
+    ...fetches,
     ['checkout', '-q', '--force', '--detach', 'FETCH_HEAD'],
   ]) {
     const code = await run(
