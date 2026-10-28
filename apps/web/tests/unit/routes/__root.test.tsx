@@ -52,13 +52,18 @@ test('the layout names the server the app talks to in its footer', async () => {
   );
 });
 
-test('the layout heads a page no route matches with the brand, with no current link', async () => {
+test('the layout heads a page no route matches with the brand', async () => {
   renderAt('/missing');
 
   expect(
     await screen.findByRole('heading', { level: 1, name: 'sextou' }),
   ).toBeInTheDocument();
+});
+
+test('the layout marks no link current on a page no route matches', async () => {
+  renderAt('/missing');
+
   expect(
-    screen.getByRole('link', { name: 'Server health' }),
+    await screen.findByRole('link', { name: 'Server health' }),
   ).not.toHaveAttribute('aria-current');
 });
