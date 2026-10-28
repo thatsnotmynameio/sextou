@@ -1,23 +1,21 @@
-/* Design tokens for @sextou/ui. Import after `tailwindcss` in each app's entry stylesheet. */
-@import '@fontsource-variable/inter';
+/* Tailwind, daisyUI and the fonts for @sextou/ui: each app's entry stylesheet imports this file first. */
+@import 'tailwindcss';
+@import '@fontsource-variable/source-sans-3';
+@import '@fontsource-variable/jetbrains-mono';
+
+/* Its own components, which an app's Tailwind wouldn't find: the package is a symlink under node_modules. */
+@source '.';
+
+/* daisyUI's built-in "dim", the only theme: colors come from its semantic names (base-100, primary, …). */
+@plugin "daisyui" {
+  themes: dim --default;
+}
 
 @theme {
   --font-sans:
-    'Inter Variable', 'Inter', 'SF Pro Display', -apple-system,
-    BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell',
-    'Open Sans', 'Helvetica Neue', sans-serif;
-
-  --color-sidebar: #14110e;
-  --color-text: #e4e1de;
-  --color-item: #c1bdb9;
-  --color-strong: #fbf9f7;
-  --color-muted: #847f7b;
-  --color-count: #a29d99;
-  --color-accent: #c498ff;
-  --color-active: #26221e;
-  --color-badge: #352645;
-  --color-badge-text: #dcbfff;
-  --color-workspace: #5f3c82;
-  --color-raised: #1d1915;
-  --color-border: #322d29;
+    'Source Sans 3 Variable', 'Source Sans 3', system-ui, -apple-system,
+    'Segoe UI', Roboto, sans-serif;
+  --font-mono:
+    'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, 'SFMono-Regular',
+    Menlo, monospace;
 }
