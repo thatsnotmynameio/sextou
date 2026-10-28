@@ -17,6 +17,8 @@ const preview: Preview = {
     ),
   ],
   parameters: {
+    // axe checks every story; a violation fails the story's test in the component suite.
+    a11y: { test: 'error' },
     backgrounds: {
       options: { sidebar: { name: 'Sidebar', value: '#14110E' } },
     },
