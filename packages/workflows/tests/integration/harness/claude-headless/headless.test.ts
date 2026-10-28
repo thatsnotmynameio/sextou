@@ -310,3 +310,113 @@ test('headless kills claude once it took longer than CLAUDE_HEADLESS_TIMEOUT_MS'
 
   expect(Date.now() - started).toBeLessThan(10_000);
 });
+
+// An action's folder in the run's folder, beside the workspace, with
+// .claude/skills/<skill>/SKILL.md in it unless `skills` is false.
+function actionFolder(skills = true) {
+  const folder = join(dir, 'action');
+  mkdirSync(folder);
+  if (skills) {
+    mkdirSync(join(folder, '.claude/skills/sextou-work'), { recursive: true });
+    writeFileSync(join(folder, '.claude/skills/sextou-work/SKILL.md'), 'skill');
+  }
+  return folder;
+}
+
+// Runs claude -p for `context` with `folder` handed as the action's own.
+function runWithFolder(folder: string, context: Record<string, unknown>) {
+  return headless(
+    {
+      ...process.env,
+      CLAUDE_HEADLESS_BIN: claude,
+      CLAUDE_HEADLESS_CONTEXT: JSON.stringify(context),
+      CLAUDE_HEADLESS_WORKSPACE: workspace,
+      FAKE_CLAUDE_RECEIVED: file,
+    },
+    {
+      stdout: (line) => stdout.push(line),
+      stderr: (line) => stderr.push(line),
+    },
+    folder,
+  );
+}
+
+test("headless hands claude the action's folder after the context's addDir", async () => {
+  const folder = actionFolder();
+
+  await runWithFolder(folder, { prompt: 'hi', addDir: '/data' });
+
+  expect(received(file).args).toEqual([
+    '-p',
+    '--add-dir=/data',
+    `--add-dir=${folder}`,
+  ]);
+});
+
+test("headless hands claude the action's folder alone when the context names no addDir", async () => {
+  const folder = actionFolder();
+
+  await runWithFolder(folder, { prompt: 'hi' });
+
+  expect(received(file).args).toEqual(['-p', `--add-dir=${folder}`]);
+});
+
+test("headless hands claude each of the context's addDir, then the action's folder", async () => {
+  const folder = actionFolder();
+
+  await runWithFolder(folder, { prompt: 'hi', addDir: ['a', 'b'] });
+
+  expect(received(file).args).toEqual([
+    '-p',
+    '--add-dir=a',
+    '--add-dir=b',
+    `--add-dir=${folder}`,
+  ]);
+});
+
+// Each action's folder headless refuses, by what `make` leaves in the run's
+// folder: one that isn't there, one without .claude, one whose
+// .claude/skills is a file.
+const folderRefusals: [name: string, make: () => string][] = [
+  ['a folder that does not exist', () => join(dir, 'missing')],
+  ['a folder with no .claude', () => actionFolder(false)],
+  [
+    'a folder whose .claude/skills is a file',
+    () => {
+      const folder = actionFolder(false);
+      mkdirSync(join(folder, '.claude'));
+      writeFileSync(join(folder, '.claude/skills'), 'not a folder');
+      return folder;
+    },
+  ],
+];
+
+test.each(folderRefusals)(
+  "headless refuses %s as the action's folder: exit code 2, the reason on stderr",
+  async (_name, make) => {
+    const folder = make();
+
+    expect({
+      code: await runWithFolder(folder, { prompt: 'hi' }),
+      stderr,
+    }).toEqual({
+      code: refused,
+      stderr: [`claude-headless: ${folder} holds a .claude/skills folder`],
+    });
+  },
+);
+
+test.each(folderRefusals)(
+  "headless runs no claude on %s as the action's folder",
+  async (_name, make) => {
+    await runWithFolder(make(), { prompt: 'hi' });
+
+    expect(existsSync(file)).toBe(false);
+  },
+);
+
+test("headless reports a context it refuses before the action's folder", async () => {
+  await runWithFolder(join(dir, 'missing'), { prompt: '' });
+
+  expect(stderr).toEqual(['claude-headless: prompt is a string with text']);
+});

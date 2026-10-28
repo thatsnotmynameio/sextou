@@ -1,3 +1,5 @@
+import { stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   notRun,
   type Harness,
@@ -29,13 +31,23 @@ export { timedOut };
 // is, but for the CLAUDE_HEADLESS_ variables, which are this script's.
 // claude is the program CLAUDE_HEADLESS_BIN names, a command on the PATH or
 // an absolute path, claude on the PATH when it is unset or empty.
+//
+// An action that keeps its skills in its own folder, in .claude/skills/,
+// hands that folder as `folder`, from its code: the folder exists only in
+// the runner's download, so no context can name it. claude gets it as one
+// more --add-dir, after the context's addDir, and a folder that holds no
+// .claude/skills folder is refused. claude loads those skills only while the
+// project setting source is on: a context whose settingSources leaves out
+// project, or that sets safeMode, keeps them from loading, with no error.
+//
 // Resolves with the exit code: refused, noClaude, timedOut, else claude's.
 export function headless(
   env: NodeJS.ProcessEnv,
   output: Output,
+  folder?: string,
 ): Promise<number> {
   return runHarness(
-    claude(env),
+    claude(env, folder),
     {
       // Stryker disable next-line StringLiteral: any text but JSON refuses the same
       context: env.CLAUDE_HEADLESS_CONTEXT ?? '',
@@ -48,8 +60,9 @@ export function headless(
 }
 
 // claude as the core runs it, with its program, timeout and grace from
-// `env`, the runner's environment.
-function claude(env: NodeJS.ProcessEnv): Harness {
+// `env`, the runner's environment, and the action's `folder`, when it
+// handed one.
+function claude(env: NodeJS.ProcessEnv, folder: string | undefined): Harness {
   return {
     name: 'claude-headless',
     program: 'claude',
@@ -83,9 +96,25 @@ function claude(env: NodeJS.ProcessEnv): Harness {
           'CLAUDE_HEADLESS_BIN is a command on the PATH or an absolute path',
         );
       }
-      return { ok: true, bin, args: read.args, timeoutMs, killGraceMs };
+      const args =
+        folder === undefined
+          ? read.args
+          : [...read.args, `--add-dir=${folder}`];
+      return { ok: true, bin, args, timeoutMs, killGraceMs };
     },
+    check: folder === undefined ? undefined : () => checkSkills(folder),
   };
+}
+
+// Why the action's `folder` is refused, when it holds no .claude/skills
+// folder for claude to load; undefined when it does.
+async function checkSkills(folder: string) {
+  const skills = await stat(join(folder, '.claude', 'skills')).catch(
+    () => undefined,
+  );
+  return skills?.isDirectory()
+    ? undefined
+    : `${folder} holds a .claude/skills folder`;
 }
 
 function refuse(reason: string) {
