@@ -141,7 +141,7 @@ packages/workflows/
     run.ts                     runs a program until a signal aborts, then SIGTERM and SIGKILL after a grace, with each line it writes handed on
   tests/
     git-server.ts              git repositories served over HTTPS on localhost, through git's http-backend, with a certificate openssl makes
-    repository.ts              a repository with commits on two branches, and git kept from the user's configuration
+    repository.ts              the integration suite's global setup: a repository with commits on two branches, once per Vitest instance, and git kept from the user's configuration
     fake-claude.ts             a claude the tests write to disk and run, which records what it got
     go-task.ts                 bin and goTask, which skips a test when the host has no go-task
     unit/                      mirrors the scripts: git/checkout/settings.test.ts, harness/claude-headless/settings.test.ts, shared/settings.test.ts

@@ -278,16 +278,22 @@ test('headless runs claude from the PATH when CLAUDE_HEADLESS_BIN is empty', asy
   expect(received(file).stdin).toBe('hi');
 });
 
-// A claude that sleeps 30 seconds, under a timeout of one.
+// A claude that sleeps 30 seconds, under a timeout of half a second, which
+// leaves the fake claude's --version time to end. Stryker runs each test
+// again for every mutant it covers, so each second a run lasts costs minutes.
 const slow = {
-  CLAUDE_HEADLESS_TIMEOUT_MS: '1000',
+  CLAUDE_HEADLESS_TIMEOUT_MS: '500',
   FAKE_CLAUDE_SLEEP_MS: '30000',
 };
 
 test('headless exits with 124 with its reason once claude took longer than CLAUDE_HEADLESS_TIMEOUT_MS', async () => {
-  expect(await outcome({ prompt: 'hi' }, slow)).toEqual({
+  // The reason is the last line, whether or not the run, a second node to
+  // start under the same deadline, wrote its warning before it.
+  const { code, stderr } = await outcome({ prompt: 'hi' }, slow);
+
+  expect({ code, last: stderr.at(-1) }).toEqual({
     code: timedOut,
-    stderr: ['a warning', 'claude-headless: claude took longer than 1000 ms'],
+    last: 'claude-headless: claude took longer than 500 ms',
   });
 });
 
