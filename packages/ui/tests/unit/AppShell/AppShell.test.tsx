@@ -300,3 +300,19 @@ test('AppShell closes the open navigation on Escape when focus is outside it', a
 
   expect(drawerToggle(container)).not.toBeChecked();
 });
+
+test('AppShell names the drawer checkbox, which axe checks though it is hidden', () => {
+  const { container } = renderWithI18n(<AppShell {...props} />);
+  expect(drawerToggle(container)).toHaveAttribute(
+    'aria-label',
+    'Navigation open',
+  );
+});
+
+test('AppShell leaves the navigation and its overlay out of the tab order, so Tab first reaches the button that opens it', async () => {
+  renderWithI18n(<AppShell {...props} />);
+
+  await userEvent.tab();
+
+  expect(screen.getByRole('button', { name: 'Open navigation' })).toHaveFocus();
+});
