@@ -29,7 +29,8 @@
     "@fontsource-variable/source-sans-3": "^5.3.1",
     "@lingui/native-tools": "^0.2.0",
     "daisyui": "^5.7.50",
-    "lucide-react": "^1.62.0"
+    "lucide-react": "^1.62.0",
+    "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
     "@lingui/core": "^6.10.0",
@@ -55,7 +56,6 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "storybook": "^10.6.3",
-    "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
