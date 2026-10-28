@@ -1,45 +1,59 @@
 import { Trans } from '@lingui/react/macro';
 import { useQuery } from '@tanstack/react-query';
 import { TRPCClientError } from '@trpc/client';
+import { CircleAlert } from 'lucide-react';
 import type { TRPC } from '../../trpc';
 
 // The server's version and whether its database answers, from health.check.
+// The route's title, in the shell's header, names the page.
 export function HealthPage({ trpc }: { trpc: TRPC }) {
   const health = useQuery(trpc.health.check.queryOptions());
 
   return (
     <section className="flex max-w-md flex-col gap-4">
-      <h1 className="text-xl font-semibold text-strong">
-        <Trans>Server health</Trans>
-      </h1>
       {health.isPending ? (
-        <p className="text-muted">
-          <Trans>Checking the server…</Trans>
-        </p>
+        // The shape of the answer, until it arrives.
+        <div className="flex flex-col gap-2 rounded-box border border-base-300 p-4">
+          <span className="sr-only">
+            <Trans>Checking the server…</Trans>
+          </span>
+          <div aria-hidden="true" className="skeleton h-6 w-40" />
+          <div aria-hidden="true" className="skeleton h-6 w-32" />
+        </div>
       ) : health.isError ? (
-        <p role="alert">
-          {answered(health.error) ? (
-            <Trans>
-              The server answered with an error and couldn’t report its health.
-            </Trans>
-          ) : (
-            <Trans>The server can’t be reached.</Trans>
-          )}
-        </p>
+        <div role="alert" className="alert alert-error alert-soft">
+          <CircleAlert aria-hidden="true" size={18} />
+          <span>
+            {answered(health.error) ? (
+              <Trans>
+                The server answered with an error and couldn’t report its
+                health.
+              </Trans>
+            ) : (
+              <Trans>The server can’t be reached.</Trans>
+            )}
+          </span>
+        </div>
       ) : (
-        <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 rounded-md border border-border p-4">
-          <dt className="text-muted">
+        <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 rounded-box border border-base-300 p-4">
+          <dt className="text-base-content/70">
             <Trans>Version</Trans>
           </dt>
-          <dd>{health.data.version}</dd>
-          <dt className="text-muted">
+          <dd className="font-mono">{health.data.version}</dd>
+          <dt className="text-base-content/70">
             <Trans>Database</Trans>
           </dt>
-          <dd>
+          <dd className="flex items-center gap-2">
             {health.data.database === 'up' ? (
-              <Trans>up</Trans>
+              <>
+                <span aria-hidden="true" className="status status-success" />
+                <Trans>up</Trans>
+              </>
             ) : (
-              <Trans>down</Trans>
+              <>
+                <span aria-hidden="true" className="status status-error" />
+                <Trans>down</Trans>
+              </>
             )}
           </dd>
         </dl>

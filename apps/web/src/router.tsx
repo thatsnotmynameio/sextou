@@ -1,4 +1,4 @@
-import { i18n } from '@lingui/core';
+import { i18n, type MessageDescriptor } from '@lingui/core';
 import { I18nProvider } from '@lingui/react';
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
 import { createRouter, type RouterHistory } from '@tanstack/react-router';
@@ -9,6 +9,8 @@ import { createTRPC, type TRPC } from './trpc';
 export interface RouterContext {
   trpc: TRPC;
   queryClient: QueryClient;
+  // The server the client talks to, which the footer shows.
+  serverUrl: string;
 }
 
 export interface AppRouterOptions {
@@ -29,7 +31,7 @@ export function createAppRouter({
   return createRouter({
     routeTree,
     history,
-    context: { trpc, queryClient },
+    context: { trpc, queryClient, serverUrl },
     Wrap: ({ children }) => (
       <I18nProvider i18n={i18n}>
         <QueryClientProvider client={queryClient}>
@@ -43,5 +45,9 @@ export function createAppRouter({
 declare module '@tanstack/react-router' {
   interface Register {
     router: ReturnType<typeof createAppRouter>;
+  }
+  // What a route declares about its page: the title the header shows.
+  interface StaticDataRouteOption {
+    title?: MessageDescriptor;
   }
 }

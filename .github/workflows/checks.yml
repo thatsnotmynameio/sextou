@@ -86,6 +86,27 @@ jobs:
       - name: oxlint
         run: pnpm exec oxlint --config .oxlintrc.gates.json --format github .
 
+  # The web app's bundle against the limits in apps/web/.size-limit.json,
+  # brotlied: the desktop loads the hosted web app, so its size reaches both.
+  # A change that grows it past a limit raises the limit in the same pull
+  # request.
+  bundle:
+    name: web / bundle
+    needs: [gates]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: thatsnotmynameio/sextou/.github/actions/pnpm@3c985efde05b7691b77a26075f99109e267b7e69
+      - name: Build
+        run: pnpm --filter @sextou/web build
+      - name: size-limit
+        run: pnpm --filter @sextou/web size
+
   # The matrices of the jobs below, read from each workspace package's
   # package.json: a "test:<level>" script is a level, "test:mutation" a
   # mutation run. The root, whose scripts run every package, is no workspace
@@ -237,6 +258,19 @@ jobs:
           plugins: noop
           flags: ${{ matrix.package }}-${{ matrix.level }}
           name: ${{ matrix.package }} / ${{ matrix.level }}
+      # The screenshots a component suite took that differ from their
+      # reference, or have none yet, with the diffs. Only CI compares them,
+      # on this runner's Ubuntu: a change meant to look different takes its
+      # new references from here.
+      - name: Screenshots
+        if: ${{ failure() && matrix.level == 'component' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: screenshots-${{ matrix.package }}
+          path: ${{ matrix.dir }}/.vitest/attachments/
+          # The folder starts with a dot, which the action skips otherwise.
+          include-hidden-files: true
+          if-no-files-found: ignore
 
   integration:
     name: ${{ matrix.package }} / ${{ matrix.level }}
@@ -257,7 +291,10 @@ jobs:
     name: ${{ matrix.package }} / ${{ matrix.level }}
     needs: [packages, integration]
     if: ${{ !failure() && !cancelled() && needs.packages.outputs.component != '[]' }}
-    runs-on: ubuntu-latest
+    # The Ubuntu of Playwright's noble image, where the references are made:
+    # ubuntu-latest moves to a new release on its own, and text may render a
+    # pixel apart there.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read

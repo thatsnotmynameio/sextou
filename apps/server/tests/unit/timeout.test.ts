@@ -20,6 +20,8 @@ test('withTimeout rejects with the error of a promise that rejects in time', asy
 
 test('withTimeout rejects once the time passes on a promise that never settles', async () => {
   const result = withTimeout(new Promise(() => {}), 100);
+  // Awaited below, once the timers have run: awaiting it here would wait forever.
+  // oxlint-disable-next-line vitest/valid-expect
   const assertion = expect(result).rejects.toThrow('Timed out after 100 ms');
 
   await vi.advanceTimersByTimeAsync(100);
