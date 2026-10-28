@@ -48,6 +48,7 @@ jobs:
   # analyses apart by them, so a renamed job leaves its old alerts open on main.
   codeql:
     permissions:
+      actions: read # CodeQL reads the workflow run; the workflow doesn't start without it
       contents: read
       security-events: write # uploads the results to code scanning
     uses: thatsnotmynameio/github-actions/.github/workflows/codeql.yml@c1f9af5259f4c51e50a94d73d4c0e450f921d840 # v0.9.0
