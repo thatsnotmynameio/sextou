@@ -1,94 +1,32 @@
 import { expect, test } from 'vitest';
 import {
   defaultTimeoutMs,
-  readSettings,
+  readArgs,
 } from '../../../../harness/claude-headless/settings';
 
-const workspace = '/work/space';
-
-// Reads the settings of a context that asks "hi", changed by `fields`.
+// Reads claude's arguments for the fields of a context that asks "hi",
+// changed by `fields`.
 function read(fields: Record<string, unknown> = {}) {
-  return readSettings(JSON.stringify({ prompt: 'hi', ...fields }), workspace);
+  return readArgs({ prompt: 'hi', ...fields });
 }
 
 // The arguments claude gets for a context with `fields`, -p left out.
 function args(fields: Record<string, unknown>) {
   const result = read(fields);
-  return result.ok ? result.settings.args.slice(1) : result.reason;
+  return result.ok ? result.args.slice(1) : result.reason;
 }
 
-test('readSettings runs claude -p in the workspace with the prompt by default', () => {
-  expect(read()).toEqual({
-    ok: true,
-    settings: { cwd: workspace, args: ['-p'], prompt: 'hi' },
-  });
+test('readArgs runs claude -p alone by default', () => {
+  expect(read()).toEqual({ ok: true, args: ['-p'] });
 });
 
-test('readSettings hands the prompt on as written', () => {
-  const prompt = '--model=opus\nthen {{.WORKSPACE}} and "quotes"';
-
-  expect(read({ prompt })).toMatchObject({ ok: true, settings: { prompt } });
+test('readArgs leaves the keys it does not know to the core and the other steps', () => {
+  expect(
+    read({ path: 'code', repo: 'org/app', ref: 'main', server: 'x' }),
+  ).toEqual(read());
 });
 
-test('readSettings leaves the keys it does not know to the other steps', () => {
-  expect(read({ repo: 'org/app', ref: 'main', server: 'x' })).toEqual(read());
-});
-
-test.each([
-  ['a folder', 'code', '/work/space/code'],
-  ['the workspace itself', '.', workspace],
-])('readSettings runs claude in %s', (_name, path, cwd) => {
-  expect(read({ path })).toMatchObject({ ok: true, settings: { cwd } });
-});
-
-test.each([
-  ['the folder above the workspace', '..'],
-  ['a path that is not a string', 7],
-  ['a path with a NUL', 'code\0'],
-])('readSettings refuses %s as path', (_name, path) => {
-  expect(read({ path })).toEqual({
-    ok: false,
-    reason: 'path is inside the workspace',
-  });
-});
-
-test.each([
-  ['text that is not JSON', 'hi'],
-  ['an array', '[]'],
-  ['null', 'null'],
-  ['a string', '"hi"'],
-  ['nothing', ''],
-])('readSettings refuses %s as context', (_name, context) => {
-  expect(readSettings(context, workspace)).toEqual({
-    ok: false,
-    reason: 'context is a JSON object',
-  });
-});
-
-test.each([
-  ['a relative workspace', 'work/space'],
-  ['no workspace', ''],
-])('readSettings refuses %s', (_name, folder) => {
-  expect(readSettings('{"prompt":"hi"}', folder)).toEqual({
-    ok: false,
-    reason: 'workspace is an absolute path',
-  });
-});
-
-test.each([
-  ['no prompt', undefined],
-  ['an empty prompt', ''],
-  ['a prompt of spaces', ' \n\t'],
-  ['a prompt that is not a string', 7],
-  ['a prompt in a list', ['hi']],
-])('readSettings refuses %s', (_name, prompt) => {
-  expect(read({ prompt })).toEqual({
-    ok: false,
-    reason: 'prompt is a string with text',
-  });
-});
-
-test('readSettings asks for a worktree claude names when worktree is true', () => {
+test('readArgs asks for a worktree claude names when worktree is true', () => {
   expect(args({ worktree: true })).toEqual(['--worktree']);
 });
 
@@ -96,11 +34,11 @@ test.each([
   ['a name', 'review'],
   ['digits, _, . and -', 'fix_2.v-1'],
   ['a name that starts with .', '.review'],
-])('readSettings asks for a worktree with %s', (_name, worktree) => {
+])('readArgs asks for a worktree with %s', (_name, worktree) => {
   expect(args({ worktree })).toEqual([`--worktree=${worktree}`]);
 });
 
-test('readSettings asks for no worktree when worktree is false', () => {
+test('readArgs asks for no worktree when worktree is false', () => {
   expect(args({ worktree: false })).toEqual([]);
 });
 
@@ -113,7 +51,7 @@ test.each([
   ['..', '..'],
   ['a number', 7],
   ['null', null],
-])('readSettings refuses %s as worktree', (_name, worktree) => {
+])('readArgs refuses %s as worktree', (_name, worktree) => {
   expect(read({ worktree })).toEqual({
     ok: false,
     reason: 'worktree is true, false or a name',
@@ -132,15 +70,15 @@ test.each([
   ['name', 'review', ['--name=review']],
   ['sessionId', 'a-b', ['--session-id=a-b']],
   ['outputFormat', 'json', ['--output-format=json']],
-])('readSettings passes %s as --name=value', (key, value, expected) => {
+])('readArgs passes %s as --name=value', (key, value, expected) => {
   expect(args({ [key]: value })).toEqual(expected);
 });
 
-test('readSettings passes a value that starts with - as the option value', () => {
+test('readArgs passes a value that starts with - as the option value', () => {
   expect(args({ model: '--help' })).toEqual(['--model=--help']);
 });
 
-test('readSettings passes an empty string as an empty value', () => {
+test('readArgs passes an empty string as an empty value', () => {
   expect(args({ model: '' })).toEqual(['--model=']);
 });
 
@@ -149,19 +87,16 @@ test.each([
   ['fallbackModel', ['sonnet', 'haiku'], ['--fallback-model=sonnet,haiku']],
   ['settingSources', ['user', 'project'], ['--setting-sources=user,project']],
   ['settingSources', [], ['--setting-sources=']],
-])('readSettings joins %s with commas', (key, value, expected) => {
+])('readArgs joins %s with commas', (key, value, expected) => {
   expect(args({ [key]: value })).toEqual(expected);
 });
 
 test.each([
   ['a whole number', 2, ['--max-budget-usd=2']],
   ['a fraction', 0.5, ['--max-budget-usd=0.5']],
-])(
-  'readSettings passes maxBudgetUsd as %s',
-  (_name, maxBudgetUsd, expected) => {
-    expect(args({ maxBudgetUsd })).toEqual(expected);
-  },
-);
+])('readArgs passes maxBudgetUsd as %s', (_name, maxBudgetUsd, expected) => {
+  expect(args({ maxBudgetUsd })).toEqual(expected);
+});
 
 test.each([
   ['tools', ['Read', 'Edit'], ['--tools=Read', '--tools=Edit']],
@@ -185,7 +120,7 @@ test.each([
   ],
   ['betas', ['one'], ['--betas=one']],
 ])(
-  'readSettings passes each item of %s as its own argument',
+  'readArgs passes each item of %s as its own argument',
   (key, value, expected) => {
     expect(args({ [key]: value })).toEqual(expected);
   },
@@ -208,7 +143,7 @@ test.each([
     ['mcp.json', { mcpServers: {} }],
     ['--mcp-config=mcp.json', '--mcp-config={"mcpServers":{}}'],
   ],
-])('readSettings passes %s as JSON or as written', (key, value, expected) => {
+])('readArgs passes %s as JSON or as written', (key, value, expected) => {
   expect(args({ [key]: value })).toEqual(expected);
 });
 
@@ -229,15 +164,15 @@ test.each([
   ['includePartialMessages', '--include-partial-messages'],
   ['includeHookEvents', '--include-hook-events'],
   ['forwardSubagentText', '--forward-subagent-text'],
-])('readSettings adds %s alone when it is true', (key, flag) => {
+])('readArgs adds %s alone when it is true', (key, flag) => {
   expect(args({ [key]: true })).toEqual([flag]);
 });
 
-test('readSettings leaves a flag out when it is false', () => {
+test('readArgs leaves a flag out when it is false', () => {
   expect(args({ verbose: false, bare: false })).toEqual([]);
 });
 
-test('readSettings orders the options as claude gets them, whatever the order of the context', () => {
+test('readArgs orders the options as claude gets them, whatever the order of the context', () => {
   expect(
     read({
       verbose: true,
@@ -247,19 +182,17 @@ test('readSettings orders the options as claude gets them, whatever the order of
       model: 'opus',
       worktree: 'review',
     }),
-  ).toMatchObject({
+  ).toEqual({
     ok: true,
-    settings: {
-      args: [
-        '-p',
-        '--worktree=review',
-        '--model=opus',
-        '--permission-mode=dontAsk',
-        '--allowed-tools=Read',
-        '--output-format=stream-json',
-        '--verbose',
-      ],
-    },
+    args: [
+      '-p',
+      '--worktree=review',
+      '--model=opus',
+      '--permission-mode=dontAsk',
+      '--allowed-tools=Read',
+      '--output-format=stream-json',
+      '--verbose',
+    ],
   });
 });
 
@@ -293,14 +226,14 @@ test.each([
   ['mcpConfig', [], 'an object, a string or a non-empty list of them'],
   ['verbose', 'true', 'true or false'],
   ['verbose', 1, 'true or false'],
-])('readSettings refuses %s set to %j', (key, value, expected) => {
+])('readArgs refuses %s set to %j', (key, value, expected) => {
   expect(read({ [key]: value })).toEqual({
     ok: false,
     reason: `${key} is ${expected}`,
   });
 });
 
-test('readSettings passes no option the context leaves out', () => {
+test('readArgs passes no option the context leaves out', () => {
   expect(args({ model: undefined })).toEqual([]);
 });
 

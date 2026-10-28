@@ -161,6 +161,12 @@ const refusals: [
 ][] = [
   ['a context it refuses', { prompt: '' }, {}, 'prompt is a string with text'],
   [
+    'an option of claude it refuses',
+    { prompt: 'hi', model: 7 },
+    {},
+    'model is a string',
+  ],
+  [
     'a missing context',
     {},
     { CLAUDE_HEADLESS_CONTEXT: undefined },

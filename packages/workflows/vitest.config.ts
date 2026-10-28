@@ -6,11 +6,13 @@ import type { CoverageOptions } from 'vitest/node';
 //
 // No unit test answers for these, on purpose: git/checkout/checkout.ts runs
 // git as a child process, against a git server on localhost;
-// harness/claude-headless/headless.ts runs claude as one, a fake the test
-// writes to disk; shared/run.ts runs both, and shared/workspace.ts reads
-// folders on disk, through both.
+// harness/agnostic-cli/run.ts runs a harness's program as one, and
+// harness/claude-headless/headless.ts runs claude through it, a fake the
+// test writes to disk; shared/run.ts runs both, and shared/workspace.ts
+// reads folders on disk, through both.
 export const integrationOnly = [
   'git/checkout/checkout.ts',
+  'harness/agnostic-cli/run.ts',
   'harness/claude-headless/headless.ts',
   'shared/run.ts',
   'shared/workspace.ts',
