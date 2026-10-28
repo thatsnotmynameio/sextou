@@ -21,7 +21,7 @@ export const coverage = {
   },
 } satisfies CoverageOptions;
 
-// The unit suite: tests/unit/ in jsdom, no browser, with fetch stubbed, and
+// The unit suite: tests/unit/ in jsdom, no browser, with msw answering, and
 // the build's own modules beside vite.config.ts. The root vitest.config.ts
 // runs it with the integration suite. The Vite config is merged in, so the
 // router plugin generates src/routeTree.gen.ts here too.

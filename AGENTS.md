@@ -116,6 +116,7 @@ apps/web/
         index.ts               the module's entry point
         health-page.tsx        the page
   tests/
+    network.ts                 msw for the unit suite: the handlers a test adds answer its requests
     unit/                      mirrors src/, and settings.test.ts, content-security-policy.test.ts
     integration/               mirrors src/: modules/health/health-page.test.tsx
 packages/workflows/
@@ -172,7 +173,7 @@ A feature is a module of the server and a module of the web app under the same n
     - A procedure: unit, through `createCallerFactory(<feature>Router)` with a context the test builds.
     - What only HTTP shows (the status, CORS, the error's shape): unit, through `createApp(…).request(…)`.
     - Code that reaches the disk, a listening port or a child process: integration, its file listed in `integrationOnly` with the reason.
-    - A page: unit, rendering `createAppRouter({ serverUrl, requestTimeoutMs, history: createMemoryHistory(…) })` in a `RouterProvider`, with `fetch` stubbed (`vi.stubGlobal`) for each way the request can end.
+    - A page: unit, rendering `createAppRouter({ serverUrl, requestTimeoutMs, history: createMemoryHistory(…) })` in a `RouterProvider`, with msw (`tests/network.ts`'s `network.use(http.get(…))`) answering the request each way it can end; a request no handler takes fails the test.
     - A page against the real server: integration, with the server started as a child process, as `tests/integration/modules/health/health-page.test.tsx` does.
 11. **Imports.** Lint enforces three rules, in `.ts` and `.tsx` files alike: a module reaches another module only through its `index.ts`, in the server and in the web app; the web app and the runner import from the server only types, written as a whole `import type` statement from `@sextou/server/router` (lint refuses `import { type … }` everywhere, since it can leave a side-effect import behind); and nothing in `apps/web` or `packages/ui` imports `electron`.
 

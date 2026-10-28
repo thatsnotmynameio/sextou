@@ -1,50 +1,42 @@
 import { render, screen } from '@testing-library/react';
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router';
-import { afterEach, expect, test, vi } from 'vitest';
+import { delay, http, HttpResponse, type HttpResponseResolver } from 'msw';
+import { expect, test } from 'vitest';
 import { createAppRouter } from '../../../../src/router';
+import { network, setUpNetwork } from '../../../network';
 
 const serverUrl = 'http://server.test';
+const healthCheck = `${serverUrl}/trpc/health.check`;
 
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
+setUpNetwork();
 
-// The app at /, with fetch answering as `respond` says.
-function renderHome(respond: (url: string) => Promise<Response>) {
-  const fetch = vi.fn((input: RequestInfo | URL) =>
-    respond(input instanceof Request ? input.url : input.toString()),
-  );
-  vi.stubGlobal('fetch', fetch);
+// The app at /, with the server's health.check answering as `answer` says.
+function renderHome(answer: HttpResponseResolver, requestTimeoutMs = 1000) {
+  network.use(http.get(healthCheck, answer));
   const router = createAppRouter({
     serverUrl,
-    requestTimeoutMs: 1000,
+    requestTimeoutMs,
     history: createMemoryHistory({ initialEntries: ['/'] }),
   });
   render(<RouterProvider router={router} />);
-  return fetch;
 }
 
 function healthy(database: 'up' | 'down') {
-  return async () =>
-    json([{ result: { data: { version: '1.2.3', database } } }]);
+  return () =>
+    HttpResponse.json([{ result: { data: { version: '1.2.3', database } } }]);
 }
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
-
-test('the health page asks the server at its URL', async () => {
-  const fetch = renderHome(healthy('up'));
+test('the health page asks the server at its URL, as a tRPC batch', async () => {
+  const asked: URL[] = [];
+  renderHome(({ request }) => {
+    asked.push(new URL(request.url));
+    return healthy('up')();
+  });
 
   await screen.findByText('1.2.3');
 
-  expect(fetch).toHaveBeenCalledOnce();
-  expect(fetch.mock.calls[0][0]).toMatch(
-    /^http:\/\/server\.test\/trpc\/health\.check\?batch=1&/,
-  );
+  expect(asked).toHaveLength(1);
+  expect(asked[0].searchParams.get('batch')).toBe('1');
 });
 
 // Covers AE1.
@@ -65,42 +57,21 @@ test('the health page shows the version and the database down', async () => {
 });
 
 // Covers AE3.
-test.each([
-  ['the connection fails', new TypeError('fetch failed')],
-  [
-    'the request times out',
-    new DOMException('The operation timed out.', 'TimeoutError'),
-  ],
-])(
-  'the health page says the server can’t be reached when %s',
-  async (_, error) => {
-    renderHome(() => Promise.reject(error));
+test('the health page says the server can’t be reached when the connection fails', async () => {
+  renderHome(() => HttpResponse.error());
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'The server can’t be reached.',
-    );
-  },
-);
-
-// Covers AE3 through the client's own timeout: this fetch answers only once
-// its signal aborts, as a server that never answers does. Real timers: fake
-// ones don't fire AbortSignal.timeout.
-test('the health page says the server can’t be reached once the request timeout passes', async () => {
-  vi.stubGlobal(
-    'fetch',
-    (_input: RequestInfo | URL, init?: RequestInit) =>
-      new Promise<Response>((_, reject) => {
-        init?.signal?.addEventListener('abort', () =>
-          reject(init.signal?.reason),
-        );
-      }),
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'The server can’t be reached.',
   );
-  const router = createAppRouter({
-    serverUrl,
-    requestTimeoutMs: 20,
-    history: createMemoryHistory({ initialEntries: ['/'] }),
-  });
-  render(<RouterProvider router={router} />);
+});
+
+// Covers AE3 through the client's own timeout: the server never answers.
+// Real timers: fake ones don't fire AbortSignal.timeout.
+test('the health page says the server can’t be reached once the request timeout passes', async () => {
+  renderHome(async () => {
+    await delay('infinite');
+    return HttpResponse.json([]);
+  }, 20);
 
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'The server can’t be reached.',
@@ -108,12 +79,10 @@ test('the health page says the server can’t be reached once the request timeou
 });
 
 test('the health page says the server can’t be reached when something else answers', async () => {
-  renderHome(
-    async () =>
-      new Response('<!doctype html><title>Not Found</title>', {
-        status: 404,
-        headers: { 'content-type': 'text/html' },
-      }),
+  renderHome(() =>
+    HttpResponse.html('<!doctype html><title>Not Found</title>', {
+      status: 404,
+    }),
   );
 
   expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -123,8 +92,8 @@ test('the health page says the server can’t be reached when something else ans
 
 // Covers AE4 and AE6.
 test('the health page says the server answered with an error, and shows no health', async () => {
-  renderHome(async () =>
-    json(
+  renderHome(() =>
+    HttpResponse.json(
       [
         {
           error: {
@@ -138,7 +107,7 @@ test('the health page says the server answered with an error, and shows no healt
           },
         },
       ],
-      500,
+      { status: 500 },
     ),
   );
 
@@ -150,7 +119,10 @@ test('the health page says the server answered with an error, and shows no healt
 });
 
 test('the health page shows that it is checking while the server hasn’t answered', async () => {
-  renderHome(() => new Promise(() => {}));
+  renderHome(async () => {
+    await delay('infinite');
+    return HttpResponse.json([]);
+  });
 
   expect(await screen.findByText('Checking the server…')).toBeInTheDocument();
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
