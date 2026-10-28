@@ -1,4 +1,11 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import {
+  Fragment,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useLingui } from '@lingui/react/macro';
 import { Menu, type LucideIcon } from 'lucide-react';
 
@@ -180,13 +187,15 @@ export function AppShell({
                   </ul>
                 </li>
               ) : (
-                section.links.map((link) => (
-                  <Link
-                    key={link.href}
-                    link={link}
-                    onFollow={() => setOpen(false)}
-                  />
-                ))
+                <Fragment key={section.id}>
+                  {section.links.map((link) => (
+                    <Link
+                      key={link.href}
+                      link={link}
+                      onFollow={() => setOpen(false)}
+                    />
+                  ))}
+                </Fragment>
               ),
             )}
           </ul>
