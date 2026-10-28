@@ -9,13 +9,16 @@ import type { CoverageOptions } from 'vitest/node';
 // harness/agnostic-cli/run.ts runs a harness's program as one, and
 // harness/claude-headless/headless.ts runs claude through it, a fake the
 // test writes to disk; shared/run.ts runs both, and shared/workspace.ts
-// reads folders on disk, through both.
+// reads folders on disk, through both; work-summary/check/check.ts runs git
+// on repositories its test makes on disk, and reads the plan and the summary
+// from there.
 export const integrationOnly = [
   'git/checkout/checkout.ts',
   'harness/agnostic-cli/run.ts',
   'harness/claude-headless/headless.ts',
   'shared/run.ts',
   'shared/workspace.ts',
+  'work-summary/check/check.ts',
 ];
 
 // Each suite must reach this in every file it answers for, on its own: the

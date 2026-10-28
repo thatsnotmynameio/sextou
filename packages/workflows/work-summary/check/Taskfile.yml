@@ -1,0 +1,43 @@
+# Checks the summary the work task left, with check.ts, against the
+# repository a checkout left in the run's workspace. It reads from the task's
+# context:
+#
+#   path     the repository in the workspace, . by default
+#   base     the base ref the branch left, required
+#   plan     the plan's path in the repository, required
+#   ignore   exact paths in the repository the check counts on neither
+#            side, such as the plan's, [] by default
+#   summary  the summary file's path in the workspace, required
+#
+# It refuses a summary whose form is wrong, that contradicts itself, or that
+# contradicts the branch from the merge base of base and HEAD: the files the
+# diff changed, the plan's units, the Units: trailer of each commit, the
+# test files it cites. summary.ts documents the format.
+#
+# Exits with 0 when the summary is valid; 1 when the check refuses it, one
+# `work-summary: <reason>` line on stderr per reason; 2 when the task's input
+# is wrong, a plan with no unit heading, a base that names no commit or
+# shares no history with HEAD, or any other git failure; 124 when its git
+# took longer than WORK_SUMMARY_TIMEOUT_MS; 127 when git doesn't run.
+#
+# Run it as a task's Taskfile, or include it from another (includes:
+# check: ../work-summary/check) and call check:default once the summary is
+# in the workspace. It needs node and git on the runner's machine. Its git
+# may take a minute, all of it together, unless WORK_SUMMARY_TIMEOUT_MS in
+# the runner's environment sets another number of milliseconds; then it gets
+# SIGTERM, and SIGKILL 10 seconds later, unless WORK_SUMMARY_KILL_GRACE_MS
+# there sets another. Its git is the program WORK_SUMMARY_GIT_BIN there
+# names, a command on the PATH or an absolute path, git on the PATH by
+# default.
+version: '3'
+
+tasks:
+  default:
+    # The script gets the context and the workspace through its environment,
+    # never pasted into a command. go-task lets the runner's own environment
+    # win over these, hence names no other program sets.
+    env:
+      WORK_SUMMARY_CONTEXT: '{{.CONTEXT}}'
+      WORK_SUMMARY_WORKSPACE: '{{.WORKSPACE}}'
+    cmds:
+      - node {{joinPath .TASKFILE_DIR "main.ts" | q}}
