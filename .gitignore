@@ -165,3 +165,6 @@ apps/server/storage/
 # StrykerJS: its reports and the sandboxes it runs mutants in
 reports/
 .stryker-tmp/
+
+# Vitest: the screenshots a run took that differ from their reference, with the diffs
+.vitest/
