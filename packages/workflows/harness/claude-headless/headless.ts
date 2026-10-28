@@ -33,7 +33,9 @@ export { timedOut };
 // an absolute path, claude on the PATH when it is unset or empty.
 //
 // An action that keeps its skills in its own folder, in .claude/skills/,
-// hands that folder as `folder`, from its code: the folder exists only in
+// hands that folder as `folder`, an absolute path, from its code, such as
+// its main.ts's import.meta.dirname: a relative one would be checked here
+// against node's folder and read by claude against its own. The folder exists only in
 // the runner's download, so no context can name it. claude gets it as one
 // more --add-dir, after the context's addDir, and a folder that holds no
 // .claude/skills folder is refused. claude loads those skills only while the

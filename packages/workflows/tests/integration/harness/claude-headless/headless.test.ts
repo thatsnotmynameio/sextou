@@ -415,6 +415,28 @@ test.each(folderRefusals)(
   },
 );
 
+test("headless reports a CLAUDE_HEADLESS_ variable it refuses before the action's folder", async () => {
+  await headless(
+    {
+      ...process.env,
+      CLAUDE_HEADLESS_BIN: claude,
+      CLAUDE_HEADLESS_CONTEXT: JSON.stringify({ prompt: 'hi' }),
+      CLAUDE_HEADLESS_WORKSPACE: workspace,
+      CLAUDE_HEADLESS_TIMEOUT_MS: '10s',
+      FAKE_CLAUDE_RECEIVED: file,
+    },
+    {
+      stdout: (line) => stdout.push(line),
+      stderr: (line) => stderr.push(line),
+    },
+    join(dir, 'missing'),
+  );
+
+  expect(stderr).toEqual([
+    'claude-headless: CLAUDE_HEADLESS_TIMEOUT_MS is a whole number of milliseconds from 1 to 2147483647',
+  ]);
+});
+
 test("headless reports a context it refuses before the action's folder", async () => {
   await runWithFolder(join(dir, 'missing'), { prompt: '' });
 
