@@ -30,4 +30,4 @@ jobs:
     permissions:
       contents: read
       security-events: write # uploads oxlint's findings to code scanning
-    uses: thatsnotmynameio/github-actions/.github/workflows/typescript.yml@f5227b462da7e5df7fdfaf47891598cc804e1e5a # v0.6.0
+    uses: thatsnotmynameio/github-actions/.github/workflows/typescript.yml@918c3858cf2c38f790687fd17ab51b93726f059e # v0.7.0
