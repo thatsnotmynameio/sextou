@@ -62,6 +62,7 @@ export function AppShell({
     if (open) {
       focusInto(navigation.current);
     } else if (wasOpen.current) {
+      // Stryker disable next-line OptionalChaining: the header always holds the button, so it is mounted whenever the navigation closes
       opener.current?.focus();
     }
     wasOpen.current = open;
@@ -88,6 +89,7 @@ export function AppShell({
     document.addEventListener('keydown', escape);
     query.addEventListener('change', grow);
     return () => {
+      // Stryker disable next-line StringLiteral,CallExpression: a leak only, since a listener left behind closes a navigation already closed
       document.removeEventListener('keydown', escape);
       query.removeEventListener('change', grow);
     };

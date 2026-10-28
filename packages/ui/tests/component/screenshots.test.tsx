@@ -46,8 +46,16 @@ test.each(stories)(
     await page.viewport(width, height);
     const { container } = render(<Story />);
 
+    // daisyUI's loading spinner turns through SMIL inside its mask, which no
+    // CSS setting stops, so two captures never match: each one is covered
+    // with a box of one color instead.
+    const spinners = [...container.querySelectorAll('.loading')].map(
+      (spinner) => page.elementLocator(spinner),
+    );
     await expect
       .element(page.elementLocator(container))
-      .toMatchScreenshot(name.replaceAll(' ', '-'));
+      .toMatchScreenshot(name.replaceAll(' ', '-'), {
+        screenshotOptions: { mask: spinners },
+      });
   },
 );
