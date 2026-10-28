@@ -9,8 +9,9 @@ import { AppShell, type AppShellProps } from '../../../src/AppShell/AppShell';
 const props: AppShellProps = {
   brand: 'sextou',
   sections: [
-    { links: [{ label: 'Home', href: '/', icon: House }] },
+    { id: 'main', links: [{ label: 'Home', href: '/', icon: House }] },
     {
+      id: 'organization',
       title: 'Organization',
       links: [
         { label: 'Tasks', href: '/tasks', icon: ListTodo, current: true },

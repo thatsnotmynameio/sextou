@@ -29,6 +29,7 @@ function Root() {
       brand="sextou"
       sections={[
         {
+          id: 'main',
           links: [
             {
               label: <Trans>Server health</Trans>,

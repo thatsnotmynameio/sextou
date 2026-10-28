@@ -9,8 +9,10 @@ export type AppShellLink = {
   current?: boolean;
 };
 
-// A group of links in the navigation, under its title when it has one.
+// A group of links in the navigation, under its title when it has one. The id
+// tells the sections apart, since the title may be absent or not text.
 export type AppShellSection = {
+  id: string;
   title?: ReactNode;
   links: AppShellLink[];
 };
@@ -163,9 +165,9 @@ export function AppShell({
         >
           <div className="px-4 py-2 text-base font-semibold">{brand}</div>
           <ul className="menu w-full">
-            {sections.map((section, index) =>
+            {sections.map((section) =>
               section.title ? (
-                <li key={index}>
+                <li key={section.id}>
                   <h2 className="menu-title">{section.title}</h2>
                   <ul>
                     {section.links.map((link) => (

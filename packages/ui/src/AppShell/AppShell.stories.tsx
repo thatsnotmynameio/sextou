@@ -19,12 +19,14 @@ const meta = {
     brand: 'sextou',
     sections: [
       {
+        id: 'main',
         links: [
           { label: <Trans>Home</Trans>, href: '#home', icon: House },
           { label: <Trans>Inbox</Trans>, href: '#inbox', icon: Inbox },
         ],
       },
       {
+        id: 'organization',
         title: <Trans>Organization</Trans>,
         links: [
           {
@@ -42,6 +44,7 @@ const meta = {
         ],
       },
       {
+        id: 'workspaces',
         title: <Trans>Workspaces</Trans>,
         links: [
           { label: 'app-web', href: '#app-web', icon: Folder },
