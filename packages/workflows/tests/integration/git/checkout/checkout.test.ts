@@ -505,3 +505,27 @@ test.each([
     expect(Date.now() - started).toBeLessThan(5000);
   },
 );
+
+test('checkout with a base gives both fetches one CHECKOUT_TIMEOUT_MS between them', async () => {
+  // A git that takes 1.5 s over the base's fetch, then never ends the ref's.
+  const slow = join(dir, 'git');
+  writeFileSync(
+    slow,
+    '#!/bin/sh\ncase "$*" in\n  *refs/heads/main:*) sleep 1.5 ;;\n  fetch*) exec sleep 60 ;;\nesac\nexec git "$@"\n',
+    { mode: 0o755 },
+  );
+  const started = Date.now();
+
+  const code = await run(
+    { repo: 'org/app', ref: 'feature', base: 'main' },
+    { CHECKOUT_GIT_BIN: slow, CHECKOUT_TIMEOUT_MS: '2000' },
+  );
+
+  expect(code).toBe(timedOut);
+  expect(logged).toContain('checkout: git took longer than 2000 ms');
+  expect(git(workspace, 'log', '-1', '--format=%s', 'origin/main')).toBe(
+    'main',
+  );
+  // A deadline of its own for the ref's fetch would end past 3.5 s.
+  expect(Date.now() - started).toBeLessThan(3000);
+}, 15_000);
