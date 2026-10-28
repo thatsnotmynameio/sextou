@@ -174,13 +174,15 @@ export const Phone: Story = {
       await userEvent.keyboard('{Escape}');
       await closed();
     });
-    await step('a followed link closes it, under a title or not', async () => {
-      for (const name of ['Runners', 'Home']) {
-        await opened();
-        await userEvent.click(canvas.getByRole('link', { name }));
-        await closed();
-      }
-    });
+    const follow = async (name: string) => {
+      await opened();
+      await userEvent.click(canvas.getByRole('link', { name }));
+      await closed();
+    };
+    await step('a followed link under a title closes it', () =>
+      follow('Runners'),
+    );
+    await step('a followed link with no title closes it', () => follow('Home'));
   },
 };
 

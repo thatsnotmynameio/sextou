@@ -33,10 +33,10 @@ beforeEach(() => {
     get matches() {
       return large && query === '(min-width: 64rem)';
     },
-    addEventListener: (_: string, listener: () => void) =>
-      changes.add(listener),
-    removeEventListener: (_: string, listener: () => void) =>
-      changes.delete(listener),
+    addEventListener: (type: string, listener: () => void) =>
+      type === 'change' && changes.add(listener),
+    removeEventListener: (type: string, listener: () => void) =>
+      type === 'change' && changes.delete(listener),
   }));
 });
 afterEach(() => {
@@ -286,4 +286,16 @@ test('AppShell watches the screen only while the navigation is open', async () =
   fireEvent.keyDown(screen.getByRole('navigation'), { key: 'Escape' });
 
   expect(changes.size).toBe(0);
+});
+
+test('AppShell closes the open navigation on Escape when focus is outside it', async () => {
+  const { container } = renderWithI18n(<AppShell {...props} />);
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Open navigation' }),
+  );
+  screen.getByRole('navigation').blur();
+
+  fireEvent.keyDown(document.body, { key: 'Escape' });
+
+  expect(drawerToggle(container)).not.toBeChecked();
 });

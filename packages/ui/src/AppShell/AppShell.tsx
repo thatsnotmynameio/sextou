@@ -38,7 +38,7 @@ export function AppShell({
   actions,
   footer,
   children,
-}: AppShellProps) {
+}: Readonly<AppShellProps>) {
   // Stryker restore BlockStatement
   const { t } = useLingui();
   const toggle = useId();
@@ -64,31 +64,34 @@ export function AppShell({
     wasOpen.current = open;
   }, [open]);
 
-  // The page is inert while the navigation covers it, so a screen that grows
-  // to lg, where nothing covers the page and the overlay is gone, closes it.
+  // While the navigation is open, Escape closes it wherever focus is. The page
+  // is inert while the navigation covers it, so a screen that grows to lg,
+  // where nothing covers the page and the overlay is gone, closes it too.
   useEffect(() => {
     if (!open) {
       return;
     }
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpen(false);
+      }
+    };
     const query = window.matchMedia(large);
-    const close = () => {
+    const grow = () => {
       if (query.matches) {
         setOpen(false);
       }
     };
-    query.addEventListener('change', close);
-    return () => query.removeEventListener('change', close);
+    document.addEventListener('keydown', escape);
+    query.addEventListener('change', grow);
+    return () => {
+      document.removeEventListener('keydown', escape);
+      query.removeEventListener('change', grow);
+    };
   }, [open]);
 
   return (
-    <div
-      className="drawer min-h-screen bg-base-100 font-sans text-base-content lg:drawer-open"
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') {
-          setOpen(false);
-        }
-      }}
-    >
+    <div className="drawer min-h-screen bg-base-100 font-sans text-base-content lg:drawer-open">
       {/* daisyUI's drawer shows the navigation from this checkbox; the buttons, not the user, set it. */}
       <input
         id={toggle}
@@ -195,10 +198,10 @@ export function AppShell({
 function Link({
   link: { label, href, icon: Icon, current = false },
   onFollow,
-}: {
+}: Readonly<{
   link: AppShellLink;
   onFollow: () => void;
-}) {
+}>) {
   return (
     <li>
       <a
