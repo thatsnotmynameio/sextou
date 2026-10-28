@@ -58,15 +58,9 @@ export function AppShell({
 
   // Focus goes into the navigation when it covers the page, and back to the
   // button that opened it when it closes.
-  const focusNavigation = () => {
-    const nav = navigation.current;
-    if (nav && !nav.contains(document.activeElement)) {
-      nav.focus();
-    }
-  };
   useEffect(() => {
     if (open) {
-      focusNavigation();
+      focusInto(navigation.current);
     } else if (wasOpen.current) {
       opener.current?.focus();
     }
@@ -151,7 +145,7 @@ export function AppShell({
         className="drawer-side z-10"
         onTransitionEnd={() => {
           if (open) {
-            focusNavigation();
+            focusInto(navigation.current);
           }
         }}
       >
@@ -175,7 +169,9 @@ export function AppShell({
             {sections.map((section) =>
               section.title ? (
                 <li key={section.id}>
-                  <h2 className="menu-title">{section.title}</h2>
+                  <h2 className="menu-title text-base-content/70">
+                    {section.title}
+                  </h2>
                   <ul>
                     {section.links.map((link) => (
                       <Link
@@ -203,6 +199,13 @@ export function AppShell({
       </div>
     </div>
   );
+}
+
+// Moves focus to the navigation unless it is already inside it.
+function focusInto(nav: HTMLElement | null) {
+  if (nav && !nav.contains(document.activeElement)) {
+    nav.focus();
+  }
 }
 
 // Following a link closes the navigation, which matters where it covers the page.

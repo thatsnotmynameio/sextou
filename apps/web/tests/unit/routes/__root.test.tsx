@@ -1,13 +1,22 @@
 import { render, screen, within } from '@testing-library/react';
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router';
-import { afterEach, expect, test, vi } from 'vitest';
+import { delay, http, HttpResponse } from 'msw';
+import { expect, test } from 'vitest';
 import { createAppRouter } from '../../../src/router';
+import { network, setUpNetwork } from '../../network';
 
 const serverUrl = 'http://server.test';
 
+setUpNetwork();
+
 // The app at `path`, with a server that never answers: the layout doesn't wait for it.
 function renderAt(path: string) {
-  vi.stubGlobal('fetch', () => new Promise<Response>(() => {}));
+  network.use(
+    http.get(`${serverUrl}/trpc/*`, async () => {
+      await delay('infinite');
+      return HttpResponse.json([]);
+    }),
+  );
   const router = createAppRouter({
     serverUrl,
     requestTimeoutMs: 1000,
@@ -15,10 +24,6 @@ function renderAt(path: string) {
   });
   render(<RouterProvider router={router} />);
 }
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
 
 test('the layout heads the page with the title its route declares', async () => {
   renderAt('/');
