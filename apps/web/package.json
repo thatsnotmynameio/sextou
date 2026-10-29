@@ -29,6 +29,7 @@
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
+    "@fast-check/vitest": "0.5.0",
     "@sextou/server": "workspace:*",
     "@size-limit/file": "^14.3.0",
     "@stryker-mutator/core": "10.1.1",
@@ -43,6 +44,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "@vitest/coverage-v8": "^5.0.5",
+    "fast-check": "4.10.2",
     "jsdom": "^30.1.3",
     "msw": "^3.0.3",
     "size-limit": "^14.3.0",

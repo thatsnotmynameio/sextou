@@ -20,12 +20,14 @@
     "@trpc/client": "^11.19.0"
   },
   "devDependencies": {
+    "@fast-check/vitest": "0.5.0",
     "@sextou/server": "workspace:*",
     "@stryker-mutator/core": "10.1.1",
     "@stryker-mutator/vitest-runner": "10.1.1",
     "@trpc/server": "^11.19.0",
     "@types/node": "^26.6.5",
     "@vitest/coverage-v8": "^5.0.5",
+    "fast-check": "4.10.2",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",

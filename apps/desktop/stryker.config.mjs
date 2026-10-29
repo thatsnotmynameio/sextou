@@ -1,3 +1,7 @@
 import parent from '../../stryker.parent.conf.json' with { type: 'json' };
 
-export default { ...parent, mutate: [...parent.mutate, '!src/main/main.ts'] };
+export default {
+  ...parent,
+  vitest: { configFile: 'vitest.mutation.config.mts' },
+  mutate: [...parent.mutate, '!src/main/main.ts'],
+};
