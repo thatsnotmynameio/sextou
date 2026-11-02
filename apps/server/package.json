@@ -25,7 +25,7 @@
     "@trpc/server": "^11.19.0",
     "@tursodatabase/database": "0.8.3",
     "drizzle-orm": "1.0.0-rc.5",
-    "hono": "^4.13.13",
+    "hono": "^4.13.14",
     "zod": "^4.6.7"
   },
   "devDependencies": {

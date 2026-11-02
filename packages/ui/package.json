@@ -19,8 +19,8 @@
     "test:mutation": "stryker run"
   },
   "peerDependencies": {
-    "@lingui/core": "^6.10.0",
-    "@lingui/react": "^6.10.0",
+    "@lingui/core": "^6.10.1",
+    "@lingui/react": "^6.10.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -33,9 +33,9 @@
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
-    "@lingui/core": "^6.10.0",
-    "@lingui/message-utils": "^6.10.0",
-    "@lingui/react": "^6.10.0",
+    "@lingui/core": "^6.10.1",
+    "@lingui/message-utils": "^6.10.1",
+    "@lingui/react": "^6.10.1",
     "@storybook/addon-a11y": "10.6.3",
     "@storybook/addon-vitest": "^10.6.3",
     "@storybook/react-vite": "^10.6.3",
