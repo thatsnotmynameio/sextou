@@ -17,14 +17,14 @@
   "dependencies": {
     "@sextou/config": "workspace:*",
     "@sextou/logger": "workspace:*",
-    "@trpc/client": "^11.19.0"
+    "@trpc/client": "^11.22.1"
   },
   "devDependencies": {
     "@sextou/server": "workspace:*",
     "@stryker-mutator/core": "10.1.1",
     "@stryker-mutator/vitest-runner": "10.1.1",
-    "@trpc/server": "^11.19.0",
-    "@types/node": "^26.6.5",
+    "@trpc/server": "^11.22.1",
+    "@types/node": "^26.6.6",
     "@vitest/coverage-v8": "^5.0.5",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
