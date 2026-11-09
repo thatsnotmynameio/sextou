@@ -19,8 +19,8 @@
     "test:mutation": "stryker run"
   },
   "peerDependencies": {
-    "@lingui/core": "^6.10.0",
-    "@lingui/react": "^6.10.0",
+    "@lingui/core": "^6.11.0",
+    "@lingui/react": "^6.11.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -29,16 +29,16 @@
     "@fontsource-variable/source-sans-3": "^5.3.1",
     "@lingui/native-tools": "^0.2.0",
     "daisyui": "^5.7.50",
-    "lucide-react": "^1.62.0",
+    "lucide-react": "^1.66.0",
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
-    "@lingui/core": "^6.10.0",
-    "@lingui/message-utils": "^6.10.0",
-    "@lingui/react": "^6.10.0",
-    "@storybook/addon-a11y": "10.6.3",
-    "@storybook/addon-vitest": "^10.6.3",
-    "@storybook/react-vite": "^10.6.3",
+    "@lingui/core": "^6.11.0",
+    "@lingui/message-utils": "^6.11.0",
+    "@lingui/react": "^6.11.0",
+    "@storybook/addon-a11y": "10.6.5",
+    "@storybook/addon-vitest": "^10.6.5",
+    "@storybook/react-vite": "^10.6.5",
     "@stryker-mutator/core": "10.1.1",
     "@stryker-mutator/vitest-runner": "10.1.1",
     "@tailwindcss/vite": "^4.3.3",
@@ -55,7 +55,7 @@
     "playwright": "^1.64.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "storybook": "^10.6.3",
+    "storybook": "^10.6.5",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
