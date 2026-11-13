@@ -18,7 +18,7 @@
     "test:mutation": "stryker run"
   },
   "dependencies": {
-    "@hono/node-server": "^2.1.5",
+    "@hono/node-server": "^2.1.6",
     "@sextou/config": "workspace:*",
     "@sextou/logger": "workspace:*",
     "@sextou/tasks": "workspace:*",
